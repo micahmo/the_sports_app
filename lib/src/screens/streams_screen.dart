@@ -123,6 +123,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
   late final WebViewController _controller;
 
   bool _inPip = false;
+  bool _isFullscreen = false;
 
   @override
   void initState() {
@@ -152,6 +153,17 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
     const PlatformWebViewControllerCreationParams params = PlatformWebViewControllerCreationParams();
 
     final WebViewController controller = WebViewController.fromPlatformCreationParams(params)
+      ..addJavaScriptChannel(
+        'Fullscreen', // this becomes a JS object `Fullscreen.postMessage('...')`
+        onMessageReceived: (JavaScriptMessage m) {
+          final String msg = m.message;
+          if (msg == 'enter' || msg == 'exit') {
+            setState(() {
+              _isFullscreen = (msg == 'enter');
+            });
+          }
+        },
+      )
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.transparent)
       ..setNavigationDelegate(
@@ -227,6 +239,30 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
             } catch (e) {}
           }
         })();
+
+        // Notify Flutter when the page enters/exits fullscreen
+        (function(){
+          function notify() {
+            try {
+              // If any element is fullscreen, send 'enter', else 'exit'
+              Fullscreen.postMessage(document.fullscreenElement ? 'enter' : 'exit');
+            } catch (e) {}
+          }
+          document.addEventListener('fullscreenchange', notify, true);
+          document.addEventListener('webkitfullscreenchange', notify, true);
+          document.addEventListener('mozfullscreenchange', notify, true);
+          document.addEventListener('MSFullscreenChange', notify, true);
+
+          // Some players use video-specific events (rare on Android, but safe)
+          const vids = Array.from(document.querySelectorAll('video'));
+          for (const v of vids) {
+            v.addEventListener('fullscreenchange', notify, true);
+            v.addEventListener('webkitbeginfullscreen', () => Fullscreen.postMessage('enter'), true);
+            v.addEventListener('webkitendfullscreen', () => Fullscreen.postMessage('exit'), true);
+          }
+          // Initial fire (in case the embed was already fullscreen)
+          notify();
+        })();
       } catch (_) {}
       true;
     ''';
@@ -259,6 +295,13 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
       appBar: _inPip
           ? null
           : AppBar(
+              systemOverlayStyle: _isFullscreen
+                  ? const SystemUiOverlayStyle(
+                      statusBarColor: Colors.transparent, // keep transparent for E2E
+                      statusBarIconBrightness: Brightness.light, // ANDROID icons
+                      statusBarBrightness: Brightness.dark, // iOS text (inverse)
+                    )
+                  : null,
               title: Text('Playing ${widget.title}'),
               actions: [
                 IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refresh),
