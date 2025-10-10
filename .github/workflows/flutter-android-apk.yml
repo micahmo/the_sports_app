@@ -1,0 +1,135 @@
+name: Flutter Android APK Release
+
+concurrency:
+  group: flutter-android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Mark the GitHub release as a prerelease'
+        type: boolean
+        default: false
+      notes:
+        description: 'Additional release notes (optional)'
+        type: string
+        default: ''
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: 1.0.${{ github.run_number }}
+      FLUTTER_VERSION: '3.32.0'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Set version in pubspec.yaml
+        shell: bash
+        run: |
+          ver="${{ env.VERSION_NAME }}"
+          build="${{ github.run_number }}"
+          sed -i "s/^version: .*/version: ${ver}+${build}/" pubspec.yaml
+          echo "pubspec version set to ${ver}+${build}"
+
+      # --- Signing setup (requires repo secrets) ---
+      # Secrets:
+      #   KEYSTORE_FILE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, (optional) KEY_PASSWORD
+      - name: Decode keystore
+        run: |
+          mkdir -p android/app
+          echo "${{ secrets.KEYSTORE_FILE_BASE64 }}" | base64 -d > android/app/upload-keystore.jks
+
+      - name: Write android/key.properties
+        run: |
+          KEY_PASS="${{ secrets.KEY_PASSWORD }}"
+          if [ -z "$KEY_PASS" ]; then KEY_PASS="${{ secrets.KEYSTORE_PASSWORD }}"; fi
+          cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${KEY_PASS}
+          EOF
+
+      # --- Build a single universal signed APK (simple to distribute) ---
+      - name: Build APK (release)
+        run: flutter build apk --release
+        # Output: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Rename APK with version
+        run: |
+          mkdir -p artifacts
+          cp build/app/outputs/flutter-apk/app-release.apk "artifacts/app-${{ env.VERSION_NAME }}.apk"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: artifacts/app-${{ env.VERSION_NAME }}.apk
+
+      # --- Changelog (git log since last tag, or manual notes) ---
+      - name: Generate changelog
+        id: changelog
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.notes }}" ]; then
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ inputs.notes }}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -z "$PREV_TAG" ]; then
+              echo "changelog=* Initial release" >> $GITHUB_OUTPUT
+            else
+              LOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s (%h)")
+              [ -z "$LOG" ] && LOG="* Automated release"
+              echo "changelog<<EOF" >> $GITHUB_OUTPUT
+              echo "$LOG" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Download artifact (for release upload)
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: v${{ env.VERSION_NAME }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          files: artifacts/app-${{ env.VERSION_NAME }}.apk
+          fail_on_unmatched_files: true
+          prerelease: ${{ inputs.prerelease }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
