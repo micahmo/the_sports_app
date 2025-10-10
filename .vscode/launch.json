@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Sports (Debug)",
+      "request": "launch",
+      "type": "dart",
+      "args": ["--flavor", "production"]
+    },
+    {
+      "name": "Sports Development (Debug)",
+      "request": "launch",
+      "type": "dart",
+      "args": ["--flavor", "development"]
+    },
+    {
+      "name": "Sports (Profile)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "profile",
+      "args": ["--flavor", "production"]
+    },
+    {
+      "name": "Sports Development (Profile)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "profile",
+      "args": ["--flavor", "development"]
+    },
+    {
+      "name": "Sports (Release)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release",
+      "args": ["--flavor", "production"]
+    },
+    {
+      "name": "Sports Development (Release)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release",
+      "args": ["--flavor", "development"]
+    }
+  ]
+}
