@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 
@@ -147,7 +148,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
 
     _allowedUri = Uri.parse(widget.stream.embedUrl);
 
-    _controller = WebViewController()
+    // --- Build controller with Android-specific autoplay setting ---
+    const PlatformWebViewControllerCreationParams params = PlatformWebViewControllerCreationParams();
+
+    final WebViewController controller = WebViewController.fromPlatformCreationParams(params)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.transparent)
       ..setNavigationDelegate(
@@ -164,15 +168,20 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
               _controller.loadRequest(_allowedUri);
             }
           },
-          onPageFinished: (String _) {
-            _injectGuards();
-          },
+          onPageFinished: (String _) => _injectGuardsAndAutoplay(),
           onWebResourceError: (WebResourceError error) {
             // Optional: show a snackbar/toast/retry
           },
         ),
-      )
-      ..loadRequest(_allowedUri);
+      );
+
+    // ANDROID: allow media to start without a user gesture
+    if (controller.platform is AndroidWebViewController) {
+      final AndroidWebViewController a = controller.platform as AndroidWebViewController;
+      a.setMediaPlaybackRequiresUserGesture(false);
+    }
+
+    _controller = controller..loadRequest(_allowedUri);
   }
 
   bool _isAllowedDestination(Uri dest) {
@@ -185,7 +194,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
     return baseDest == baseAllowed;
   }
 
-  Future<void> _injectGuards() async {
+  Future<void> _injectGuardsAndAutoplay() async {
     const String js = r'''
       try {
         // Disable window.open
@@ -202,16 +211,22 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
             e.preventDefault(); e.stopPropagation(); return false;
           }
 
-          // Also block same-origin but different path (only allow same URL/hash)
-          const noHashCurrent = new URL(location.href);
-          noHashCurrent.hash = '';
-          const noHashDest = new URL(dest.href);
-          noHashDest.hash = '';
-          if (noHashDest.href !== noHashCurrent.href) {
-            e.preventDefault(); e.stopPropagation(); return false;
-          }
+          // Same-origin links are allowed (player may need them)
           return true;
         }, true);
+
+        // Try muted autoplay for any <video> tags on the page (Android-friendly)
+        (async () => {
+          const vids = Array.from(document.querySelectorAll('video'));
+          for (const v of vids) {
+            try {
+              if (v.paused) {
+                v.muted = true;
+                await v.play();
+              }
+            } catch (e) {}
+          }
+        })();
       } catch (_) {}
       true;
     ''';
