@@ -266,6 +266,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
               ],
             ),
       // Remove padding when in PiP for a clean, edge-to-edge video
+      backgroundColor: Colors.black,
       body: _inPip ? WebViewWidget(controller: _controller) : SafeArea(child: WebViewWidget(controller: _controller)),
     );
   }
