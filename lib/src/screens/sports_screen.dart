@@ -37,7 +37,7 @@ class _SportsScreenState extends State<SportsScreen> {
             return const Center(child: Text('No sports available'));
           }
           return ListView.separated(
-            itemCount: sports.length + 1,
+            itemCount: sports.length + 2, // +2 for Live and Popular
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (BuildContext _, int i) {
               if (i == 0) {
@@ -48,7 +48,15 @@ class _SportsScreenState extends State<SportsScreen> {
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MatchesScreen.live())),
                 );
               }
-              final Sport s = sports[i - 1];
+              if (i == 1) {
+                return ListTile(
+                  leading: const Icon(Icons.local_fire_department),
+                  title: const Text('Popular'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MatchesScreen.livePopular())),
+                );
+              }
+              final Sport s = sports[i - 2]; // shift by 2 now
               return ListTile(
                 title: Text(s.name),
                 subtitle: Text(s.id),

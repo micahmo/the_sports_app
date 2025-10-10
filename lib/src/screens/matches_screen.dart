@@ -8,6 +8,7 @@ import 'streams_screen.dart';
 class MatchesScreen extends StatefulWidget {
   const MatchesScreen.forSport(this.sport, {super.key}) : mode = Mode.bySport;
   const MatchesScreen.live({super.key}) : sport = null, mode = Mode.live;
+  const MatchesScreen.livePopular({super.key}) : sport = null, mode = Mode.livePopular;
 
   final Sport? sport;
   final Mode mode;
@@ -21,14 +22,23 @@ class _MatchesScreenState extends State<MatchesScreen> {
   late Future<List<ApiMatch>> _future;
 
   @override
+  @override
   void initState() {
     super.initState();
-    _future = widget.mode == Mode.live ? _api.fetchLiveMatches() : _api.fetchMatchesBySport(widget.sport!.id);
+    _future = switch (widget.mode) {
+      Mode.live => _api.fetchLiveMatches(),
+      Mode.livePopular => _api.fetchLivePopular(),
+      Mode.bySport => _api.fetchMatchesBySport(widget.sport!.id),
+    };
   }
 
   @override
   Widget build(BuildContext context) {
-    final String title = widget.mode == Mode.live ? 'Live Matches' : widget.sport!.name;
+    final String title = switch (widget.mode) {
+      Mode.live => 'Live Matches',
+      Mode.livePopular => 'Popular',
+      Mode.bySport => 'Matches: ${widget.sport!.name}',
+    };
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: FutureBuilder<List<ApiMatch>>(

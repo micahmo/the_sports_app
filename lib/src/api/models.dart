@@ -66,4 +66,4 @@ class StreamInfo {
   );
 }
 
-enum Mode { bySport, live }
+enum Mode { bySport, live, livePopular }

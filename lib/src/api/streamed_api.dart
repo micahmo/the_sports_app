@@ -28,6 +28,13 @@ class StreamedApi {
     return arr.map((e) => ApiMatch.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  Future<List<ApiMatch>> fetchLivePopular() async {
+    final http.Response r = await _client.get(Uri.parse('$base/api/matches/live/popular'));
+    _ensureOk(r);
+    final List<dynamic> arr = jsonDecode(r.body) as List<dynamic>;
+    return arr.map((e) => ApiMatch.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   Future<List<StreamInfo>> fetchStreams(String source, String id) async {
     final http.Response r = await _client.get(Uri.parse('$base/api/stream/$source/$id'));
     _ensureOk(r);
