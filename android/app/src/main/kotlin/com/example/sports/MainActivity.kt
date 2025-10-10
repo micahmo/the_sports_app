@@ -1,4 +1,4 @@
-package com.example.sports
+package com.micahmo.sports
 
 import android.app.PictureInPictureParams
 import android.content.res.Configuration
