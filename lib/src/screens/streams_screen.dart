@@ -225,8 +225,15 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
   Future<void> _enterPip({int width = 16, int height = 9}) async {
     try {
       await _pip.invokeMethod('enterPip', <String, dynamic>{'width': width, 'height': height});
+    } catch (_) {}
+  }
+
+  Future<void> _refresh() async {
+    try {
+      await _controller.reload();
     } catch (_) {
-      // No-op on platforms without the method.
+      // fallback if reload not supported
+      await _controller.loadRequest(_allowedUri);
     }
   }
 
@@ -238,7 +245,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
           ? null
           : AppBar(
               title: Text('Playing ${widget.title}'),
-              actions: <Widget>[IconButton(tooltip: 'Picture-in-Picture', icon: const Icon(Icons.picture_in_picture_alt), onPressed: _enterPip)],
+              actions: [
+                IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refresh),
+                IconButton(tooltip: 'Picture-in-Picture', icon: const Icon(Icons.picture_in_picture_alt), onPressed: _enterPip),
+              ],
             ),
       // Remove padding when in PiP for a clean, edge-to-edge video
       body: _inPip ? WebViewWidget(controller: _controller) : SafeArea(child: WebViewWidget(controller: _controller)),
