@@ -48,13 +48,14 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
-            // Auto-enter PiP when user leaves the app (Home/Recents)
-            enterPip(16, 9)
-        }
-    }
+    // Never auto-enter PIP
+    // override fun onUserLeaveHint() {
+    //     super.onUserLeaveHint()
+    //     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
+    //         // Auto-enter PiP when user leaves the app (Home/Recents)
+    //         enterPip(16, 9)
+    //     }
+    // }
 
     override fun onPictureInPictureModeChanged(
         isInPictureInPictureMode: Boolean,
