@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // <-- add
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import 'streams_screen.dart';
@@ -9,6 +10,7 @@ class MatchesScreen extends StatefulWidget {
   const MatchesScreen.forSport(this.sport, {super.key}) : mode = Mode.bySport;
   const MatchesScreen.live({super.key}) : sport = null, mode = Mode.live;
   const MatchesScreen.livePopular({super.key}) : sport = null, mode = Mode.livePopular;
+  const MatchesScreen.liveFavorites({super.key}) : sport = null, mode = Mode.liveFavorites;
 
   final Sport? sport;
   final Mode mode;
@@ -22,14 +24,51 @@ class _MatchesScreenState extends State<MatchesScreen> {
   late Future<List<ApiMatch>> _future;
 
   @override
-  @override
   void initState() {
     super.initState();
     _future = switch (widget.mode) {
       Mode.live => _api.fetchLiveMatches(),
       Mode.livePopular => _api.fetchLivePopular(),
       Mode.bySport => _api.fetchMatchesBySport(widget.sport!.id),
+      Mode.liveFavorites => _loadLiveFavorites(),
     };
+  }
+
+  // Load favorites from SharedPreferences and filter live matches accordingly.
+  Future<List<ApiMatch>> _loadLiveFavorites() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String> favorites = prefs.getStringList('favoriteTeams') ?? <String>[];
+
+    if (favorites.isEmpty) return <ApiMatch>[];
+
+    // Normalize favorites
+    final List<String> favsLower = favorites.map((String s) => s.trim()).where((String s) => s.isNotEmpty).map((String s) => s.toLowerCase()).toList();
+
+    // Fetch all live matches
+    final List<ApiMatch> live = await _api.fetchLiveMatches();
+    final List<ApiMatch> football = await _api.fetchMatchesBySport('american-football');
+    final List<ApiMatch> basketball = await _api.fetchMatchesBySport('basketball');
+
+    final List<ApiMatch> all = <ApiMatch>[...live, ...football, ...basketball];
+
+    bool matchContainsFavorite(ApiMatch m) {
+      // Collect all searchable strings
+      final String? home = m.teams?.home?.name;
+      final String? away = m.teams?.away?.name;
+      final String channel = m.title;
+      final String title = m.title;
+
+      final List<String> haystacks = <String>[if (home != null) home, if (away != null) away, channel, title].map((String s) => s.toLowerCase()).toList();
+
+      for (final String fav in favsLower) {
+        for (final String h in haystacks) {
+          if (h.contains(fav)) return true;
+        }
+      }
+      return false;
+    }
+
+    return all.where(matchContainsFavorite).toList();
   }
 
   @override
@@ -38,7 +77,9 @@ class _MatchesScreenState extends State<MatchesScreen> {
       Mode.live => 'Live Matches',
       Mode.livePopular => 'Popular',
       Mode.bySport => widget.sport!.name,
+      Mode.liveFavorites => 'Favorites',
     };
+
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: FutureBuilder<List<ApiMatch>>(
@@ -51,9 +92,24 @@ class _MatchesScreenState extends State<MatchesScreen> {
             return Center(child: Text('Error: ${snap.error}'));
           }
           final List<ApiMatch> matches = snap.data ?? <ApiMatch>[];
+
           if (matches.isEmpty) {
+            // Tailored empty-state message for favorites mode.
+            if (widget.mode == Mode.liveFavorites) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                    'No live matches for your favorites right now.\n'
+                    'Add teams in Settings or check back later.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
             return const Center(child: Text('No matches found'));
           }
+
           return ListView.separated(
             itemCount: matches.length,
             separatorBuilder: (_, __) => const Divider(height: 1),
@@ -79,8 +135,8 @@ class _MatchesScreenState extends State<MatchesScreen> {
                   child: poster.isNotEmpty ? CachedNetworkImage(imageUrl: poster, fit: BoxFit.cover) : _TeamsBadgesRow(m: m),
                 ),
                 title: Row(
-                  children: [
-                    if (isLive) ...[
+                  children: <Widget>[
+                    if (isLive) ...<Widget>[
                       const Icon(Icons.circle, color: Colors.red, size: 8),
                       const SizedBox(width: 4),
                       const Text(
@@ -95,7 +151,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
 
                 subtitle: Text('${widget.mode == Mode.live ? '${m.category} • ' : ''}$timeDisplay'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreamsScreen(matchItem: m))),
+                onTap: () => Navigator.push(context, MaterialPageRoute<Widget>(builder: (_) => StreamsScreen(matchItem: m))),
               );
             },
           );

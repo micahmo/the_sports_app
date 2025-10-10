@@ -73,7 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: <Widget>[
-                Text('Favorite teams (comma-separated)', style: Theme.of(context).textTheme.titleMedium),
+                Text('Favorite teams and channels (comma-separated)', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _controller,
