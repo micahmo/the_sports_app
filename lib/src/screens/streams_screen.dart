@@ -117,7 +117,7 @@ class StreamPlayerScreen extends StatefulWidget {
   State<StreamPlayerScreen> createState() => _StreamPlayerScreenState();
 }
 
-class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBindingObserver {
+class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
   late final Uri _allowedUri;
   late final WebViewController _controller;
 
@@ -126,7 +126,6 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
 
     // For PiP state updates from native
     _pip.setMethodCallHandler((MethodCall call) async {
@@ -174,20 +173,6 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         ),
       )
       ..loadRequest(_allowedUri);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  // Optional: auto-enter PiP when user backgrounds the app.
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
-      _enterPip(); // comment out if you only want manual PiP via button
-    }
   }
 
   bool _isAllowedDestination(Uri dest) {
