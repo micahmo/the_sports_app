@@ -37,7 +37,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
     final String title = switch (widget.mode) {
       Mode.live => 'Live Matches',
       Mode.livePopular => 'Popular',
-      Mode.bySport => 'Matches: ${widget.sport!.name}',
+      Mode.bySport => widget.sport!.name,
     };
     return Scaffold(
       appBar: AppBar(title: Text(title)),
