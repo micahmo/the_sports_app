@@ -1,4 +1,4 @@
-![App icon](./assets/icon/app_icon.png)
+<img src="./assets/icon/app_icon.png" alt="App icon" width="64" height="64" />
 
 # The Sports App
 
