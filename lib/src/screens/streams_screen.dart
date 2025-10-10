@@ -302,7 +302,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
                       statusBarBrightness: Brightness.dark, // iOS text (inverse)
                     )
                   : null,
-              title: Text('Playing ${widget.title}'),
+              title: Text(widget.title),
               actions: [
                 IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refresh),
                 IconButton(tooltip: 'Picture-in-Picture', icon: const Icon(Icons.picture_in_picture_alt), onPressed: _enterPip),
