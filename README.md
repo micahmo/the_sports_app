@@ -1,3 +1,5 @@
+![App icon](./assets/icon/app_icon.png)
+
 # The Sports App
 
 An app for watching sports!
