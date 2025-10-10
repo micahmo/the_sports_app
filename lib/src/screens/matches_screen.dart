@@ -55,13 +55,28 @@ class _MatchesScreenState extends State<MatchesScreen> {
               final ApiMatch m = matches[i];
               final DateTime dt = DateTime.fromMillisecondsSinceEpoch(m.date, isUtc: true).toLocal();
               final String poster = StreamedApi.posterUrlFromMatch(m);
+              final bool isLive = dt.isBefore(DateTime.now().add(const Duration(minutes: 15)));
               return ListTile(
                 leading: SizedBox(
                   width: 56,
                   child: poster.isNotEmpty ? CachedNetworkImage(imageUrl: poster, fit: BoxFit.cover) : _TeamsBadgesRow(m: m),
                 ),
-                title: Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text('${m.category} • ${fmt.format(dt)}'),
+                title: Row(
+                  children: [
+                    if (isLive) ...[
+                      const Icon(Icons.circle, color: Colors.red, size: 8),
+                      const SizedBox(width: 4),
+                      const Text(
+                        'LIVE',
+                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(child: Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ],
+                ),
+
+                subtitle: Text('${widget.mode == _Mode.live ? '${m.category} • ' : ''}${fmt.format(dt)}'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreamsScreen(matchItem: m))),
               );
