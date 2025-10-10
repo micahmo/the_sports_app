@@ -28,7 +28,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final String title = widget.mode == Mode.live ? 'Live Matches' : 'Matches: ${widget.sport!.name}';
+    final String title = widget.mode == Mode.live ? 'Live Matches' : widget.sport!.name;
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: FutureBuilder<List<ApiMatch>>(
