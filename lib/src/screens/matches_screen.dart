@@ -21,8 +21,6 @@ enum _Mode { bySport, live }
 class _MatchesScreenState extends State<MatchesScreen> {
   final StreamedApi _api = StreamedApi();
   late Future<List<ApiMatch>> _future;
-  //final DateFormat fmt = DateFormat('MMM d, yyyy h:mm a');
-  final DateFormat fmt = DateFormat('h:mm a');
 
   @override
   void initState() {
@@ -53,9 +51,20 @@ class _MatchesScreenState extends State<MatchesScreen> {
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (BuildContext _, int i) {
               final ApiMatch m = matches[i];
-              final DateTime dt = DateTime.fromMillisecondsSinceEpoch(m.date, isUtc: true).toLocal();
               final String poster = StreamedApi.posterUrlFromMatch(m);
+
+              final DateTime dt = DateTime.fromMillisecondsSinceEpoch(m.date, isUtc: true).toLocal();
+              final DateTime now = DateTime.now();
+
+              final DateFormat timeFmt = DateFormat('h:mm a');
+              final DateFormat dateFmt = DateFormat('MMM d'); // e.g. "Oct 10"
+
+              // Determine if it's today
+              final bool isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
+              final String timeDisplay = isToday ? timeFmt.format(dt) : '${dateFmt.format(dt)} • ${timeFmt.format(dt)}';
+
               final bool isLive = dt.isBefore(DateTime.now().add(const Duration(minutes: 15)));
+
               return ListTile(
                 leading: SizedBox(
                   width: 56,
@@ -76,7 +85,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
                   ],
                 ),
 
-                subtitle: Text('${widget.mode == _Mode.live ? '${m.category} • ' : ''}${fmt.format(dt)}'),
+                subtitle: Text('${widget.mode == _Mode.live ? '${m.category} • ' : ''}$timeDisplay'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreamsScreen(matchItem: m))),
               );
