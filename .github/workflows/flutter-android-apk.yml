@@ -71,7 +71,7 @@ jobs:
         run: |
           KEY_PASS="${{ secrets.KEY_PASSWORD }}"
           if [ -z "$KEY_PASS" ]; then KEY_PASS="${{ secrets.KEYSTORE_PASSWORD }}"; fi
-          cat > android/key.properties <<EOF
+          cat > android/app/key.properties <<EOF
           storeFile=upload-keystore.jks
           storePassword=${{ secrets.KEYSTORE_PASSWORD }}
           keyAlias=${{ secrets.KEY_ALIAS }}
