@@ -63,7 +63,12 @@ class _StreamsScreenState extends State<StreamsScreen> {
                       title: Text('Stream #${s.streamNo}${s.language.isEmpty ? '' : ' • ${s.language}'}'),
                       subtitle: Text('Source: ${s.source}'),
                       trailing: const Icon(Icons.play_arrow),
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreamPlayerScreen(stream: s))),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => StreamPlayerScreen(stream: s, title: title),
+                        ),
+                      ),
                     );
                   },
                 );
@@ -100,8 +105,9 @@ class _SourcesChips extends StatelessWidget {
 }
 
 class StreamPlayerScreen extends StatefulWidget {
-  const StreamPlayerScreen({super.key, required this.stream});
+  const StreamPlayerScreen({super.key, required this.stream, required this.title});
   final StreamInfo stream;
+  final String title;
 
   @override
   State<StreamPlayerScreen> createState() => _StreamPlayerScreenState();
@@ -196,7 +202,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Playing #${widget.stream.streamNo}')),
+      appBar: AppBar(title: Text('Playing ${widget.title}')),
       body: WebViewWidget(controller: _controller),
     );
   }
