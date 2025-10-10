@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import 'streams_screen.dart';
@@ -20,6 +21,8 @@ enum _Mode { bySport, live }
 class _MatchesScreenState extends State<MatchesScreen> {
   final StreamedApi _api = StreamedApi();
   late Future<List<ApiMatch>> _future;
+  //final DateFormat fmt = DateFormat('MMM d, yyyy h:mm a');
+  final DateFormat fmt = DateFormat('h:mm a');
 
   @override
   void initState() {
@@ -58,7 +61,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
                   child: poster.isNotEmpty ? CachedNetworkImage(imageUrl: poster, fit: BoxFit.cover) : _TeamsBadgesRow(m: m),
                 ),
                 title: Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text('${m.category} • ${dt.toString()}'),
+                subtitle: Text('${m.category} • ${fmt.format(dt)}'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreamsScreen(matchItem: m))),
               );
