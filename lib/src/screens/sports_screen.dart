@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import 'matches_screen.dart';
+import 'settings_screen.dart';
 
 class SportsScreen extends StatefulWidget {
   const SportsScreen({super.key});
@@ -22,7 +23,20 @@ class _SportsScreenState extends State<SportsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sports')),
+      appBar: AppBar(
+        title: const Text('Sports'),
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () async {
+              await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+              // If you want to react to favorites changing, do a setState() here.
+              // setState(() {});
+            },
+          ),
+        ],
+      ),
       body: FutureBuilder<List<Sport>>(
         future: _future,
         builder: (BuildContext ctx, AsyncSnapshot<List<Sport>> snap) {
@@ -45,7 +59,7 @@ class _SportsScreenState extends State<SportsScreen> {
                   leading: const Icon(Icons.live_tv),
                   title: const Text('Live now'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MatchesScreen.live())),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.live())),
                 );
               }
               if (i == 1) {
@@ -53,7 +67,7 @@ class _SportsScreenState extends State<SportsScreen> {
                   leading: const Icon(Icons.local_fire_department),
                   title: const Text('Popular'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MatchesScreen.livePopular())),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.livePopular())),
                 );
               }
               final Sport s = sports[i - 2]; // shift by 2 now
@@ -61,7 +75,7 @@ class _SportsScreenState extends State<SportsScreen> {
                 title: Text(s.name),
                 subtitle: Text(s.id),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MatchesScreen.forSport(s))),
+                onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MatchesScreen.forSport(s))),
               );
             },
           );
