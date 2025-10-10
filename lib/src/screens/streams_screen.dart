@@ -60,7 +60,7 @@ class _StreamsScreenState extends State<StreamsScreen> {
                     final StreamInfo s = streams[i];
                     return ListTile(
                       leading: Icon(s.hd ? Icons.hd : Icons.sd),
-                      title: Text('Stream #${s.streamNo} • ${s.language}'),
+                      title: Text('Stream #${s.streamNo}${s.language.isEmpty ? '' : ' • ${s.language}'}'),
                       subtitle: Text('Source: ${s.source}'),
                       trailing: const Icon(Icons.play_arrow),
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreamPlayerScreen(stream: s))),
