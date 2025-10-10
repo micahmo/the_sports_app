@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
@@ -104,6 +105,9 @@ class _SourcesChips extends StatelessWidget {
   }
 }
 
+// Native channel for Android PiP
+const MethodChannel _pip = MethodChannel('pip');
+
 class StreamPlayerScreen extends StatefulWidget {
   const StreamPlayerScreen({super.key, required this.stream, required this.title});
   final StreamInfo stream;
@@ -113,17 +117,40 @@ class StreamPlayerScreen extends StatefulWidget {
   State<StreamPlayerScreen> createState() => _StreamPlayerScreenState();
 }
 
-class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
+class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBindingObserver {
   late final Uri _allowedUri;
   late final WebViewController _controller;
+
+  bool _inPip = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    // For PiP state updates from native
+    _pip.setMethodCallHandler((MethodCall call) async {
+      if (call.method == 'pipChanged') {
+        final Object? args = call.arguments;
+        final bool inPip = (args is Map && args['inPip'] is bool) ? args['inPip'] as bool : false;
+        if (mounted) setState(() => _inPip = inPip);
+      }
+      return null;
+    });
+
+    // Initialize current PiP state (best-effort)
+    _pip
+        .invokeMethod('isInPip')
+        .then((dynamic v) {
+          if (mounted) setState(() => _inPip = (v == true));
+        })
+        .catchError((_) {});
+
     _allowedUri = Uri.parse(widget.stream.embedUrl);
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.transparent)
       ..setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: (NavigationRequest req) {
@@ -135,24 +162,36 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
             if (u == null) return;
             final Uri dest = Uri.parse(u);
             if (!_isAllowedDestination(dest)) {
-              // Snap back if something changed the URL (pushState/redirect).
               _controller.loadRequest(_allowedUri);
             }
           },
-          onPageFinished: (String url) {
-            // Re-inject guards after each successful load.
+          onPageFinished: (String _) {
             _injectGuards();
           },
           onWebResourceError: (WebResourceError error) {
-            // Optional: surface a toast/snackbar or retry UI.
+            // Optional: show a snackbar/toast/retry
           },
         ),
       )
       ..loadRequest(_allowedUri);
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // Optional: auto-enter PiP when user backgrounds the app.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _enterPip(); // comment out if you only want manual PiP via button
+    }
+  }
+
   bool _isAllowedDestination(Uri dest) {
-    // Only allow the exact same URL, or same URL with a hash fragment change.
+    // Allow only the exact same URL (hash changes ok), same origin required.
     if (dest.scheme != _allowedUri.scheme || dest.host != _allowedUri.host || dest.port != _allowedUri.port) {
       return false; // different origin
     }
@@ -162,7 +201,6 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
   }
 
   Future<void> _injectGuards() async {
-    // Disable popups and block off-origin or path-changing links.
     const String js = r'''
       try {
         // Disable window.open
@@ -195,15 +233,30 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
     try {
       await _controller.runJavaScriptReturningResult(js);
     } catch (_) {
-      // Ignore benign errors from sandboxed pages.
+      // Ignore script errors from restrictive embeds.
+    }
+  }
+
+  Future<void> _enterPip({int width = 16, int height = 9}) async {
+    try {
+      await _pip.invokeMethod('enterPip', <String, dynamic>{'width': width, 'height': height});
+    } catch (_) {
+      // No-op on platforms without the method.
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Playing ${widget.title}')),
-      body: WebViewWidget(controller: _controller),
+      // Hide AppBar entirely while in PiP so only the video is visible
+      appBar: _inPip
+          ? null
+          : AppBar(
+              title: Text('Playing ${widget.title}'),
+              actions: <Widget>[IconButton(tooltip: 'Picture-in-Picture', icon: const Icon(Icons.picture_in_picture_alt), onPressed: _enterPip)],
+            ),
+      // Remove padding when in PiP for a clean, edge-to-edge video
+      body: _inPip ? WebViewWidget(controller: _controller) : SafeArea(child: WebViewWidget(controller: _controller)),
     );
   }
 }
