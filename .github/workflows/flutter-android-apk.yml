@@ -80,13 +80,12 @@ jobs:
 
       # --- Build a single universal signed APK (simple to distribute) ---
       - name: Build APK (release)
-        run: flutter build apk --release
-        # Output: build/app/outputs/flutter-apk/app-release.apk
+        run: flutter build apk --release --flavor production
 
       - name: Rename APK with version
         run: |
           mkdir -p artifacts
-          cp build/app/outputs/flutter-apk/app-release.apk "artifacts/app-${{ env.VERSION_NAME }}.apk"
+          cp build/app/outputs/flutter-apk/app-production-release.apk "artifacts/app-${{ env.VERSION_NAME }}.apk"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
