@@ -65,3 +65,5 @@ class StreamInfo {
     source: j['source'] as String,
   );
 }
+
+enum Mode { bySport, live }

@@ -6,17 +6,15 @@ import '../api/streamed_api.dart';
 import 'streams_screen.dart';
 
 class MatchesScreen extends StatefulWidget {
-  const MatchesScreen.forSport(this.sport, {super.key}) : mode = _Mode.bySport;
-  const MatchesScreen.live({super.key}) : sport = null, mode = _Mode.live;
+  const MatchesScreen.forSport(this.sport, {super.key}) : mode = Mode.bySport;
+  const MatchesScreen.live({super.key}) : sport = null, mode = Mode.live;
 
   final Sport? sport;
-  final _Mode mode;
+  final Mode mode;
 
   @override
   State<MatchesScreen> createState() => _MatchesScreenState();
 }
-
-enum _Mode { bySport, live }
 
 class _MatchesScreenState extends State<MatchesScreen> {
   final StreamedApi _api = StreamedApi();
@@ -25,12 +23,12 @@ class _MatchesScreenState extends State<MatchesScreen> {
   @override
   void initState() {
     super.initState();
-    _future = widget.mode == _Mode.live ? _api.fetchLiveMatches() : _api.fetchMatchesBySport(widget.sport!.id);
+    _future = widget.mode == Mode.live ? _api.fetchLiveMatches() : _api.fetchMatchesBySport(widget.sport!.id);
   }
 
   @override
   Widget build(BuildContext context) {
-    final String title = widget.mode == _Mode.live ? 'Live Matches' : 'Matches: ${widget.sport!.name}';
+    final String title = widget.mode == Mode.live ? 'Live Matches' : 'Matches: ${widget.sport!.name}';
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: FutureBuilder<List<ApiMatch>>(
@@ -85,7 +83,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
                   ],
                 ),
 
-                subtitle: Text('${widget.mode == _Mode.live ? '${m.category} • ' : ''}$timeDisplay'),
+                subtitle: Text('${widget.mode == Mode.live ? '${m.category} • ' : ''}$timeDisplay'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StreamsScreen(matchItem: m))),
               );
