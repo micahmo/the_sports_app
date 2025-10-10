@@ -1,4 +1,4 @@
-# The Sports APp
+# The Sports App
 
 An app for watching sports!
 
