@@ -85,13 +85,13 @@ jobs:
       - name: Rename APK with version
         run: |
           mkdir -p artifacts
-          cp build/app/outputs/flutter-apk/app-production-release.apk "artifacts/app-${{ env.VERSION_NAME }}.apk"
+          cp build/app/outputs/flutter-apk/app-production-release.apk "artifacts/sports-${{ env.VERSION_NAME }}.apk"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: artifacts/app-${{ env.VERSION_NAME }}.apk
+          path: artifacts/sports-${{ env.VERSION_NAME }}.apk
 
       # --- Changelog (git log since last tag, or manual notes) ---
       - name: Generate changelog
@@ -127,7 +127,7 @@ jobs:
           tag_name: v${{ env.VERSION_NAME }}
           name: v${{ env.VERSION_NAME }}
           body: ${{ steps.changelog.outputs.changelog }}
-          files: artifacts/app-${{ env.VERSION_NAME }}.apk
+          files: artifacts/sports-${{ env.VERSION_NAME }}.apk
           fail_on_unmatched_files: true
           prerelease: ${{ inputs.prerelease }}
         env:
