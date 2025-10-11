@@ -118,7 +118,7 @@ class StreamPlayerScreen extends StatefulWidget {
   State<StreamPlayerScreen> createState() => _StreamPlayerScreenState();
 }
 
-class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
+class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBindingObserver {
   late final Uri _allowedUri;
   late final WebViewController _controller;
 
@@ -194,6 +194,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
     }
 
     _controller = controller..loadRequest(_allowedUri);
+
+    WidgetsBinding.instance.addObserver(this);
   }
 
   bool _isAllowedDestination(Uri dest) {
@@ -312,5 +314,65 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> {
       backgroundColor: Colors.black,
       body: _inPip ? WebViewWidget(controller: _controller) : SafeArea(child: WebViewWidget(controller: _controller)),
     );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted && !_inPip) {
+      _jumpToLive();
+    }
+  }
+
+  Future<void> _jumpToLive() async {
+    const String js = r'''
+    (function(){
+      let jumped = false;
+      const vids = Array.from(document.querySelectorAll('video'));
+      for (const v of vids) {
+        try {
+          // Unmute & ensure playing
+          v.muted = v.muted || false;
+          // If there is a seekable live window, jump to its end (live edge)
+          if (v.seekable && v.seekable.length > 0) {
+            const end = v.seekable.end(v.seekable.length - 1);
+            // Nudge slightly behind the absolute edge to avoid stalling
+            v.currentTime = Math.max(0, end - 1.0);
+            v.play().catch(()=>{});
+            jumped = true;
+          } else if (v.buffered && v.buffered.length > 0) {
+            // Fallback to the end of buffered range
+            const end = v.buffered.end(v.buffered.length - 1);
+            v.currentTime = Math.max(0, end - 0.5);
+            v.play().catch(()=>{});
+            jumped = true;
+          } else {
+            // As a last-ditch attempt, try play (some players re-sync on play)
+            v.play().catch(()=>{});
+          }
+        } catch (e) {}
+      }
+      return jumped;
+    })();
+  ''';
+
+    try {
+      final Object res = await _controller.runJavaScriptReturningResult(js);
+      final bool jumped = res == true; // webview_flutter returns bool as true/false
+      if (!jumped) {
+        // If the page didn't expose seekable ranges, refresh to reattach at live
+        await _controller.reload();
+      }
+    } catch (_) {
+      // If JS failed (cross-origin restrictions, etc.), just reload
+      try {
+        await _controller.reload();
+      } catch (_) {}
+    }
   }
 }
