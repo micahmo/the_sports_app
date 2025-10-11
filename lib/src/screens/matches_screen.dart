@@ -49,7 +49,14 @@ class _MatchesScreenState extends State<MatchesScreen> {
     final List<ApiMatch> football = await _api.fetchMatchesBySport('american-football');
     final List<ApiMatch> basketball = await _api.fetchMatchesBySport('basketball');
 
-    final List<ApiMatch> all = <ApiMatch>[...live, ...football, ...basketball];
+    // Combine them, de-duping by match ID
+    final Map<String, ApiMatch> unique = <String, ApiMatch>{};
+
+    for (final ApiMatch match in [...live, ...football, ...basketball]) {
+      unique[match.id] = match; // overwrites duplicates automatically
+    }
+
+    final List<ApiMatch> all = unique.values.toList();
 
     bool matchContainsFavorite(ApiMatch m) {
       // Collect all searchable strings
