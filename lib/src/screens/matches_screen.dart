@@ -156,7 +156,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
                   ],
                 ),
 
-                subtitle: Text('${widget.mode != Mode.bySport ? '' : '${m.category} • '}$timeDisplay'),
+                subtitle: Text('${widget.mode == Mode.bySport ? '' : '${m.category} • '}$timeDisplay'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.push(context, MaterialPageRoute<Widget>(builder: (_) => StreamsScreen(matchItem: m))),
               );
