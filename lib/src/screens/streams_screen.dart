@@ -295,15 +295,17 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     return Scaffold(
       // Hide AppBar entirely while in PiP so only the video is visible
       appBar: _inPip
-          ? null
+          ? PreferredSize(
+              // keep layout stable
+              preferredSize: const Size.fromHeight(0),
+              child: AppBar(
+                // still mounted, zero height
+                elevation: 0,
+                toolbarHeight: 0,
+                backgroundColor: Colors.black,
+              ),
+            )
           : AppBar(
-              systemOverlayStyle: _isFullscreen
-                  ? const SystemUiOverlayStyle(
-                      statusBarColor: Colors.transparent, // keep transparent for E2E
-                      statusBarIconBrightness: Brightness.light, // ANDROID icons
-                      statusBarBrightness: Brightness.dark, // iOS text (inverse)
-                    )
-                  : null,
               title: Text(widget.title),
               actions: [
                 IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refresh),
@@ -312,7 +314,18 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
             ),
       // Remove padding when in PiP for a clean, edge-to-edge video
       backgroundColor: Colors.black,
-      body: _inPip ? WebViewWidget(controller: _controller) : SafeArea(child: WebViewWidget(controller: _controller)),
+      body: Container(
+        color: Colors.black,
+        child: Column(
+          children: [
+            // Reserve space equal to the top padding only when NOT in PiP
+            // (so top inset change is gradual and controlled)
+            AnimatedContainer(duration: const Duration(milliseconds: 150), height: _inPip ? 0 : MediaQuery.of(context).padding.top),
+            // The player area remains constant height fraction; tweak as you like
+            Expanded(child: WebViewWidget(controller: _controller)),
+          ],
+        ),
+      ),
     );
   }
 
