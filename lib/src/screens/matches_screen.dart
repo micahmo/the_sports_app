@@ -23,6 +23,9 @@ class _MatchesScreenState extends State<MatchesScreen> {
   final StreamedApi _api = StreamedApi();
   late Future<List<ApiMatch>> _future;
 
+  // Popular-only toggle (only used in bySport mode)
+  bool _popularOnly = false;
+
   @override
   void initState() {
     super.initState();
@@ -36,10 +39,23 @@ class _MatchesScreenState extends State<MatchesScreen> {
       case Mode.livePopular:
         return _api.fetchLivePopular();
       case Mode.bySport:
-        return _api.fetchMatchesBySport(widget.sport!.id);
+        return _loadBySportFor(widget.sport!.id, popularOnly: _popularOnly);
       case Mode.liveFavorites:
         return _loadLiveFavorites();
     }
+  }
+
+  Future<List<ApiMatch>> _loadBySportFor(String sportId, {required bool popularOnly}) async {
+    // Always fetch the sport list
+    final List<ApiMatch> sportMatches = await _api.fetchMatchesBySport(sportId);
+
+    if (!popularOnly) return sportMatches;
+
+    // Fetch popular and intersect by match id
+    final List<ApiMatch> popular = await _api.fetchLivePopular();
+    final Set<String> popularIds = popular.map((m) => m.id).toSet();
+
+    return sportMatches.where((m) => popularIds.contains(m.id)).toList();
   }
 
   /// Normal refresh (awaits completion). Good for the AppBar button.
@@ -104,6 +120,13 @@ class _MatchesScreenState extends State<MatchesScreen> {
     return all.where(matchContainsFavorite).toList();
   }
 
+  void _togglePopularOnly(bool value) {
+    setState(() {
+      _popularOnly = value;
+      _future = _loadData(); // refetch based on new toggle
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final String title = switch (widget.mode) {
@@ -112,6 +135,8 @@ class _MatchesScreenState extends State<MatchesScreen> {
       Mode.bySport => widget.sport!.name,
       Mode.liveFavorites => 'Favorites',
     };
+
+    final bool showPopularHeader = widget.mode == Mode.bySport;
 
     return Scaffold(
       appBar: AppBar(
@@ -127,10 +152,11 @@ class _MatchesScreenState extends State<MatchesScreen> {
               onRefresh: _refreshMatchesQuiet,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                children: const <Widget>[
-                  SizedBox(height: 240),
-                  Center(child: CircularProgressIndicator()),
-                  SizedBox(height: 240),
+                children: <Widget>[
+                  if (showPopularHeader) _PopularHeader(value: _popularOnly, onChanged: _togglePopularOnly),
+                  const SizedBox(height: 240),
+                  const Center(child: CircularProgressIndicator()),
+                  const SizedBox(height: 240),
                 ],
               ),
             );
@@ -141,6 +167,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: <Widget>[
+                  if (showPopularHeader) _PopularHeader(value: _popularOnly, onChanged: _togglePopularOnly),
                   const SizedBox(height: 120),
                   Center(child: Text('Error: ${snap.error}')),
                 ],
@@ -164,6 +191,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: <Widget>[
+                  if (showPopularHeader) _PopularHeader(value: _popularOnly, onChanged: _togglePopularOnly),
                   const SizedBox(height: 120),
                   Center(
                     child: Padding(padding: const EdgeInsets.all(24), child: empty),
@@ -173,14 +201,24 @@ class _MatchesScreenState extends State<MatchesScreen> {
             );
           }
 
+          // List with an optional header row at index 0 (bySport).
+          final int headerCount = showPopularHeader ? 1 : 0;
           return RefreshIndicator(
             onRefresh: _refreshMatchesQuiet,
             child: ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: matches.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemCount: matches.length + headerCount,
+              separatorBuilder: (BuildContext _, int i) {
+                // Put a divider after the header too (when present)
+                if (showPopularHeader && i == 0) return const Divider(height: 1);
+                return const Divider(height: 1);
+              },
               itemBuilder: (BuildContext _, int i) {
-                final ApiMatch m = matches[i];
+                if (showPopularHeader && i == 0) {
+                  return _PopularHeader(value: _popularOnly, onChanged: _togglePopularOnly);
+                }
+
+                final ApiMatch m = matches[i - headerCount];
                 final String poster = StreamedApi.posterUrlFromMatch(m);
 
                 final DateTime dt = DateTime.fromMillisecondsSinceEpoch(m.date, isUtc: true).toLocal();
@@ -223,6 +261,31 @@ class _MatchesScreenState extends State<MatchesScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _PopularHeader extends StatelessWidget {
+  const _PopularHeader({required this.value, required this.onChanged});
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Row(
+          children: <Widget>[
+            const Icon(Icons.trending_up),
+            const SizedBox(width: 8),
+            const Text('Popular only'),
+            const Spacer(),
+            Switch(value: value, onChanged: onChanged),
+          ],
+        ),
       ),
     );
   }
