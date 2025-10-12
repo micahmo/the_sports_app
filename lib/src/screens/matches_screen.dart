@@ -42,6 +42,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
     }
   }
 
+  /// Normal refresh (awaits completion). Good for the AppBar button.
   Future<void> _refreshMatches() async {
     // reassign the future to trigger FutureBuilder
     setState(() {
@@ -49,6 +50,14 @@ class _MatchesScreenState extends State<MatchesScreen> {
     });
     // allow FutureBuilder to rebuild; awaiting is optional here
     await _future;
+  }
+
+  /// Quiet refresh for pull-to-refresh: dismisses the indicator immediately.
+  Future<void> _refreshMatchesQuiet() {
+    setState(() {
+      _future = _loadData(); // start loading but don't await here
+    });
+    return Future<void>.value();
   }
 
   // Load favorites from SharedPreferences and filter live matches accordingly.
@@ -113,9 +122,9 @@ class _MatchesScreenState extends State<MatchesScreen> {
         future: _future,
         builder: (BuildContext ctx, AsyncSnapshot<List<ApiMatch>> snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            // Keep pull-to-refresh usable while loading:
+            // Keep pull-to-refresh usable while loading, but dismiss immediately:
             return RefreshIndicator(
-              onRefresh: _refreshMatches,
+              onRefresh: _refreshMatchesQuiet,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: const <Widget>[
@@ -128,7 +137,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
           }
           if (snap.hasError) {
             return RefreshIndicator(
-              onRefresh: _refreshMatches,
+              onRefresh: _refreshMatchesQuiet,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: <Widget>[
@@ -151,7 +160,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
                 : const Text('No matches found');
 
             return RefreshIndicator(
-              onRefresh: _refreshMatches,
+              onRefresh: _refreshMatchesQuiet,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: <Widget>[
@@ -165,7 +174,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
           }
 
           return RefreshIndicator(
-            onRefresh: _refreshMatches,
+            onRefresh: _refreshMatchesQuiet,
             child: ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
               itemCount: matches.length,
