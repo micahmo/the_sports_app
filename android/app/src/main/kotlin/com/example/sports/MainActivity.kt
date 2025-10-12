@@ -12,6 +12,7 @@ class MainActivity : FlutterActivity() {
 
     private val channelName = "pip"
     private lateinit var channel: MethodChannel
+    private var autoPipEnabled: Boolean = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -26,6 +27,10 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "isInPip" -> result.success(isInPictureInPictureMode)
+                "setAutoPipOnUserLeave" -> {
+                    autoPipEnabled = call.argument<Boolean>("enabled") == true
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -37,7 +42,7 @@ class MainActivity : FlutterActivity() {
                 .setAspectRatio(Rational(w, h))
                 .apply {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        setAutoEnterEnabled(false)
+                        setAutoEnterEnabled(false) // never OS-auto, we control it
                     }
                 }
                 .build()
@@ -48,14 +53,13 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Never auto-enter PIP
-    // override fun onUserLeaveHint() {
-    //     super.onUserLeaveHint()
-    //     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
-    //         // Auto-enter PiP when user leaves the app (Home/Recents)
-    //         enterPip(16, 9)
-    //     }
-    // }
+    // Auto-enter PiP ONLY if the player screen asked for it.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && autoPipEnabled && !isInPictureInPictureMode) {
+            enterPip(16, 9)
+        }
+    }
 
     override fun onPictureInPictureModeChanged(
         isInPictureInPictureMode: Boolean,
