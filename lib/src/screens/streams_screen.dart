@@ -125,6 +125,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   bool _inPip = false;
   bool _isFullscreen = false;
 
+  DateTime? _lastMetricsChangeAt;
+  DateTime? _lastPipExitAt;
+  bool _wentBackground = false;
+
   @override
   void initState() {
     super.initState();
@@ -135,6 +139,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         final Object? args = call.arguments;
         final bool inPip = (args is Map && args['inPip'] is bool) ? args['inPip'] as bool : false;
         if (mounted) setState(() => _inPip = inPip);
+        if (!inPip) {
+          _lastPipExitAt = DateTime.now(); // mark PiP exit moment
+        }
       }
       return null;
     });
@@ -337,7 +344,29 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted && !_inPip) {
+    if (state == AppLifecycleState.paused) {
+      _wentBackground = true;
+    }
+    if (state == AppLifecycleState.resumed && mounted) {
+      // Only consider jump if we truly came from background
+      if (!_wentBackground) return;
+
+      final DateTime now = DateTime.now();
+
+      // Heuristic: if resume is very close to a metrics change, it's rotation
+      final bool likelyRotation = _lastMetricsChangeAt != null && now.difference(_lastMetricsChangeAt!).inMilliseconds <= 600;
+
+      // Heuristic: if resume is very close to exiting PiP, it's PiP restore
+      final bool justLeftPip = _lastPipExitAt != null && now.difference(_lastPipExitAt!).inMilliseconds <= 1000;
+
+      // Reset flag—this resume handled
+      _wentBackground = false;
+
+      if (likelyRotation || justLeftPip || _inPip) {
+        // Skip jump-to-live in these cases
+        return;
+      }
+
       _jumpToLive();
     }
   }
@@ -387,5 +416,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         await _controller.reload();
       } catch (_) {}
     }
+  }
+
+  @override
+  void didChangeMetrics() {
+    _lastMetricsChangeAt = DateTime.now();
   }
 }
