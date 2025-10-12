@@ -1,7 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // <-- add
+import 'package:shared_preferences/shared_preferences.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import 'streams_screen.dart';
@@ -26,12 +26,29 @@ class _MatchesScreenState extends State<MatchesScreen> {
   @override
   void initState() {
     super.initState();
-    _future = switch (widget.mode) {
-      Mode.live => _api.fetchLiveMatches(),
-      Mode.livePopular => _api.fetchLivePopular(),
-      Mode.bySport => _api.fetchMatchesBySport(widget.sport!.id),
-      Mode.liveFavorites => _loadLiveFavorites(),
-    };
+    _future = _loadData();
+  }
+
+  Future<List<ApiMatch>> _loadData() {
+    switch (widget.mode) {
+      case Mode.live:
+        return _api.fetchLiveMatches();
+      case Mode.livePopular:
+        return _api.fetchLivePopular();
+      case Mode.bySport:
+        return _api.fetchMatchesBySport(widget.sport!.id);
+      case Mode.liveFavorites:
+        return _loadLiveFavorites();
+    }
+  }
+
+  Future<void> _refreshMatches() async {
+    // reassign the future to trigger FutureBuilder
+    setState(() {
+      _future = _loadData();
+    });
+    // allow FutureBuilder to rebuild; awaiting is optional here
+    await _future;
   }
 
   // Load favorites from SharedPreferences and filter live matches accordingly.
@@ -88,79 +105,113 @@ class _MatchesScreenState extends State<MatchesScreen> {
     };
 
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        actions: <Widget>[IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refreshMatches)],
+      ),
       body: FutureBuilder<List<ApiMatch>>(
         future: _future,
         builder: (BuildContext ctx, AsyncSnapshot<List<ApiMatch>> snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            // Keep pull-to-refresh usable while loading:
+            return RefreshIndicator(
+              onRefresh: _refreshMatches,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const <Widget>[
+                  SizedBox(height: 240),
+                  Center(child: CircularProgressIndicator()),
+                  SizedBox(height: 240),
+                ],
+              ),
+            );
           }
           if (snap.hasError) {
-            return Center(child: Text('Error: ${snap.error}'));
+            return RefreshIndicator(
+              onRefresh: _refreshMatches,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: <Widget>[
+                  const SizedBox(height: 120),
+                  Center(child: Text('Error: ${snap.error}')),
+                ],
+              ),
+            );
           }
+
           final List<ApiMatch> matches = snap.data ?? <ApiMatch>[];
 
           if (matches.isEmpty) {
-            // Tailored empty-state message for favorites mode.
-            if (widget.mode == Mode.liveFavorites) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text(
+            final Widget empty = widget.mode == Mode.liveFavorites
+                ? const Text(
                     'No live matches for your favorites right now.\n'
                     'Add teams in Settings or check back later.',
                     textAlign: TextAlign.center,
+                  )
+                : const Text('No matches found');
+
+            return RefreshIndicator(
+              onRefresh: _refreshMatches,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: <Widget>[
+                  const SizedBox(height: 120),
+                  Center(
+                    child: Padding(padding: const EdgeInsets.all(24), child: empty),
                   ),
-                ),
-              );
-            }
-            return const Center(child: Text('No matches found'));
+                ],
+              ),
+            );
           }
 
-          return ListView.separated(
-            itemCount: matches.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (BuildContext _, int i) {
-              final ApiMatch m = matches[i];
-              final String poster = StreamedApi.posterUrlFromMatch(m);
+          return RefreshIndicator(
+            onRefresh: _refreshMatches,
+            child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: matches.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (BuildContext _, int i) {
+                final ApiMatch m = matches[i];
+                final String poster = StreamedApi.posterUrlFromMatch(m);
 
-              final DateTime dt = DateTime.fromMillisecondsSinceEpoch(m.date, isUtc: true).toLocal();
-              final DateTime now = DateTime.now();
+                final DateTime dt = DateTime.fromMillisecondsSinceEpoch(m.date, isUtc: true).toLocal();
+                final DateTime now = DateTime.now();
 
-              final DateFormat timeFmt = DateFormat('h:mm a');
-              final DateFormat dateFmt = DateFormat('MMM d'); // e.g. "Oct 10"
+                final DateFormat timeFmt = DateFormat('h:mm a');
+                final DateFormat dateFmt = DateFormat('MMM d'); // e.g. "Oct 10"
 
-              // Determine if it's today
-              final bool isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
-              final String timeDisplay = isToday ? timeFmt.format(dt) : '${dateFmt.format(dt)} • ${timeFmt.format(dt)}';
+                // Determine if it's today
+                final bool isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
+                final String timeDisplay = isToday ? timeFmt.format(dt) : '${dateFmt.format(dt)} • ${timeFmt.format(dt)}';
 
-              final bool isLive = dt.isBefore(DateTime.now().add(const Duration(minutes: 15)));
+                final bool isLive = dt.isBefore(DateTime.now().add(const Duration(minutes: 15)));
 
-              return ListTile(
-                leading: SizedBox(
-                  width: 56,
-                  child: poster.isNotEmpty ? CachedNetworkImage(imageUrl: poster, fit: BoxFit.cover) : _TeamsBadgesRow(m: m),
-                ),
-                title: Row(
-                  children: <Widget>[
-                    if (isLive) ...<Widget>[
-                      const Icon(Icons.circle, color: Colors.red, size: 8),
-                      const SizedBox(width: 4),
-                      const Text(
-                        'LIVE',
-                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
-                      ),
-                      const SizedBox(width: 8),
+                return ListTile(
+                  leading: SizedBox(
+                    width: 56,
+                    child: poster.isNotEmpty ? CachedNetworkImage(imageUrl: poster, fit: BoxFit.cover) : _TeamsBadgesRow(m: m),
+                  ),
+                  title: Row(
+                    children: <Widget>[
+                      if (isLive) ...<Widget>[
+                        const Icon(Icons.circle, color: Colors.red, size: 8),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'LIVE',
+                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(child: Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
                     ],
-                    Expanded(child: Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  ],
-                ),
+                  ),
 
-                subtitle: Text('${widget.mode == Mode.bySport ? '' : '${m.category} • '}$timeDisplay'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(context, MaterialPageRoute<Widget>(builder: (_) => StreamsScreen(matchItem: m))),
-              );
-            },
+                  subtitle: Text('${widget.mode == Mode.bySport ? '' : '${m.category} • '}$timeDisplay'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<Widget>(builder: (_) => StreamsScreen(matchItem: m))),
+                );
+              },
+            ),
           );
         },
       ),
