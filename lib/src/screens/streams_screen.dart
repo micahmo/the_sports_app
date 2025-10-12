@@ -128,6 +128,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   DateTime? _lastPipExitAt;
   bool _wentBackground = false;
 
+  AppLifecycleState _appState = AppLifecycleState.resumed;
+  bool _suppressOrientationMarking = false;
+
   Orientation? _lastOrientation;
   DateTime? _lastOrientationChangeAt;
 
@@ -144,7 +147,17 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         final Object? args = call.arguments;
         final bool inPip = (args is Map && args['inPip'] is bool) ? args['inPip'] as bool : false;
         if (mounted) setState(() => _inPip = inPip);
-        if (!inPip) _lastPipExitAt = DateTime.now();
+
+        if (inPip) {
+          // Do not record orientation changes while in PiP
+          _suppressOrientationMarking = true;
+        } else {
+          _lastPipExitAt = DateTime.now();
+          // Re-enable marking on next frame after we’re out of PiP.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _suppressOrientationMarking = false;
+          });
+        }
       }
       return null;
     });
@@ -268,6 +281,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // ——— Lifecycle: jump-to-live only for true app-resume, not rotation or PiP restore.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appState = state; // track current
     if (state == AppLifecycleState.paused) {
       _wentBackground = true;
     }
@@ -338,13 +352,16 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   @override
   Widget build(BuildContext context) {
-    // Track orientation transitions here (reliable signal of rotation)
-    final Orientation currentOrientation = MediaQuery.of(context).orientation;
-    if (_lastOrientation == null) {
-      _lastOrientation = currentOrientation;
-    } else if (_lastOrientation != currentOrientation) {
-      _lastOrientation = currentOrientation;
-      _lastOrientationChangeAt = DateTime.now();
+    // Only record orientation changes when we're truly resumed and not in PiP,
+    // and not currently suppressing due to a PiP transition.
+    if (_appState == AppLifecycleState.resumed && !_inPip && !_suppressOrientationMarking) {
+      final Orientation current = MediaQuery.of(context).orientation;
+      if (_lastOrientation == null) {
+        _lastOrientation = current;
+      } else if (_lastOrientation != current) {
+        _lastOrientation = current;
+        _lastOrientationChangeAt = DateTime.now();
+      }
     }
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -355,15 +372,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         systemNavigationBarColor: Colors.black,
         systemNavigationBarIconBrightness: Brightness.light,
       ),
-      child: Scaffold(
+      child: const Scaffold(
         backgroundColor: Colors.black,
-        body: const SafeArea(
-          top: false, // truly edge-to-edge
-          bottom: false,
-          child: SizedBox.expand(
-            child: _WebViewHolder(), // we’ll insert via Inherited to keep widget tree simple
-          ),
-        ),
+        body: SafeArea(top: false, bottom: false, child: SizedBox.expand(child: _WebViewHolder())),
       ),
     );
   }
