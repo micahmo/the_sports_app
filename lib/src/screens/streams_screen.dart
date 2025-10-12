@@ -124,9 +124,12 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   bool _inPip = false;
 
-  DateTime? _lastMetricsChangeAt;
+  // Rotation/PiP resume heuristics
   DateTime? _lastPipExitAt;
   bool _wentBackground = false;
+
+  Orientation? _lastOrientation;
+  DateTime? _lastOrientationChangeAt;
 
   @override
   void initState() {
@@ -274,8 +277,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
       final DateTime now = DateTime.now();
 
-      // Heuristic: if resume is very close to a metrics change, it's rotation
-      final bool likelyRotation = _lastMetricsChangeAt != null && now.difference(_lastMetricsChangeAt!).inMilliseconds <= 600;
+      // Rotation heuristic: only true if we very recently *changed orientation*.
+      final bool likelyRotation = _lastOrientationChangeAt != null && now.difference(_lastOrientationChangeAt!).inMilliseconds <= 900;
 
       // Heuristic: if resume is very close to exiting PiP, it's PiP restore
       final bool justLeftPip = _lastPipExitAt != null && now.difference(_lastPipExitAt!).inMilliseconds <= 1000;
@@ -284,11 +287,6 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
       _jumpToLive();
     }
-  }
-
-  @override
-  void didChangeMetrics() {
-    _lastMetricsChangeAt = DateTime.now();
   }
 
   Future<void> _jumpToLive() async {
@@ -340,6 +338,15 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   @override
   Widget build(BuildContext context) {
+    // Track orientation transitions here (reliable signal of rotation)
+    final Orientation currentOrientation = MediaQuery.of(context).orientation;
+    if (_lastOrientation == null) {
+      _lastOrientation = currentOrientation;
+    } else if (_lastOrientation != currentOrientation) {
+      _lastOrientation = currentOrientation;
+      _lastOrientationChangeAt = DateTime.now();
+    }
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -371,6 +378,6 @@ class _WebViewHolder extends StatelessWidget {
     // This widget is intentionally empty; the actual WebView is inserted by the parent state.
     // But WebViewWidget must still be in the tree, so we find the state's controller via context.
     final _StreamPlayerScreenState? s = context.findAncestorStateOfType<_StreamPlayerScreenState>();
-    return s == null ? SizedBox.shrink() : WebViewWidget(controller: s._controller);
+    return s == null ? const SizedBox.shrink() : WebViewWidget(controller: s._controller);
   }
 }
