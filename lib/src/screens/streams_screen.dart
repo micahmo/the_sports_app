@@ -15,15 +15,32 @@ class StreamsScreen extends StatefulWidget {
 
 class _StreamsScreenState extends State<StreamsScreen> {
   final StreamedApi _api = StreamedApi();
-  late Future<List<StreamInfo>> _future;
+  late Future<List<_Entry>> _future;
 
   @override
   void initState() {
     super.initState();
-    // Choose first available source from the match (user can pick later too)
-    // We’ll fetch all streams for the first source initially.
-    final MatchSourceRef initial = widget.matchItem.sources.first;
-    _future = _api.fetchStreams(initial.source, initial.id);
+    _future = _loadAllStreams();
+  }
+
+  Future<List<_Entry>> _loadAllStreams() async {
+    final List<MatchSourceRef> sources = widget.matchItem.sources;
+    // Fetch all sources in parallel
+    final List<List<StreamInfo>> results = await Future.wait(sources.map((s) => _api.fetchStreams(s.source, s.id)), eagerError: true);
+
+    final List<_Entry> entries = <_Entry>[];
+    for (int i = 0; i < sources.length; i++) {
+      final MatchSourceRef ref = sources[i];
+      final List<StreamInfo> list = results[i];
+      if (list.isEmpty) continue;
+
+      entries.add(_HeaderEntry(ref.source));
+      for (final StreamInfo s in list) {
+        entries.add(_StreamEntry(s));
+      }
+    }
+
+    return entries;
   }
 
   @override
@@ -31,79 +48,78 @@ class _StreamsScreenState extends State<StreamsScreen> {
     final String title = widget.matchItem.title;
     return Scaffold(
       appBar: AppBar(title: Text(title)),
-      body: Column(
-        children: <Widget>[
-          _SourcesChips(
-            matchItem: widget.matchItem,
-            onPick: (MatchSourceRef s) {
-              setState(() {
-                _future = _api.fetchStreams(s.source, s.id);
-              });
-            },
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: FutureBuilder<List<StreamInfo>>(
-              future: _future,
-              builder: (BuildContext ctx, AsyncSnapshot<List<StreamInfo>> snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snap.hasError) {
-                  return Center(child: Text('Error: ${snap.error}'));
-                }
-                final List<StreamInfo> streams = snap.data ?? <StreamInfo>[];
-                if (streams.isEmpty) {
-                  return const Center(child: Text('No streams available for this source.'));
-                }
-                return ListView.builder(
-                  itemCount: streams.length,
-                  itemBuilder: (_, int i) {
-                    final StreamInfo s = streams[i];
-                    return ListTile(
-                      leading: Icon(s.hd ? Icons.hd : Icons.sd),
-                      title: Text('Stream #${s.streamNo}${s.language.isEmpty ? '' : ' • ${s.language}'}'),
-                      subtitle: Text('Source: ${s.source}'),
-                      trailing: const Icon(Icons.play_arrow),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => StreamPlayerScreen(stream: s, title: title),
-                        ),
-                      ),
-                    );
-                  },
+      body: FutureBuilder<List<_Entry>>(
+        future: _future,
+        builder: (BuildContext ctx, AsyncSnapshot<List<_Entry>> snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError) {
+            return Center(child: Text('Error: ${snap.error}'));
+          }
+
+          final List<_Entry> entries = snap.data ?? <_Entry>[];
+          if (entries.isEmpty) {
+            return const Center(child: Text('No streams available.'));
+          }
+
+          return ListView.builder(
+            itemCount: entries.length,
+            itemBuilder: (_, int i) {
+              final _Entry e = entries[i];
+              if (e is _HeaderEntry) {
+                return _SourceHeader(source: e.source);
+              } else if (e is _StreamEntry) {
+                final StreamInfo s = e.stream;
+                final String subtitle = s.language.isEmpty ? '' : s.language;
+
+                return ListTile(
+                  leading: Icon(s.hd ? Icons.hd : Icons.sd),
+                  title: Text('Stream #${s.streamNo}'),
+                  subtitle: subtitle.isEmpty ? null : Text(subtitle),
+                  trailing: const Icon(Icons.play_arrow),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StreamPlayerScreen(stream: s, title: title),
+                    ),
+                  ),
                 );
-              },
-            ),
-          ),
-        ],
+              }
+              return const SizedBox.shrink();
+            },
+          );
+        },
       ),
     );
   }
 }
 
-class _SourcesChips extends StatelessWidget {
-  const _SourcesChips({required this.matchItem, required this.onPick});
-  final ApiMatch matchItem;
-  final void Function(MatchSourceRef) onPick;
+class _SourceHeader extends StatelessWidget {
+  const _SourceHeader({required this.source});
+  final String source;
 
   @override
   Widget build(BuildContext context) {
-    final List<MatchSourceRef> sources = matchItem.sources;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        children: sources.map((MatchSourceRef s) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: ActionChip(label: Text(s.source), onPressed: () => onPick(s)),
-          );
-        }).toList(),
-      ),
+    final TextTheme t = Theme.of(context).textTheme;
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      child: Text(source, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
     );
   }
+}
+
+abstract class _Entry {}
+
+class _HeaderEntry extends _Entry {
+  _HeaderEntry(this.source);
+  final String source;
+}
+
+class _StreamEntry extends _Entry {
+  _StreamEntry(this.stream);
+  final StreamInfo stream;
 }
 
 // Native channel for Android PiP
