@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
+
+const MethodChannel _nowPlaying = MethodChannel('nowplaying');
 
 class StreamsScreen extends StatefulWidget {
   const StreamsScreen({super.key, required this.matchItem});
@@ -21,6 +26,13 @@ class _StreamsScreenState extends State<StreamsScreen> {
   void initState() {
     super.initState();
     _future = _loadAllStreams();
+
+    // Ask, then show once granted
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _ensureNotifPermission();
+      if (!mounted) return;
+      await _showNowPlaying();
+    });
   }
 
   Future<List<_Entry>> _loadAllStreams() async {
@@ -92,6 +104,34 @@ class _StreamsScreenState extends State<StreamsScreen> {
         },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _hideNowPlaying();
+    super.dispose();
+  }
+
+  Future<void> _showNowPlaying() async {
+    try {
+      await _nowPlaying.invokeMethod('show', <String, dynamic>{'title': 'Watching ${widget.matchItem.title}'});
+    } catch (_) {}
+  }
+
+  Future<void> _hideNowPlaying() async {
+    try {
+      await _nowPlaying.invokeMethod('hide');
+    } catch (_) {}
+  }
+
+  Future<void> _ensureNotifPermission() async {
+    if (Platform.isAndroid) {
+      // Android 13+ only (notification runtime permission)
+      final status = await Permission.notification.status;
+      if (!status.isGranted) {
+        await Permission.notification.request();
+      }
+    }
   }
 }
 
