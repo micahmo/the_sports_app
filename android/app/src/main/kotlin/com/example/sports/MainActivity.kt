@@ -33,14 +33,14 @@ class MainActivity : FlutterActivity() {
     private val NOW_PLAYING_CHANNEL_ID = "now_playing_channel"
     private val NOW_PLAYING_NOTIFICATION_ID = 1001
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        // Hide contents in Android's app switcher for privacy
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE
-        )
-    }
+    // override fun onCreate(savedInstanceState: Bundle?) {
+    //     super.onCreate(savedInstanceState)
+    //     // Hide contents in Android's app switcher for privacy
+    //     window.setFlags(
+    //         WindowManager.LayoutParams.FLAG_SECURE,
+    //         WindowManager.LayoutParams.FLAG_SECURE
+    //     )
+    // }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
