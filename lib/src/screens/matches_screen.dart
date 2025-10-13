@@ -25,6 +25,9 @@ class _MatchesScreenState extends State<MatchesScreen> {
 
   // Filters
   bool _popularOnly = false; // only used in bySport mode
+  bool _todayOnly = false; // used in bySport + liveFavorites
+  bool _showToggles = false; // AppBar "Filters" button controls this
+
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
@@ -134,6 +137,21 @@ class _MatchesScreenState extends State<MatchesScreen> {
 
   // ——— Filtering helpers ———
 
+  List<ApiMatch> _applyTodayOnlyFilter(List<ApiMatch> input) {
+    if (!_todayOnly) return input;
+
+    final DateTime now = DateTime.now();
+    final DateTime start = DateTime(now.year, now.month, now.day); // local midnight
+    final DateTime end = start.add(const Duration(days: 1));
+
+    bool isToday(ApiMatch m) {
+      final DateTime dt = DateTime.fromMillisecondsSinceEpoch(m.date, isUtc: true).toLocal();
+      return (dt.isAtSameMomentAs(start) || dt.isAfter(start)) && dt.isBefore(end);
+    }
+
+    return input.where(isToday).toList();
+  }
+
   List<ApiMatch> _applyRealtimeFilter(List<ApiMatch> input) {
     final String q = _searchQuery.trim().toLowerCase();
     if (q.isEmpty) return input;
@@ -159,6 +177,13 @@ class _MatchesScreenState extends State<MatchesScreen> {
     });
   }
 
+  void _toggleTodayOnly(bool value) {
+    setState(() {
+      _todayOnly = value;
+      // today-only is client-side, so no need to refetch
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final String title = switch (widget.mode) {
@@ -168,18 +193,43 @@ class _MatchesScreenState extends State<MatchesScreen> {
       Mode.liveFavorites => 'Favorites',
     };
 
-    final bool showHeader = widget.mode == Mode.bySport;
+    // We show the header (search + optional toggles) on By Sport and Favorites.
+    final bool showHeader = widget.mode == Mode.bySport || widget.mode == Mode.liveFavorites;
+    // Which toggles should appear (when header is visible)?
+    final bool showPopularToggle = widget.mode == Mode.bySport;
+    final bool showTodayToggle = widget.mode == Mode.bySport || widget.mode == Mode.liveFavorites;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        actions: <Widget>[IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refreshMatches)],
+        actions: <Widget>[
+          if (showHeader)
+            IconButton(
+              tooltip: _showToggles ? 'Hide filters' : 'Show filters',
+              icon: _showToggles ? const Icon(Icons.filter_list_off) : const Icon(Icons.filter_list),
+              onPressed: () => setState(() => _showToggles = !_showToggles),
+            ),
+          IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refreshMatches),
+        ],
       ),
       body: FutureBuilder<List<ApiMatch>>(
         future: _future,
         builder: (BuildContext ctx, AsyncSnapshot<List<ApiMatch>> snap) {
-          // Header widget (popular + search) used in all states for bySport.
-          final Widget? header = showHeader ? _FiltersHeader(popularOnly: _popularOnly, onPopularChanged: _togglePopularOnly, controller: _searchCtrl) : null;
+          // Header widget used in loading/error/empty/success to keep UX consistent
+          final Widget? header = showHeader
+              ? _FiltersHeader(
+                  controller: _searchCtrl,
+                  showToggles: _showToggles,
+                  // Today
+                  showTodayToggle: showTodayToggle,
+                  todayOnly: _todayOnly,
+                  onTodayChanged: _toggleTodayOnly,
+                  // Popular
+                  showPopularToggle: showPopularToggle,
+                  popularOnly: _popularOnly,
+                  onPopularChanged: _togglePopularOnly,
+                )
+              : null;
 
           if (snap.connectionState == ConnectionState.waiting) {
             // Keep pull-to-refresh usable while loading, but dismiss immediately:
@@ -210,9 +260,11 @@ class _MatchesScreenState extends State<MatchesScreen> {
             );
           }
 
-          // Base list from backend according to mode & popularOnly (server-side part).
-          final List<ApiMatch> base = snap.data ?? <ApiMatch>[];
-          // Client-side realtime text filter:
+          // Base list from backend (already popular-filtered if bySport+popularOnly).
+          List<ApiMatch> base = snap.data ?? <ApiMatch>[];
+
+          // Client-side filters in order: today-only → realtime text
+          base = _applyTodayOnlyFilter(base);
           final List<ApiMatch> matches = _applyRealtimeFilter(base);
 
           if (matches.isEmpty) {
@@ -307,15 +359,57 @@ class _MatchesScreenState extends State<MatchesScreen> {
 }
 
 class _FiltersHeader extends StatelessWidget {
-  const _FiltersHeader({required this.popularOnly, required this.onPopularChanged, required this.controller});
+  const _FiltersHeader({
+    required this.controller,
+    required this.showToggles,
+    // Today
+    required this.showTodayToggle,
+    required this.todayOnly,
+    required this.onTodayChanged,
+    // Popular
+    required this.showPopularToggle,
+    required this.popularOnly,
+    required this.onPopularChanged,
+  });
 
+  final TextEditingController controller;
+
+  final bool showToggles;
+
+  final bool showTodayToggle;
+  final bool todayOnly;
+  final ValueChanged<bool> onTodayChanged;
+
+  final bool showPopularToggle;
   final bool popularOnly;
   final ValueChanged<bool> onPopularChanged;
-  final TextEditingController controller;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
+
+    final List<Widget> toggleRows = <Widget>[
+      if (showTodayToggle)
+        Row(
+          children: <Widget>[
+            const Icon(Icons.today),
+            const SizedBox(width: 8),
+            const Text('Today only'),
+            const Spacer(),
+            Switch(value: todayOnly, onChanged: onTodayChanged),
+          ],
+        ),
+      if (showPopularToggle)
+        Row(
+          children: <Widget>[
+            const Icon(Icons.trending_up),
+            const SizedBox(width: 8),
+            const Text('Popular only'),
+            const Spacer(),
+            Switch(value: popularOnly, onChanged: onPopularChanged),
+          ],
+        ),
+    ];
 
     return Material(
       color: scheme.surface,
@@ -323,7 +417,7 @@ class _FiltersHeader extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: Column(
           children: <Widget>[
-            // Search
+            // Search — always visible
             TextField(
               controller: controller,
               textInputAction: TextInputAction.search,
@@ -345,16 +439,19 @@ class _FiltersHeader extends StatelessWidget {
                 contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
               ),
             ),
-            const SizedBox(height: 8),
-            // Popular toggle row
-            Row(
-              children: <Widget>[
-                const Icon(Icons.trending_up),
-                const SizedBox(width: 8),
-                const Text('Popular only'),
-                const Spacer(),
-                Switch(value: popularOnly, onChanged: onPopularChanged),
-              ],
+            // Toggles — collapsible via AppBar "Filters" button
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              child: showToggles
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Column(
+                        children: [
+                          for (final w in toggleRows) ...[w, const SizedBox(height: 8)],
+                        ],
+                      ),
+                    )
+                  : Container(),
             ),
           ],
         ),
