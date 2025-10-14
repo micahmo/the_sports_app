@@ -114,7 +114,7 @@ class _StreamsScreenState extends State<StreamsScreen> {
 
   Future<void> _showNowPlaying() async {
     try {
-      await _nowPlaying.invokeMethod('show', <String, dynamic>{'title': 'Watching ${widget.matchItem.title}'});
+      await _nowPlaying.invokeMethod('show', <String, dynamic>{'title': widget.matchItem.title});
     } catch (_) {}
   }
 

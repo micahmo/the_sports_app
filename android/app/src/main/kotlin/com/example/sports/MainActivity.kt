@@ -150,7 +150,7 @@ class MainActivity : FlutterActivity() {
 
         val notification: Notification = NotificationCompat.Builder(this, NOW_PLAYING_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher) // replace if you have a better small icon
-            .setContentTitle("Sports")
+            .setContentTitle("Watching live")
             .setContentText(title)
             .setContentIntent(contentIntent)
             .setOngoing(true)          // persistent until you cancel
