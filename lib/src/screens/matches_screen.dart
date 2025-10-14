@@ -440,18 +440,23 @@ class _FiltersHeader extends StatelessWidget {
               ),
             ),
             // Toggles — collapsible via AppBar "Filters" button
-            AnimatedSize(
+            TweenAnimationBuilder<double>(
               duration: const Duration(milliseconds: 180),
-              child: showToggles
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Column(
-                        children: [
-                          for (final w in toggleRows) ...[w, const SizedBox(height: 8)],
-                        ],
-                      ),
-                    )
-                  : Container(),
+              curve: Curves.easeInOut,
+              tween: Tween<double>(begin: showToggles ? 1 : 0, end: showToggles ? 1 : 0),
+              builder: (BuildContext context, double factor, Widget? child) {
+                return ClipRect(
+                  child: Align(alignment: Alignment.topCenter, heightFactor: factor, child: child),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(
+                  children: [
+                    for (final w in toggleRows) ...[w, const SizedBox(height: 8)],
+                  ],
+                ),
+              ),
             ),
           ],
         ),
