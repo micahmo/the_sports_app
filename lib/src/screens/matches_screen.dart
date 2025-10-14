@@ -270,11 +270,11 @@ class _MatchesScreenState extends State<MatchesScreen> {
           if (matches.isEmpty) {
             final bool hasQuery = _searchQuery.trim().isNotEmpty;
             final Widget empty = hasQuery
-                ? const Text('No matches match your filters.')
+                ? const Text('No matches match your filters')
                 : (widget.mode == Mode.liveFavorites
                       ? const Text(
-                          'No live matches for your favorites right now.\n'
-                          'Add teams in Settings or check back later.',
+                          'No live matches for your favorites right now\n'
+                          'Add teams in Settings or check back later',
                           textAlign: TextAlign.center,
                         )
                       : const Text('No matches found'));
@@ -390,24 +390,38 @@ class _FiltersHeader extends StatelessWidget {
 
     final List<Widget> toggleRows = <Widget>[
       if (showTodayToggle)
-        Row(
-          children: <Widget>[
-            const Icon(Icons.today),
-            const SizedBox(width: 8),
-            const Text('Today only'),
-            const Spacer(),
-            Switch(value: todayOnly, onChanged: onTodayChanged),
-          ],
+        InkWell(
+          onTap: () => onTodayChanged(!todayOnly),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: <Widget>[
+                const Icon(Icons.today),
+                const SizedBox(width: 8),
+                const Text('Today only'),
+                const Spacer(),
+                Switch(value: todayOnly, onChanged: onTodayChanged),
+              ],
+            ),
+          ),
         ),
       if (showPopularToggle)
-        Row(
-          children: <Widget>[
-            const Icon(Icons.trending_up),
-            const SizedBox(width: 8),
-            const Text('Popular only'),
-            const Spacer(),
-            Switch(value: popularOnly, onChanged: onPopularChanged),
-          ],
+        InkWell(
+          onTap: () => onPopularChanged(!popularOnly),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: <Widget>[
+                const Icon(Icons.trending_up),
+                const SizedBox(width: 8),
+                const Text('Popular only'),
+                const Spacer(),
+                Switch(value: popularOnly, onChanged: onPopularChanged),
+              ],
+            ),
+          ),
         ),
     ];
 
