@@ -274,19 +274,6 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
     WidgetsBinding.instance.addObserver(this);
-
-    Future.delayed(const Duration(seconds: 3), () async {
-      await _controller.runJavaScriptReturningResult(r'''
-              (async () => {
-                let anyStarted = false;
-                const vids = Array.from(document.querySelectorAll('video'));
-                for (const v of vids) {
-                  try { v.muted = true; await v.play(); anyStarted = true; } catch(e){}
-                }
-                anyStarted;
-              })();
-            ''');
-    });
   }
 
   Future<void> _enterPip() async {
@@ -303,19 +290,6 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   Future<void> _refresh() async {
     try {
       await _controller.reload();
-
-      Future.delayed(const Duration(seconds: 3), () async {
-        await _controller.runJavaScriptReturningResult(r'''
-              (async () => {
-                let anyStarted = false;
-                const vids = Array.from(document.querySelectorAll('video'));
-                for (const v of vids) {
-                  try { v.muted = true; await v.play(); anyStarted = true; } catch(e){}
-                }
-                anyStarted;
-              })();
-            ''');
-      });
     } catch (_) {}
   }
 
@@ -331,40 +305,94 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   Future<void> _injectGuardsAndAutoplay() async {
     const String js = r'''
-      try {
-        // Disable window.open
-        window.open = function(){ return null; };
+(() => {
+  try {
+    // Disable window.open to avoid external popouts
+    window.open = function(){ return null; };
 
-        // Intercept link clicks (capture phase)
-        document.addEventListener('click', function(e){
-          const a = e.target && e.target.closest ? e.target.closest('a') : null;
-          if (!a || !a.href) return;
-          const dest = new URL(a.href, location.href);
+    // Intercept link clicks (capture phase) and block cross-origin
+    document.addEventListener('click', function(e){
+      const a = e.target && e.target.closest ? e.target.closest('a') : null;
+      if (!a || !a.href) return;
+      const dest = new URL(a.href, location.href);
+      if (dest.origin !== location.origin) {
+        e.preventDefault(); e.stopPropagation(); return false;
+      }
+      return true;
+    }, true);
 
-          // Block different origin outright
-          if (dest.origin !== location.origin) {
-            e.preventDefault(); e.stopPropagation(); return false;
+    // Don't install twice
+    if (window.__autoplayAgentInstalled) return true;
+    window.__autoplayAgentInstalled = true;
+
+    // Core attempt logic: make a specific video play as soon as possible.
+    const tryPlayVideo = (v) => {
+      if (!v) return;
+
+      // Mobile-friendly flags
+      v.muted = true;                 // allow autoplay
+      v.playsInline = true;           // iOS/WebKit hint (no harm on Android)
+      v.setAttribute('playsinline', '');
+      v.autoplay = true;
+
+      const attempt = () => {
+        // If there's a seekable live edge, nudge to the end to avoid stalling
+        try {
+          if (v.seekable && v.seekable.length > 0) {
+            const end = v.seekable.end(v.seekable.length - 1);
+            // Stay just behind edge
+            if (!Number.isNaN(end) && end > 0) v.currentTime = Math.max(0, end - 1.0);
           }
+        } catch (e) {}
 
-          // Same-origin links are allowed (player may need them)
-          return true;
-        }, true);
+        v.play().catch(() => { /* ignore */ });
+      };
 
-        // Try muted autoplay for any <video> tags on the page (Android-friendly)
-        (async () => {
-          const vids = Array.from(document.querySelectorAll('video'));
-          for (const v of vids) {
-            try {
-              if (v.paused) {
-                v.muted = true;
-                await v.play();
-              }
-            } catch (e) {}
+      // If already ready enough, try immediately
+      if (v.readyState >= 2 /* HAVE_CURRENT_DATA */) {
+        attempt();
+      } else {
+        // Otherwise wait for readiness, then try
+        const onReady = () => { v.removeEventListener('loadedmetadata', onReady); v.removeEventListener('canplay', onReady); attempt(); };
+        v.addEventListener('loadedmetadata', onReady, { once: true });
+        v.addEventListener('canplay', onReady, { once: true });
+
+        // Also try a gentle kick after microtask in case readyState just flipped
+        Promise.resolve().then(attempt);
+      }
+    };
+
+    // Sweep any existing videos now
+    Array.from(document.querySelectorAll('video')).forEach(tryPlayVideo);
+
+    // Watch for newly inserted videos or player re-renders
+    const mo = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.tagName && node.tagName.toLowerCase() === 'video') {
+            tryPlayVideo(node);
           }
-        })();
-      } catch (_) {}
-      true;
-    ''';
+          // In case a <div> contains nested <video>
+          const vids = node.querySelectorAll ? node.querySelectorAll('video') : [];
+          vids && vids.forEach(tryPlayVideo);
+        }
+      }
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+
+    // Fallbacks for late-ready pages
+    const kick = () => Array.from(document.querySelectorAll('video')).forEach(tryPlayVideo);
+    // DOM ready changes (rare, but cheap)
+    document.addEventListener('readystatechange', kick, { passive: true });
+    // Final onload
+    window.addEventListener('load', kick, { passive: true });
+
+  } catch (e) {}
+  return true;
+})();
+''';
+
     try {
       await _controller.runJavaScriptReturningResult(js);
     } catch (_) {}
