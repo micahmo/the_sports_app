@@ -273,6 +273,19 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
     WidgetsBinding.instance.addObserver(this);
+
+    Future.delayed(const Duration(seconds: 3), () async {
+      await _controller.runJavaScriptReturningResult(r'''
+              (async () => {
+                let anyStarted = false;
+                const vids = Array.from(document.querySelectorAll('video'));
+                for (const v of vids) {
+                  try { v.muted = true; await v.play(); anyStarted = true; } catch(e){}
+                }
+                anyStarted;
+              })();
+            ''');
+    });
   }
 
   bool _isAllowedDestination(Uri dest) {
