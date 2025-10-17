@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -194,8 +195,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   void initState() {
     super.initState();
 
-    // Tell native: auto-PiP when user leaves app (Home/Recents) for THIS screen.
-    _pip.invokeMethod('setAutoPipOnUserLeave', <String, dynamic>{'enabled': true}).catchError((_) {});
+    // Do NOT auto-enter PiP when user leaves (Home/Recents, etc.)
+    _pip.invokeMethod('setAutoPipOnUserLeave', <String, dynamic>{'enabled': false}).catchError((_) {});
 
     // PiP state updates
     _pip.setMethodCallHandler((MethodCall call) async {
@@ -286,6 +287,36 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
               })();
             ''');
     });
+  }
+
+  Future<void> _enterPip() async {
+    try {
+      final dynamic ok = await _pip.invokeMethod('enterPip');
+      if (mounted && ok == true) {
+        setState(() => _inPip = true);
+      }
+    } catch (_) {
+      // Swallow; PiP might not be supported or OS denied it.
+    }
+  }
+
+  Future<void> _refresh() async {
+    try {
+      await _controller.reload();
+
+      Future.delayed(const Duration(seconds: 3), () async {
+        await _controller.runJavaScriptReturningResult(r'''
+              (async () => {
+                let anyStarted = false;
+                const vids = Array.from(document.querySelectorAll('video'));
+                for (const v of vids) {
+                  try { v.muted = true; await v.play(); anyStarted = true; } catch(e){}
+                }
+                anyStarted;
+              })();
+            ''');
+      });
+    } catch (_) {}
   }
 
   bool _isAllowedDestination(Uri dest) {
@@ -441,9 +472,32 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         systemNavigationBarColor: Colors.black,
         systemNavigationBarIconBrightness: Brightness.light,
       ),
-      child: const Scaffold(
+      child: Scaffold(
         backgroundColor: Colors.black,
-        body: SafeArea(top: false, bottom: false, child: SizedBox.expand(child: _WebViewHolder())),
+        body: const SafeArea(top: false, bottom: false, child: SizedBox.expand(child: _WebViewHolder())),
+        floatingActionButton: _inPip
+            ? null
+            : SpeedDial(
+                icon: Icons.menu,
+                foregroundColor: Colors.white,
+                backgroundColor: Colors.black,
+                overlayOpacity: 0.0,
+                buttonSize: const Size(40, 40),
+                childrenButtonSize: const Size(40, 40),
+                childMargin: const EdgeInsets.all(0),
+                children: [
+                  SpeedDialChild(
+                    child: const Center(child: Icon(Icons.picture_in_picture, color: Colors.white, size: 15)),
+                    backgroundColor: Colors.black,
+                    onTap: _enterPip,
+                  ),
+                  SpeedDialChild(
+                    child: const Center(child: Icon(Icons.refresh, color: Colors.white, size: 18)),
+                    backgroundColor: Colors.black,
+                    onTap: _refresh,
+                  ),
+                ],
+              ),
       ),
     );
   }
