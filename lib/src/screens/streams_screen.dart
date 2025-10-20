@@ -23,6 +23,9 @@ class _StreamsScreenState extends State<StreamsScreen> {
   final StreamedApi _api = StreamedApi();
   late Future<List<_Entry>> _future;
 
+  // Remember last-picked stream (per list view instance)
+  String? _lastPlayedUrl;
+
   @override
   void initState() {
     super.initState();
@@ -86,17 +89,27 @@ class _StreamsScreenState extends State<StreamsScreen> {
                 final StreamInfo s = e.stream;
                 final String subtitle = s.language.isEmpty ? '' : s.language;
 
+                // Is this the last one we picked?
+                final bool isLast = (s.embedUrl == _lastPlayedUrl);
+
                 return ListTile(
                   leading: Icon(s.hd ? Icons.hd : Icons.sd),
                   title: Text('Stream #${s.streamNo}'),
                   subtitle: subtitle.isEmpty ? null : Text(subtitle),
-                  trailing: const Icon(Icons.play_arrow),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => StreamPlayerScreen(stream: s, title: title),
-                    ),
-                  ),
+                  trailing: Icon(isLast ? Icons.play_circle_fill : Icons.play_arrow),
+                  onTap: () async {
+                    // Set before navigating so it shows even if user backs out
+                    setState(() => _lastPlayedUrl = s.embedUrl);
+
+                    // Push the player
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StreamPlayerScreen(stream: s, title: title),
+                      ),
+                    );
+                  },
+                  selected: isLast, // also gives a subtle highlight in many themes
                 );
               }
               return const SizedBox.shrink();
