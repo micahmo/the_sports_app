@@ -321,78 +321,136 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       return true;
     }, true);
 
-    // Don't install twice
-    if (window.__autoplayAgentInstalled) return true;
-    window.__autoplayAgentInstalled = true;
+    if (!window.__autoplayAgentInstalled) {
+      window.__autoplayAgentInstalled = true;
 
-    // Core attempt logic: make a specific video play as soon as possible.
-    const tryPlayVideo = (v) => {
-      if (!v) return;
+      // Track any WebAudio contexts so we can resume them after a gesture.
+      window.__audioContexts = [];
+      const _AC = window.AudioContext || window.webkitAudioContext;
+      if (_AC) {
+        const OrigAC = _AC;
+        const wrap = function(...args) {
+          const ctx = new OrigAC(...args);
+          try { window.__audioContexts.push(ctx); } catch(e) {}
+          return ctx;
+        };
+        wrap.prototype = OrigAC.prototype;
+        if (window.AudioContext) window.AudioContext = wrap;
+        if (window.webkitAudioContext) window.webkitAudioContext = wrap;
+      }
+
+      // Helper: unmute all HTML5 videos and resume WebAudio.
+      window.__unmuteAllVideos = () => {
+        try {
+          const vids = Array.from(document.querySelectorAll('video'));
+          for (const v of vids) {
+            try {
+              v.muted = false;
+              // volume can be clamped by sites, but try to set it anyway
+              v.volume = 1.0;
+              v.play && v.play().catch(()=>{});
+            } catch(e) {}
+          }
+        } catch(e) {}
+        try {
+          for (const ctx of (window.__audioContexts || [])) {
+            if (ctx && ctx.state === 'suspended') {
+              ctx.resume().catch(()=>{});
+            }
+          }
+        } catch(e) {}
+        return true;
+      };
+
+      // Core attempt logic: make a specific video play as soon as possible (muted).
+      const tryPlayVideo = (v) => {
+        if (!v) return;
 
       // Mobile-friendly flags
-      v.muted = true;                 // allow autoplay
+        v.muted = true;                 // allow autoplay
       v.playsInline = true;           // iOS/WebKit hint (no harm on Android)
-      v.setAttribute('playsinline', '');
-      v.autoplay = true;
+        v.setAttribute('playsinline', '');
+        v.autoplay = true;
 
-      const attempt = () => {
+        const attempt = () => {
         // If there's a seekable live edge, nudge to the end to avoid stalling
-        try {
-          if (v.seekable && v.seekable.length > 0) {
-            const end = v.seekable.end(v.seekable.length - 1);
+          try {
+            if (v.seekable && v.seekable.length > 0) {
+              const end = v.seekable.end(v.seekable.length - 1);
             // Stay just behind edge
-            if (!Number.isNaN(end) && end > 0) v.currentTime = Math.max(0, end - 1.0);
-          }
-        } catch (e) {}
+              if (!Number.isNaN(end) && end > 0) v.currentTime = Math.max(0, end - 1.0);
+            }
+          } catch (e) {}
 
         v.play().catch(() => { /* ignore */ });
-      };
+        };
 
       // If already ready enough, try immediately
       if (v.readyState >= 2 /* HAVE_CURRENT_DATA */) {
-        attempt();
-      } else {
+          attempt();
+        } else {
         // Otherwise wait for readiness, then try
-        const onReady = () => { v.removeEventListener('loadedmetadata', onReady); v.removeEventListener('canplay', onReady); attempt(); };
-        v.addEventListener('loadedmetadata', onReady, { once: true });
-        v.addEventListener('canplay', onReady, { once: true });
+          const onReady = () => { v.removeEventListener('loadedmetadata', onReady); v.removeEventListener('canplay', onReady); attempt(); };
+          v.addEventListener('loadedmetadata', onReady, { once: true });
+          v.addEventListener('canplay', onReady, { once: true });
 
         // Also try a gentle kick after microtask in case readyState just flipped
-        Promise.resolve().then(attempt);
-      }
-    };
+          Promise.resolve().then(attempt);
+        }
+      };
 
-    // Sweep any existing videos now
-    Array.from(document.querySelectorAll('video')).forEach(tryPlayVideo);
+      // Sweep any existing videos now
+      Array.from(document.querySelectorAll('video')).forEach(tryPlayVideo);
 
-    // Watch for newly inserted videos or player re-renders
-    const mo = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (!(node instanceof Element)) continue;
+      // Watch for newly inserted videos or player re-renders
+      const mo = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of m.addedNodes) {
+            if (!(node instanceof Element)) continue;
           if (node.tagName && node.tagName.toLowerCase() === 'video') {
             tryPlayVideo(node);
           }
           // In case a <div> contains nested <video>
-          const vids = node.querySelectorAll ? node.querySelectorAll('video') : [];
-          vids && vids.forEach(tryPlayVideo);
+            const vids = node.querySelectorAll ? node.querySelectorAll('video') : [];
+            vids && vids.forEach(tryPlayVideo);
+          }
         }
-      }
-    });
-    mo.observe(document.documentElement, { childList: true, subtree: true });
+      });
+      mo.observe(document.documentElement, { childList: true, subtree: true });
 
     // Fallbacks for late-ready pages
-    const kick = () => Array.from(document.querySelectorAll('video')).forEach(tryPlayVideo);
+      const kick = () => Array.from(document.querySelectorAll('video')).forEach(tryPlayVideo);
     // DOM ready changes (rare, but cheap)
-    document.addEventListener('readystatechange', kick, { passive: true });
+      document.addEventListener('readystatechange', kick, { passive: true });
     // Final onload
-    window.addEventListener('load', kick, { passive: true });
+      window.addEventListener('load', kick, { passive: true });
 
+      // 👇 First real user gesture inside the page -> unmute everything
+      const autoUnmuteOnce = (ev) => {
+        try { window.__unmuteAllVideos && window.__unmuteAllVideos(); } catch(e) {}
+        document.removeEventListener('pointerdown', autoUnmuteOnce, true);
+        document.removeEventListener('keydown', autoUnmuteOnce, true);
+      };
+      document.addEventListener('pointerdown', autoUnmuteOnce, true);
+      document.addEventListener('keydown', autoUnmuteOnce, true);
+    }
   } catch (e) {}
   return true;
 })();
 ''';
 
+    try {
+      await _controller.runJavaScriptReturningResult(js);
+    } catch (_) {}
+  }
+
+  Future<void> _unmuteAndPlay() async {
+    const String js = r'''
+    (function(){
+      try { return window.__unmuteAllVideos ? window.__unmuteAllVideos() : false; }
+      catch(e) { return false; }
+    })();
+  ''';
     try {
       await _controller.runJavaScriptReturningResult(js);
     } catch (_) {}
@@ -514,6 +572,12 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                 childrenButtonSize: const Size(40, 40),
                 childMargin: const EdgeInsets.all(0),
                 children: [
+                  // Uncomment this to add an unmute button
+                  // SpeedDialChild(
+                  //   child: const Center(child: Icon(Icons.volume_up, color: Colors.white, size: 18)),
+                  //   backgroundColor: Colors.black,
+                  //   onTap: _unmuteAndPlay,
+                  // ),
                   SpeedDialChild(
                     child: const Center(child: Icon(Icons.picture_in_picture, color: Colors.white, size: 15)),
                     backgroundColor: Colors.black,
@@ -522,7 +586,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                   SpeedDialChild(
                     child: const Center(child: Icon(Icons.refresh, color: Colors.white, size: 18)),
                     backgroundColor: Colors.black,
-                    onTap: _refresh,
+                    onTap: () async {
+                      await _refresh();
+                      await _unmuteAndPlay();
+                    },
                   ),
                 ],
               ),
