@@ -82,7 +82,6 @@ class _SportsScreenState extends State<SportsScreen> {
               final Sport s = sports[i - 3]; // shift by 3 now
               return ListTile(
                 title: Text(s.name),
-                subtitle: Text(s.id),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MatchesScreen.forSport(s))),
               );
