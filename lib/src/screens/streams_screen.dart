@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
+import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -84,7 +85,7 @@ class _StreamsScreenState extends State<StreamsScreen> {
             itemBuilder: (_, int i) {
               final _Entry e = entries[i];
               if (e is _HeaderEntry) {
-                return _SourceHeader(source: e.source);
+                return _SourceHeader(source: toBeginningOfSentenceCase(e.source), sourceSubtitle: sourceSubtitles[e.source]);
               } else if (e is _StreamEntry) {
                 final StreamInfo s = e.stream;
                 final String subtitle = s.language.isEmpty ? '' : s.language;
@@ -150,16 +151,23 @@ class _StreamsScreenState extends State<StreamsScreen> {
 }
 
 class _SourceHeader extends StatelessWidget {
-  const _SourceHeader({required this.source});
+  const _SourceHeader({required this.source, required this.sourceSubtitle});
   final String source;
+  final String? sourceSubtitle;
 
   @override
   Widget build(BuildContext context) {
     final TextTheme t = Theme.of(context).textTheme;
     return Container(
       color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-      child: Text(source, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(source, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+          if (sourceSubtitle != null) ...[const SizedBox(height: 4), Text(sourceSubtitle!, style: t.bodySmall)],
+        ],
+      ),
     );
   }
 }
@@ -627,3 +635,12 @@ class _WebViewHolder extends StatelessWidget {
     return s == null ? const SizedBox.shrink() : WebViewWidget(controller: s._controller);
   }
 }
+
+Map<String, String> sourceSubtitles = {
+  'admin': 'Admin added streams',
+  'alpha': 'Most reliable (720p 30fps)',
+  'charlie': 'Good backup (poor quality occasionally)',
+  'echo': 'Great quality overall',
+  'foxtrot': 'Good quality, offers home/away feeds',
+  'intel': 'Large event coverage, iffy quality',
+};
