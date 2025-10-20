@@ -583,20 +583,24 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                 overlayOpacity: 0.0,
                 buttonSize: const Size(40, 40),
                 childrenButtonSize: const Size(40, 40),
-                childMargin: const EdgeInsets.all(0),
+                childPadding: const EdgeInsets.all(0),
+                spaceBetweenChildren: 5,
                 children: [
                   // Uncomment this to add an unmute button
                   // SpeedDialChild(
+                  //   shape: const CircleBorder(),
                   //   child: const Center(child: Icon(Icons.volume_up, color: Colors.white, size: 18)),
                   //   backgroundColor: Colors.black,
                   //   onTap: _unmuteAndPlay,
                   // ),
                   SpeedDialChild(
+                    shape: const CircleBorder(),
                     child: const Center(child: Icon(Icons.picture_in_picture, color: Colors.white, size: 15)),
                     backgroundColor: Colors.black,
                     onTap: _enterPip,
                   ),
                   SpeedDialChild(
+                    shape: const CircleBorder(),
                     child: const Center(child: Icon(Icons.refresh, color: Colors.white, size: 18)),
                     backgroundColor: Colors.black,
                     onTap: () async {
