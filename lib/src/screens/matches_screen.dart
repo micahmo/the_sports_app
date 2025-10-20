@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sports/src/screens/sports_screen.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import 'streams_screen.dart';
@@ -345,7 +346,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
                     ],
                   ),
 
-                  subtitle: Text('${widget.mode == Mode.bySport ? '' : '${m.category} • '}$timeDisplay'),
+                  subtitle: Text('${widget.mode == Mode.bySport ? '' : '${sportsNames[m.category] ?? m.category} • '}$timeDisplay'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context, MaterialPageRoute<Widget>(builder: (_) => StreamsScreen(matchItem: m))),
                 );

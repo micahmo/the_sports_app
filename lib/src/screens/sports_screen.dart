@@ -80,6 +80,7 @@ class _SportsScreenState extends State<SportsScreen> {
               }
 
               final Sport s = sports[i - 3]; // shift by 3 now
+              sportsNames[s.id] = s.name;
               return ListTile(
                 title: Text(s.name),
                 trailing: const Icon(Icons.chevron_right),
@@ -92,3 +93,5 @@ class _SportsScreenState extends State<SportsScreen> {
     );
   }
 }
+
+Map<String, String> sportsNames = {};
