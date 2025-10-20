@@ -337,6 +337,9 @@ class _MatchesScreenState extends State<MatchesScreen> {
                             imageUrl:
                                 'https://streamed.pk/api/images/proxy/GwZg7AZpYEZgHCAjAJgCztsFYTAKbBgLBpgCckKArNACbrDnACGw8wADAcNcBJg5hs-AhUYpgUtgGMCkkCxAyQiFRBCaYikNsQaUyhXRDldIfKvMn4NYEiwzJUsPgSQmPSXyGvRhCCA.webp',
                             //'https://streamed.pk/api/images/proxy/GwZg7AZpYEZgHCAjAJgCztsFYTAKbBgLBpgCckKArNACbrDnACGw8wADAcNcBJg5hs-AhUYpgUtgGMCkkCxAyQ5EOoggY6rSE37dIBUs2J8O7SpQh4NYEiwzJUsPgSQmPSXyGvRhCCA.webp',
+                            //'https://streamed.pk/api/images/proxy/GwZg7AZpYEZgHCAjAJgCztsFYTAKbBgLBpgCckKArNACbrDnACGw8wADAcNcBJg5hs-AhUYpgUtgGMCkkCxAyQ5EOoiKtmlCDohEK-Ao3KQMEPnOWDBmmiTUYaGZKlh8CSEx6S+Qj1FCCCA.webp',
+                            //'https://streamed.pk/api/images/proxy/GwZg7AZpYEZgHCAjAJgCztsFYTAKbBgLBpgCckKArNACbrDnACGw8wADAcNcBJg5hs-AhUYpgUtgGMCkkCxAyQ5EOoggYITXWUgUqncoWG1Kw-mN7N5GsCRYZkqWHwJITHpL5C3owgggA.webp',
+                            //'https://streamed.pk/api/images/proxy/GwZg7AZpYEZgHCAjAJgCztsFYTAKbBgLBpgCckKArNACbrDnACGw8wADAcNcBJg5hs-AhUYpgUtgGMCkkCxAyQiFRGUgUWkOR2IYihSsQbtiOpssoaYOYUoxJUsPgSQmPSXyGvRhCCA.webp',
                             fit: BoxFit.cover,
                           ),
                   ),
