@@ -640,6 +640,7 @@ Map<String, String> sourceSubtitles = {
   'admin': 'Admin added streams',
   'alpha': 'Most reliable (720p 30fps)',
   'charlie': 'Good backup (poor quality occasionally)',
+  'delta': 'Okayish backup (can lag/not load)',
   'echo': 'Great quality overall',
   'foxtrot': 'Good quality, offers home/away feeds',
   'intel': 'Large event coverage, iffy quality',
