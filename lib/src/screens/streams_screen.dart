@@ -331,16 +331,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     // Disable window.open to avoid external popouts
     window.open = function(){ return null; };
 
-    // Intercept link clicks (capture phase) and block cross-origin
-    document.addEventListener('click', function(e){
-      const a = e.target && e.target.closest ? e.target.closest('a') : null;
-      if (!a || !a.href) return;
-      const dest = new URL(a.href, location.href);
-      if (dest.origin !== location.origin) {
-        e.preventDefault(); e.stopPropagation(); return false;
-      }
-      return true;
-    }, true);
+    // 🔧 REMOVED click interceptor entirely - let NavigationDelegate handle navigation blocking
 
     if (!window.__autoplayAgentInstalled) {
       window.__autoplayAgentInstalled = true;
@@ -367,7 +358,6 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
           for (const v of vids) {
             try {
               v.muted = false;
-              // volume can be clamped by sites, but try to set it anyway
               v.volume = 1.0;
               v.play && v.play().catch(()=>{});
             } catch(e) {}
@@ -383,39 +373,71 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         return true;
       };
 
-      // Core attempt logic: make a specific video play as soon as possible (muted).
+      // 🔧 ENHANCED: More aggressive autoplay with multiple strategies
       const tryPlayVideo = (v) => {
         if (!v) return;
 
-      // Mobile-friendly flags
-        v.muted = true;                 // allow autoplay
-      v.playsInline = true;           // iOS/WebKit hint (no harm on Android)
+        // Mobile-friendly flags
+        v.muted = true;
+        v.playsInline = true;
         v.setAttribute('playsinline', '');
+        v.setAttribute('webkit-playsinline', '');
         v.autoplay = true;
 
+        // 🔧 NEW: Also try to click any play buttons in the player controls
+        const tryClickPlayButton = () => {
+          try {
+            // Common play button selectors used by video players
+            const playButtonSelectors = [
+              'button[aria-label*="play" i]',
+              'button[title*="play" i]',
+              'button.vjs-big-play-button',
+              '.plyr__control--overlaid',
+              'button.play-button',
+              '.play-icon',
+              '[class*="play"][class*="button"]',
+              'button[class*="PlayButton"]',
+            ];
+            
+            for (const selector of playButtonSelectors) {
+              const btn = v.parentElement?.querySelector(selector) || 
+                          document.querySelector(selector);
+              if (btn && btn.offsetParent !== null) { // visible check
+                btn.click();
+                return true;
+              }
+            }
+          } catch(e) {}
+          return false;
+        };
+
         const attempt = () => {
-        // If there's a seekable live edge, nudge to the end to avoid stalling
+          // If there's a seekable live edge, nudge to the end
           try {
             if (v.seekable && v.seekable.length > 0) {
               const end = v.seekable.end(v.seekable.length - 1);
-            // Stay just behind edge
               if (!Number.isNaN(end) && end > 0) v.currentTime = Math.max(0, end - 1.0);
             }
           } catch (e) {}
 
-        v.play().catch(() => { /* ignore */ });
+          // Try programmatic play
+          v.play().catch(() => {});
+          
+          // Also try clicking play button
+          setTimeout(() => tryClickPlayButton(), 100);
+          setTimeout(() => tryClickPlayButton(), 500);
         };
 
-      // If already ready enough, try immediately
-      if (v.readyState >= 2 /* HAVE_CURRENT_DATA */) {
+        if (v.readyState >= 2) {
           attempt();
         } else {
-        // Otherwise wait for readiness, then try
-          const onReady = () => { v.removeEventListener('loadedmetadata', onReady); v.removeEventListener('canplay', onReady); attempt(); };
+          const onReady = () => { 
+            v.removeEventListener('loadedmetadata', onReady); 
+            v.removeEventListener('canplay', onReady); 
+            attempt(); 
+          };
           v.addEventListener('loadedmetadata', onReady, { once: true });
           v.addEventListener('canplay', onReady, { once: true });
-
-        // Also try a gentle kick after microtask in case readyState just flipped
           Promise.resolve().then(attempt);
         }
       };
@@ -428,10 +450,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         for (const m of mutations) {
           for (const node of m.addedNodes) {
             if (!(node instanceof Element)) continue;
-          if (node.tagName && node.tagName.toLowerCase() === 'video') {
-            tryPlayVideo(node);
-          }
-          // In case a <div> contains nested <video>
+            if (node.tagName && node.tagName.toLowerCase() === 'video') {
+              tryPlayVideo(node);
+            }
             const vids = node.querySelectorAll ? node.querySelectorAll('video') : [];
             vids && vids.forEach(tryPlayVideo);
           }
@@ -439,20 +460,22 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       });
       mo.observe(document.documentElement, { childList: true, subtree: true });
 
-    // Fallbacks for late-ready pages
+      // Fallbacks for late-ready pages
       const kick = () => Array.from(document.querySelectorAll('video')).forEach(tryPlayVideo);
-    // DOM ready changes (rare, but cheap)
       document.addEventListener('readystatechange', kick, { passive: true });
-    // Final onload
       window.addEventListener('load', kick, { passive: true });
 
-      // 👇 First real user gesture inside the page -> unmute everything
+      // 🔧 ENHANCED: Multiple gesture types trigger unmute
       const autoUnmuteOnce = (ev) => {
         try { window.__unmuteAllVideos && window.__unmuteAllVideos(); } catch(e) {}
         document.removeEventListener('pointerdown', autoUnmuteOnce, true);
+        document.removeEventListener('touchstart', autoUnmuteOnce, true);
+        document.removeEventListener('click', autoUnmuteOnce, true);
         document.removeEventListener('keydown', autoUnmuteOnce, true);
       };
       document.addEventListener('pointerdown', autoUnmuteOnce, true);
+      document.addEventListener('touchstart', autoUnmuteOnce, true);
+      document.addEventListener('click', autoUnmuteOnce, true);
       document.addEventListener('keydown', autoUnmuteOnce, true);
     }
   } catch (e) {}
