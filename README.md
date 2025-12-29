@@ -53,10 +53,6 @@ Any missing functionality in this app is a direct limitation of the streamed.pk 
 ### Streaming Issues
 All streaming-related problems (buffering, disconnections, quality issues, etc.) are on the streamed.pk service side. This app simply provides an interface to access their streams.
 
-### Screenshots
-
-
-
 ## Attribution
 
 [App Icon](https://www.flaticon.com/free-icon/volleyball_4542458) made by [Freepik](https://www.flaticon.com/authors/freepik) from [www.flaticon.com](https://www.flaticon.com/).
