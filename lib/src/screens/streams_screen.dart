@@ -158,9 +158,11 @@ class _SourceHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final TextTheme t = Theme.of(context).textTheme;
+    final EdgeInsets padding = MediaQuery.of(context).padding;
+
     return Container(
       color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      padding: EdgeInsets.fromLTRB(16 + padding.left, 6, 16 + padding.right, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
