@@ -488,5 +488,6 @@ Map<String, String> sourceSubtitles = {
   'delta': 'Okayish backup (can lag/not load)',
   'echo': 'Great quality overall',
   'foxtrot': 'Good quality, offers home/away feeds',
+  'golf': 'Third party (more ads), but very stable',
   'intel': 'Large event coverage, iffy quality',
 };
