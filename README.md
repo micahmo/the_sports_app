@@ -8,6 +8,12 @@ A Flutter app for watching live sports events with easy browsing, filtering, and
 
 The Sports App is a wrapper around the [streamed.pk API](https://streamed.pk/docs). This app **does not host or stream any content**. All streaming is provided by the streamed.pk service. The app serves as a user-friendly interface to browse and watch events available through that platform.
 
+## Download
+
+<a href="http://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/micahmo/the_sports_app">
+  <img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" width="25%" />
+</a>
+
 ## Features
 
 - **Live Event Browser** - Browse all live sports events in real-time
