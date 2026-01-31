@@ -194,17 +194,16 @@ class _MatchesScreenState extends State<MatchesScreen> {
       Mode.liveFavorites => 'Favorites',
     };
 
-    // We show the header (search + optional toggles) on By Sport and Favorites.
-    final bool showHeader = widget.mode == Mode.bySport || widget.mode == Mode.liveFavorites;
     // Which toggles should appear (when header is visible)?
     final bool showPopularToggle = widget.mode == Mode.bySport;
     final bool showTodayToggle = widget.mode == Mode.bySport || widget.mode == Mode.liveFavorites;
+    final bool showAnyToggles = showPopularToggle || showTodayToggle;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
         actions: <Widget>[
-          if (showHeader)
+          if (showAnyToggles)
             IconButton(
               tooltip: _showToggles ? 'Hide filters' : 'Show filters',
               icon: _showToggles ? const Icon(Icons.filter_list_off) : const Icon(Icons.filter_list),
@@ -217,20 +216,18 @@ class _MatchesScreenState extends State<MatchesScreen> {
         future: _future,
         builder: (BuildContext ctx, AsyncSnapshot<List<ApiMatch>> snap) {
           // Header widget used in loading/error/empty/success to keep UX consistent
-          final Widget? header = showHeader
-              ? _FiltersHeader(
-                  controller: _searchCtrl,
-                  showToggles: _showToggles,
-                  // Today
-                  showTodayToggle: showTodayToggle,
-                  todayOnly: _todayOnly,
-                  onTodayChanged: _toggleTodayOnly,
-                  // Popular
-                  showPopularToggle: showPopularToggle,
-                  popularOnly: _popularOnly,
-                  onPopularChanged: _togglePopularOnly,
-                )
-              : null;
+          final Widget header = _FiltersHeader(
+            controller: _searchCtrl,
+            showToggles: _showToggles,
+            // Today
+            showTodayToggle: showTodayToggle,
+            todayOnly: _todayOnly,
+            onTodayChanged: _toggleTodayOnly,
+            // Popular
+            showPopularToggle: showPopularToggle,
+            popularOnly: _popularOnly,
+            onPopularChanged: _togglePopularOnly,
+          );
 
           if (snap.connectionState == ConnectionState.waiting) {
             // Keep pull-to-refresh usable while loading, but dismiss immediately:
@@ -239,7 +236,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: <Widget>[
-                  if (header != null) header,
+                  header,
                   const SizedBox(height: 240),
                   const Center(child: CircularProgressIndicator()),
                   const SizedBox(height: 240),
@@ -253,7 +250,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: <Widget>[
-                  if (header != null) header,
+                  header,
                   const SizedBox(height: 120),
                   Center(child: Text('Error: ${snap.error}')),
                 ],
@@ -285,7 +282,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: <Widget>[
-                  if (header != null) header,
+                  header,
                   const SizedBox(height: 120),
                   Center(
                     child: Padding(padding: const EdgeInsets.all(24), child: empty),
@@ -296,19 +293,19 @@ class _MatchesScreenState extends State<MatchesScreen> {
           }
 
           // List with optional header row at index 0.
-          final int headerCount = showHeader ? 1 : 0;
+          final int headerCount = 1;
           return RefreshIndicator(
             onRefresh: _refreshMatchesQuiet,
             child: ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
               itemCount: matches.length + headerCount,
               separatorBuilder: (BuildContext _, int i) {
-                if (showHeader && i == 0) return const Divider(height: 1);
+                if (i == 0) return const Divider(height: 1);
                 return const Divider(height: 1);
               },
               itemBuilder: (BuildContext _, int i) {
-                if (showHeader && i == 0) {
-                  return header!;
+                if (i == 0) {
+                  return header;
                 }
 
                 final ApiMatch m = matches[i - headerCount];
