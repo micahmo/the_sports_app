@@ -103,9 +103,21 @@ class _StreamsScreenState extends State<StreamsScreen> {
                 // Is this the last one we picked?
                 final bool isLast = (s.embedUrl == _lastPlayedUrl);
 
+                // ListTile recolours its title and subtitle when selected, so the
+                // viewer count has to follow or it is left stranded mid-line.
+                // The HD/SD badge deliberately does not — its colour carries
+                // meaning rather than state.
+                final ColorScheme cs = Theme.of(context).colorScheme;
+                final Color metaColor = isLast ? cs.primary : Theme.of(context).hintColor;
+
                 return ListTile(
                   leading: Icon(s.hd ? Icons.hd : Icons.sd, color: s.hd ? hdColor(context) : sdColor(context)),
-                  title: Text('Stream #${s.streamNo}'),
+                  // Bold rather than a tinted row: a tint would compete with the
+                  // source heading bands.
+                  title: Text(
+                    'Stream #${s.streamNo}',
+                    style: isLast ? const TextStyle(fontWeight: FontWeight.w700) : null,
+                  ),
                   // Viewers sit on the second row here too, matching the match list.
                   subtitle: (subtitle.isEmpty && s.viewers == null)
                       ? null
@@ -114,11 +126,11 @@ class _StreamsScreenState extends State<StreamsScreen> {
                             if (subtitle.isNotEmpty) Flexible(child: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis)),
                             if (s.viewers != null) ...<Widget>[
                               if (subtitle.isNotEmpty) const SizedBox(width: 8),
-                              Icon(Icons.visibility, size: 13, color: Theme.of(context).hintColor),
+                              Icon(Icons.visibility, size: 13, color: metaColor),
                               const SizedBox(width: 3),
                               Text(
                                 formatViewers(s.viewers!),
-                                style: TextStyle(fontSize: 13, color: Theme.of(context).hintColor),
+                                style: TextStyle(fontSize: 13, color: metaColor),
                               ),
                             ],
                           ],
