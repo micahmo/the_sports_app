@@ -186,6 +186,61 @@ class _StreamEntry extends _Entry {
   final StreamInfo stream;
 }
 
+// Some embed providers work out whether they are inside a sandboxed iframe by
+// calling window.open() and checking for null. Android WebView returns null
+// there regardless, so the page decides it is sandboxed and shows
+// "Remove sandbox attributes on the iframe tag" instead of the stream. Handing
+// back an inert window makes the probe pass — and the pop-unders opened by the
+// same ad code go nowhere, which suits us fine.
+const String _sandboxProbeShim = r'''
+(function () {
+  if (window.__sandboxProbeShim) return;
+  window.__sandboxProbeShim = true;
+
+  var stub = {
+    closed: false,
+    opener: null,
+    close: function () { this.closed = true; },
+    focus: function () {},
+    blur: function () {},
+    postMessage: function () {},
+    location: {
+      href: 'about:blank',
+      assign: function () {},
+      replace: function () {},
+      reload: function () {}
+    },
+    document: {
+      write: function () {},
+      writeln: function () {},
+      close: function () {}
+    }
+  };
+
+  try {
+    Object.defineProperty(window, 'open', {
+      configurable: true,
+      writable: true,
+      value: function () { return stub; }
+    });
+  } catch (e) {
+    window.open = function () { return stub; };
+  }
+
+  // The verdict is cached for an hour; drop anything left over from before.
+  ['localStorage', 'sessionStorage'].forEach(function (name) {
+    try {
+      var store = window[name];
+      if (!store) return;
+      Object.keys(store).forEach(function (key) {
+        var value = store.getItem(key);
+        if (value && value.indexOf('isSandboxed') !== -1) store.removeItem(key);
+      });
+    } catch (e) {}
+  });
+})();
+''';
+
 // Native channel for Android PiP
 const MethodChannel _pip = MethodChannel('pip');
 
@@ -263,6 +318,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
             final Uri dest = Uri.parse(req.url);
             return _isAllowedDestination(dest) ? NavigationDecision.navigate : NavigationDecision.prevent;
           },
+          onPageStarted: (String url) {
+            _controller.runJavaScript(_sandboxProbeShim).catchError((_) {});
+          },
           onUrlChange: (UrlChange change) {
             final String? u = change.url;
             if (u == null) return;
@@ -279,7 +337,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       a.setMediaPlaybackRequiresUserGesture(false);
     }
 
-    _controller = controller..loadRequest(_allowedUri);
+    _controller = controller;
+    _bootstrap();
 
     // Always light status bar (icons) over black
     SystemChrome.setSystemUIOverlayStyle(
@@ -296,6 +355,13 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  Future<void> _bootstrap() async {
+    try {
+      await _controller.clearLocalStorage();
+    } catch (_) {}
+    await _controller.loadRequest(_allowedUri);
   }
 
   Future<void> _enterPip() async {
