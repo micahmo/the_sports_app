@@ -35,6 +35,24 @@ class StreamedApi {
     return arr.map((e) => ApiMatch.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// Every match across every sport. Undocumented sibling `all-today` claims to
+  /// be today-only but returns exactly the same rows, so it is not used.
+  Future<List<ApiMatch>> fetchAllMatches() async {
+    final http.Response r = await _client.get(Uri.parse('$base/api/matches/all'));
+    _ensureOk(r);
+    final List<dynamic> arr = jsonDecode(r.body) as List<dynamic>;
+    return arr.map((e) => ApiMatch.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Undocumented endpoint the website's home page uses. Same match shape plus a
+  /// match-level `viewers` total, but only for the few biggest live matches.
+  Future<List<ApiMatch>> fetchLiveViewCounts() async {
+    final http.Response r = await _client.get(Uri.parse('$base/api/matches/live/popular-viewcount'));
+    _ensureOk(r);
+    final List<dynamic> arr = jsonDecode(r.body) as List<dynamic>;
+    return arr.map((e) => ApiMatch.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   Future<List<StreamInfo>> fetchStreams(String source, String id) async {
     final http.Response r = await _client.get(Uri.parse('$base/api/stream/$source/$id'));
     _ensureOk(r);

@@ -41,7 +41,16 @@ class _StreamsScreenState extends State<StreamsScreen> {
   }
 
   Future<List<_Entry>> _loadAllStreams() async {
-    final List<MatchSourceRef> sources = widget.matchItem.sources;
+    // Best sources first, the way the website presents them. List.sort is not
+    // stable, so tie-break on the original index to keep unranked sources in
+    // the order the API gave them.
+    final List<int> order = List<int>.generate(widget.matchItem.sources.length, (int i) => i)
+      ..sort((int a, int b) {
+        final List<MatchSourceRef> src = widget.matchItem.sources;
+        final int byRank = _sourceRank(src[a].source).compareTo(_sourceRank(src[b].source));
+        return byRank != 0 ? byRank : a.compareTo(b);
+      });
+    final List<MatchSourceRef> sources = <MatchSourceRef>[for (final int i in order) widget.matchItem.sources[i]];
     // Fetch all sources in parallel
     final List<List<StreamInfo>> results = await Future.wait(sources.map((s) => _api.fetchStreams(s.source, s.id)), eagerError: true);
 
@@ -96,7 +105,23 @@ class _StreamsScreenState extends State<StreamsScreen> {
                 return ListTile(
                   leading: Icon(s.hd ? Icons.hd : Icons.sd),
                   title: Text('Stream #${s.streamNo}'),
-                  subtitle: subtitle.isEmpty ? null : Text(subtitle),
+                  // Viewers sit on the second row here too, matching the match list.
+                  subtitle: (subtitle.isEmpty && s.viewers == null)
+                      ? null
+                      : Row(
+                          children: <Widget>[
+                            if (subtitle.isNotEmpty) Flexible(child: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            if (s.viewers != null) ...<Widget>[
+                              if (subtitle.isNotEmpty) const SizedBox(width: 8),
+                              Icon(Icons.visibility, size: 13, color: Theme.of(context).hintColor),
+                              const SizedBox(width: 3),
+                              Text(
+                                formatViewers(s.viewers!),
+                                style: TextStyle(fontSize: 13, color: Theme.of(context).hintColor),
+                              ),
+                            ],
+                          ],
+                        ),
                   trailing: Icon(isLast ? Icons.play_circle_fill : Icons.play_arrow),
                   onTap: () async {
                     // Set before navigating so it shows even if user backs out
@@ -782,13 +807,28 @@ class _WebViewHolder extends StatelessWidget {
   }
 }
 
+// Not in the API — scraped from the wording streamed.pk uses on its watch pages
+// (last checked 2026-09-20). Sources that are not currently being served are
+// kept: they have come and gone before.
 Map<String, String> sourceSubtitles = {
   'admin': 'Admin added streams',
   'alpha': 'Most reliable (720p 30fps)',
   'charlie': 'Good backup (poor quality occasionally)',
-  'delta': 'Okayish backup (can lag/not load)',
+  'delta': 'Okayish backup',
   'echo': 'Great quality overall',
-  'foxtrot': 'Good quality, offers home/away feeds',
-  'golf': 'Third party (more ads), but very stable',
+  'foxtrot': 'High quality, sometimes 4K',
+  'golf': 'Very stable, good quality',
+  'hotel': 'Good backup, many motorsports events',
   'intel': 'Large event coverage, iffy quality',
 };
+
+// streamed.pk orders sources best-first rather than however the API returns
+// them, and demotes the weaker ones. Mirror that order (we show them all —
+// scrolling is cheaper than hiding). Anything unknown sorts to the end, keeping
+// its relative order.
+const List<String> _sourceOrder = <String>['admin', 'golf', 'foxtrot', 'hotel', 'delta'];
+
+int _sourceRank(String source) {
+  final int i = _sourceOrder.indexOf(source.toLowerCase());
+  return i == -1 ? _sourceOrder.length : i;
+}

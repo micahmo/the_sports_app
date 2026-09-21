@@ -51,13 +51,47 @@ class _MatchesScreenState extends State<MatchesScreen> {
   Future<List<ApiMatch>> _loadData() {
     switch (widget.mode) {
       case Mode.live:
-        return _api.fetchLiveMatches();
+        return _withViewCounts(_api.fetchLiveMatches());
       case Mode.livePopular:
-        return _api.fetchLivePopular();
+        return _withViewCounts(_api.fetchLivePopular());
       case Mode.bySport:
         return _loadBySportFor(widget.sport!.id, popularOnly: _popularOnly);
       case Mode.liveFavorites:
         return _loadLiveFavorites();
+    }
+  }
+
+  /// Attach match-level viewer totals where the API has them. Only the biggest
+  /// live matches are covered, so most rows stay null and simply show no count.
+  /// A failure here must not cost us the match list.
+  Future<List<ApiMatch>> _withViewCounts(Future<List<ApiMatch>> matches) async {
+    final List<ApiMatch> list = await matches;
+    try {
+      final List<ApiMatch> counted = await _api.fetchLiveViewCounts();
+      final Map<String, int> byId = <String, int>{
+        for (final ApiMatch m in counted)
+          if (m.viewers != null) m.id: m.viewers!,
+      };
+      if (byId.isEmpty) return list;
+      final List<ApiMatch> withCounts = list.map((ApiMatch m) => byId.containsKey(m.id) ? m.withViewers(byId[m.id]) : m).toList();
+
+      // Float the matches we have counts for to the top, most-watched first.
+      // The endpoint only covers the biggest few, but they are the biggest by a
+      // wide margin (hundreds/thousands vs tens), so nothing notable is buried.
+      // Everything else keeps the order the API gave us — List.sort is not
+      // stable, hence the index tie-break.
+      final List<int> order = List<int>.generate(withCounts.length, (int i) => i)
+        ..sort((int a, int b) {
+          final int? va = withCounts[a].viewers;
+          final int? vb = withCounts[b].viewers;
+          if (va != null && vb != null) return vb.compareTo(va);
+          if (va != null) return -1;
+          if (vb != null) return 1;
+          return a.compareTo(b);
+        });
+      return <ApiMatch>[for (final int i in order) withCounts[i]];
+    } catch (_) {
+      return list;
     }
   }
 
@@ -102,15 +136,18 @@ class _MatchesScreenState extends State<MatchesScreen> {
     // Normalize favorites
     final List<String> favsLower = favorites.map((String s) => s.trim()).where((String s) => s.isNotEmpty).map((String s) => s.toLowerCase()).toList();
 
-    // Fetch all live matches
-    final List<ApiMatch> live = await _api.fetchLiveMatches();
-    final List<ApiMatch> football = await _api.fetchMatchesBySport('american-football');
-    final List<ApiMatch> basketball = await _api.fetchMatchesBySport('basketball');
+    // Live, plus every scheduled match across all sports. This used to fetch
+    // american-football and basketball specifically, which silently missed
+    // favorites in any other sport.
+    final List<List<ApiMatch>> fetched = await Future.wait(<Future<List<ApiMatch>>>[
+      _api.fetchLiveMatches(),
+      _api.fetchAllMatches(),
+    ]);
 
     // Combine them, de-duping by match ID
     final Map<String, ApiMatch> unique = <String, ApiMatch>{};
 
-    for (final ApiMatch match in [...live, ...football, ...basketball]) {
+    for (final ApiMatch match in fetched.expand((List<ApiMatch> l) => l)) {
       unique[match.id] = match; // overwrites duplicates automatically
     }
 
@@ -355,7 +392,28 @@ class _MatchesScreenState extends State<MatchesScreen> {
                     ],
                   ),
 
-                  subtitle: Text('${widget.mode == Mode.bySport ? '' : '${sportsNames[m.category] ?? m.category} • '}$timeDisplay'),
+                  // Viewers go on this row rather than the title: titles are long
+                  // enough to truncate already.
+                  subtitle: Row(
+                    children: <Widget>[
+                      Flexible(
+                        child: Text(
+                          '${widget.mode == Mode.bySport ? '' : '${sportsNames[m.category] ?? m.category} • '}$timeDisplay',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (m.viewers != null) ...<Widget>[
+                        const SizedBox(width: 8),
+                        Icon(Icons.visibility, size: 13, color: Theme.of(context).hintColor),
+                        const SizedBox(width: 3),
+                        Text(
+                          formatViewers(m.viewers!),
+                          style: TextStyle(fontSize: 13, color: Theme.of(context).hintColor),
+                        ),
+                      ],
+                    ],
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context, MaterialPageRoute<Widget>(builder: (_) => StreamsScreen(matchItem: m))),
                 );

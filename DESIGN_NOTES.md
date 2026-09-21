@@ -103,6 +103,42 @@ allow-list in `_isAllowedDestination` relaxed.
 `visibility:hidden`, and `innerText` is layout-aware, so it returns an empty
 string for hidden content and the notice is never detected.
 
+## API notes
+
+Checked 2026-09-20 against live data, which does not always match `/docs`.
+
+### Undocumented but useful
+
+- **`viewers` on every stream row** (`/api/stream/{source}/{id}`). Not in the
+  published `Stream` interface, but present on 31/31 sampled rows. Parsed as
+  nullable in case it disappears.
+- **`/api/matches/live/popular-viewcount`** — normal match objects plus a
+  match-level `viewers` total. Only returns the top few live matches, so most
+  matches have no count. They are the biggest by a wide margin though: when
+  measured, the lowest covered match had 342 viewers and the highest uncovered
+  had 31. That gap is why sorting by it does not bury anything.
+- **`/api/matches/featured`** — 12 curated matches, all `popular: true`, a
+  subset of `/api/matches/all/popular`. Mixes live and upcoming (4 live, 8
+  upcoming when sampled). Unused; would be the app's first upcoming view.
+
+### Traps
+
+- **`/api/matches/all-today` is not today.** It returns byte-identical ids to
+  `/api/matches/all`; only 18 of its 99 rows were actually today. The
+  client-side filter in `_applyTodayOnlyFilter` is more correct — don't "simplify"
+  it to this endpoint.
+- **The docs' source list is stale.** It names alpha, bravo, charlie, delta,
+  echo, foxtrot, golf, hotel, intel and omits `admin`. Live data across 15
+  sports / 99 matches only ever had **admin, delta, foxtrot, golf, hotel**.
+  Descriptions for the absent ones are kept in `sourceSubtitles` because sources
+  have come and gone before.
+- **Source descriptions are not in the API at all** — they are scraped by hand
+  from the watch pages, and they do change wording.
+- **The "popular" toggle means popular *and live*** by construction:
+  `_loadBySportFor` intersects the sport list with `/api/matches/live/popular`.
+  `/api/matches/{sport}/popular` would be one request instead of two but
+  includes upcoming matches, which is a different thing. Deliberate.
+
 ## Debugging recipe
 
 `AndroidWebViewController.enableDebugging(true)` is not enabled in the committed
