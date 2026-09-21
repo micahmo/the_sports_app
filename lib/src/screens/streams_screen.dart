@@ -9,6 +9,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
+import '../theme.dart';
 
 const MethodChannel _nowPlaying = MethodChannel('nowplaying');
 
@@ -103,7 +104,7 @@ class _StreamsScreenState extends State<StreamsScreen> {
                 final bool isLast = (s.embedUrl == _lastPlayedUrl);
 
                 return ListTile(
-                  leading: Icon(s.hd ? Icons.hd : Icons.sd),
+                  leading: Icon(s.hd ? Icons.hd : Icons.sd, color: s.hd ? hdColor(context) : sdColor(context)),
                   title: Text('Stream #${s.streamNo}'),
                   // Viewers sit on the second row here too, matching the match list.
                   subtitle: (subtitle.isEmpty && s.viewers == null)
@@ -186,7 +187,7 @@ class _SourceHeader extends StatelessWidget {
     final EdgeInsets padding = MediaQuery.of(context).padding;
 
     return Container(
-      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
       padding: EdgeInsets.fromLTRB(16 + padding.left, 6, 16 + padding.right, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

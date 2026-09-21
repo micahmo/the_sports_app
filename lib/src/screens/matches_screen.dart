@@ -505,7 +505,7 @@ class _FiltersHeader extends StatelessWidget {
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: scheme.surfaceVariant.withOpacity(0.4),
+                fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
                 prefixIcon: const Icon(Icons.search),
                 hintText: 'Filter by team, title, or category',
                 suffixIcon: controller.text.isEmpty

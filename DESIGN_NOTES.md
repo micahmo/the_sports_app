@@ -139,6 +139,32 @@ Checked 2026-09-20 against live data, which does not always match `/docs`.
   `/api/matches/{sport}/popular` would be one request instead of two but
   includes upcoming matches, which is a different thing. Deliberate.
 
+## Theming
+
+Palette and the theme-mode preference live in `lib/src/theme.dart`. The dark
+theme is a grey (`#22252A`), not black, and contrast was checked rather than
+eyeballed: body text ~12:1 on the background, secondary text ~9:1, and every
+accent at least 3:1 (most above 4.5:1) in *both* themes. `adaptiveColor` exists
+because an accent that reads well on dark is usually too pale on light.
+
+To re-check after changing a colour, sample the rendered pixels rather than
+trusting the constants:
+
+```bash
+adb exec-out screencap > frame.bin   # raw RGBA, easy to sample in a script
+```
+
+### The splash screen cannot follow the in-app theme
+
+`android/app/src/main/res/values{,-night}/` already give the launch screen a
+light and dark colour, so it follows the **system** setting for free. It cannot
+follow the in-app override: Android paints it from the manifest theme before
+Flutter — and therefore SharedPreferences — exists. Someone running system-light
+with the app forced to dark will see a light splash. This is why the colours in
+`values/colors.xml` are kept in sync with `theme.dart` by hand; the only real
+fix would be reading the pref in `MainActivity` natively, which still cannot
+change the very first frame.
+
 ## Debugging recipe
 
 `AndroidWebViewController.enableDebugging(true)` is not enabled in the committed

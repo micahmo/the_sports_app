@@ -3,6 +3,7 @@ import '../api/models.dart';
 import '../api/streamed_api.dart';
 import 'matches_screen.dart';
 import 'settings_screen.dart';
+import '../theme.dart';
 
 class SportsScreen extends StatefulWidget {
   const SportsScreen({super.key});
@@ -56,7 +57,7 @@ class _SportsScreenState extends State<SportsScreen> {
             itemBuilder: (BuildContext _, int i) {
               if (i == 0) {
                 return ListTile(
-                  leading: const Icon(Icons.live_tv),
+                  leading: Icon(Icons.live_tv, color: liveColor(context)),
                   title: const Text('Live now'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.live())),
@@ -64,7 +65,7 @@ class _SportsScreenState extends State<SportsScreen> {
               }
               if (i == 1) {
                 return ListTile(
-                  leading: const Icon(Icons.local_fire_department),
+                  leading: Icon(Icons.local_fire_department, color: popularColor(context)),
                   title: const Text('Popular'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.livePopular())),
@@ -72,7 +73,7 @@ class _SportsScreenState extends State<SportsScreen> {
               }
               if (i == 2) {
                 return ListTile(
-                  leading: const Icon(Icons.favorite),
+                  leading: Icon(Icons.favorite, color: favoriteColor(context)),
                   title: const Text('Favorites'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.liveFavorites())),

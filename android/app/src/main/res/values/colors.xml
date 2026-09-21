@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Keep in sync with the Flutter themes in lib/src/theme.dart so the
+         native launch screen does not flash a different colour than the app. -->
+    <color name="splash_background">#FBF8FF</color>
+</resources>
