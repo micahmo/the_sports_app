@@ -67,6 +67,13 @@ the screen — with only layer 1, exactly one frame in ~14 showed the notice.
 > content in the middle of the screen is full of red (e.g. Chiefs jerseys) and
 > will give you false positives.
 
+The cover lifts on the `<video>`'s own `playing` event, not when our player is
+built. Between the two, Android's WebView paints its default poster (a huge grey
+play button) for about a second; the video also gets a transparent 1x1 `poster`
+so that placeholder never shows. If autoplay is refused, the cover still lifts
+once frames have been buffered for ~5s. To check, `adb shell screenrecord` the
+start of a stream and tile the frames with ffmpeg (`fps=4,tile=12x8`).
+
 ## Source coverage
 
 Tested on one live NFL game, 2026-09-20:

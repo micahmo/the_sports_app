@@ -299,6 +299,16 @@ const String _takeoverJs = r'''
   var video = null;
   var lastTime = -1;
   var stalledFor = 0;
+  // Whether we have told the app to lift its spinner.
+  var announced = false;
+  var waitingFor = 0;
+
+  // Lift the app's spinner once, when there is something to see.
+  function announce() {
+    if (announced) return;
+    announced = true;
+    post("playing");
+  }
 
   function post(msg) {
     try { AppPlayer.postMessage(msg); } catch (e) {}
@@ -385,6 +395,10 @@ const String _takeoverJs = r'''
     video.playsInline = true;
     video.setAttribute("playsinline", "");
     video.style.cssText = "width:100vw;height:100vh;object-fit:contain;background:#000";
+    // Without a poster, Android's WebView paints a big grey play button until
+    // the first frame arrives. A transparent one leaves the black background.
+    video.poster = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+    video.addEventListener("playing", announce);
     document.body.appendChild(video);
     video.addEventListener("volumechange", function () {
       post(video.muted ? "muted" : "unmuted");
@@ -407,7 +421,6 @@ const String _takeoverJs = r'''
     stalledFor = 0;
     play();
     window.__appPlayer.built = true;
-    post("playing");
   }
 
   function takeOver(url) {
@@ -467,6 +480,9 @@ const String _takeoverJs = r'''
       } else {
         deadFor = 0;
       }
+      // Frames are loaded but it has not started (e.g. autoplay refused):
+      // after ~5s show it anyway rather than spin forever.
+      if (!announced && video && video.readyState >= 2 && ++waitingFor > 10) announce();
       return;
     }
     var u = findUrl();
