@@ -5,7 +5,7 @@ import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
-import '../widgets/refresh_on_resume.dart';
+import '../widgets/keep_fresh.dart';
 import 'streams_screen.dart';
 
 class MatchesScreen extends StatefulWidget {
@@ -27,7 +27,7 @@ class MatchesScreen extends StatefulWidget {
 // Width of the list when it sits beside the chosen match's streams.
 const double _kListWidth = 460;
 
-class _MatchesScreenState extends State<MatchesScreen> with RefreshOnResume {
+class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
   final StreamedApi _api = StreamedApi();
 
   // Side-by-side layout only: the match whose streams are showing, and the
@@ -124,13 +124,23 @@ class _MatchesScreenState extends State<MatchesScreen> with RefreshOnResume {
     return sportMatches.where((m) => popularIds.contains(m.id)).toList();
   }
 
-  /// Normal refresh (awaits completion). Good for the AppBar button.
-  @override
-  void onResumeRefresh() => _refreshMatchesQuiet();
+  // A background refresh: keep showing the current list while it loads.
+  bool _quiet = false;
 
+  @override
+  void refreshInBackground() {
+    final Future<List<ApiMatch>> current = _future;
+    setState(() {
+      _quiet = true;
+      _future = _loadData().catchError((Object _) => current);
+    });
+  }
+
+  /// Normal refresh (awaits completion). Good for the AppBar button.
   Future<void> _refreshMatches() async {
     // reassign the future to trigger FutureBuilder
     setState(() {
+      _quiet = false;
       _future = _loadData();
     });
     // allow FutureBuilder to rebuild; awaiting is optional here
@@ -140,6 +150,7 @@ class _MatchesScreenState extends State<MatchesScreen> with RefreshOnResume {
   /// Quiet refresh for pull-to-refresh: dismisses the indicator immediately.
   Future<void> _refreshMatchesQuiet() {
     setState(() {
+      _quiet = false;
       _future = _loadData(); // start loading but don't await here
     });
     return Future<void>.value();
@@ -264,10 +275,14 @@ class _MatchesScreenState extends State<MatchesScreen> with RefreshOnResume {
     if (isDesktop) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: <Widget>[for (final Widget c in chips) SizedBox(height: 36, child: c)],
+        // Full width, or the header's Column centres a Wrap that doesn't fill it.
+        child: SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[for (final Widget c in chips) SizedBox(height: 36, child: c)],
+          ),
         ),
       );
     }
@@ -401,7 +416,7 @@ class _MatchesScreenState extends State<MatchesScreen> with RefreshOnResume {
       chips: snap.hasData ? _buildSportChips(base, category) : null,
     );
 
-    if (snap.connectionState == ConnectionState.waiting) {
+    if (snap.connectionState == ConnectionState.waiting && !(_quiet && snap.hasData)) {
       // Keep pull-to-refresh usable while loading, but dismiss immediately:
       return RefreshIndicator(
         onRefresh: _refreshMatchesQuiet,

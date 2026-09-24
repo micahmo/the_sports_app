@@ -5,7 +5,7 @@ import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
-import '../widgets/refresh_on_resume.dart';
+import '../widgets/keep_fresh.dart';
 import 'matches_screen.dart';
 import 'settings_screen.dart';
 import 'streams_screen.dart';
@@ -28,9 +28,12 @@ class _HomeData {
   final List<ApiMatch> top;
 }
 
-class _SportsScreenState extends State<SportsScreen> with RefreshOnResume {
+class _SportsScreenState extends State<SportsScreen> with KeepFresh {
   final StreamedApi _api = StreamedApi();
   late Future<_HomeData> _future;
+
+  // A background refresh: keep showing the current data while it loads.
+  bool _quiet = false;
 
   @override
   void initState() {
@@ -64,10 +67,19 @@ class _SportsScreenState extends State<SportsScreen> with RefreshOnResume {
   }
 
   @override
-  void onResumeRefresh() => _refresh();
+  void refreshInBackground() {
+    final Future<_HomeData> current = _future;
+    setState(() {
+      _quiet = true;
+      _future = _load().catchError((Object _) => current);
+    });
+  }
 
   Future<void> _refresh() async {
-    setState(() => _future = _load());
+    setState(() {
+      _quiet = false;
+      _future = _load();
+    });
     try {
       await _future;
     } catch (_) {}
@@ -97,7 +109,7 @@ class _SportsScreenState extends State<SportsScreen> with RefreshOnResume {
       body: FutureBuilder<_HomeData>(
         future: _future,
         builder: (BuildContext ctx, AsyncSnapshot<_HomeData> snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
+          if (snap.connectionState == ConnectionState.waiting && !(_quiet && snap.hasData)) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {

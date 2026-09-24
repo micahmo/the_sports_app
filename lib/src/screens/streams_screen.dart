@@ -10,7 +10,7 @@ import '../api/streamed_api.dart';
 import '../player/player_webview.dart';
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
-import '../widgets/refresh_on_resume.dart';
+import '../widgets/keep_fresh.dart';
 import 'sports_screen.dart' show sportsNames;
 
 const MethodChannel _nowPlaying = MethodChannel('nowplaying');
@@ -26,9 +26,12 @@ class StreamsScreen extends StatefulWidget {
   State<StreamsScreen> createState() => _StreamsScreenState();
 }
 
-class _StreamsScreenState extends State<StreamsScreen> with RefreshOnResume {
+class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
   final StreamedApi _api = StreamedApi();
   late Future<List<_SourceGroup>> _future;
+
+  // A background refresh: keep showing the current streams while they load.
+  bool _quiet = false;
 
   // Remember last-picked stream (per list view instance)
   String? _lastPlayedUrl;
@@ -47,7 +50,13 @@ class _StreamsScreenState extends State<StreamsScreen> with RefreshOnResume {
   }
 
   @override
-  void onResumeRefresh() => setState(() => _future = _loadAllStreams());
+  void refreshInBackground() {
+    final Future<List<_SourceGroup>> current = _future;
+    setState(() {
+      _quiet = true;
+      _future = _loadAllStreams().catchError((Object _) => current);
+    });
+  }
 
   Future<List<_SourceGroup>> _loadAllStreams() async {
     // Best sources first, the way the website presents them. List.sort is not
@@ -88,7 +97,7 @@ class _StreamsScreenState extends State<StreamsScreen> with RefreshOnResume {
             widget.matchItem.viewers ?? (snap.hasData ? groups.expand((_SourceGroup g) => g.streams).fold<int>(0, (int sum, StreamInfo s) => sum + (s.viewers ?? 0)) : null);
         final Widget header = _MatchHeader(match: widget.matchItem, watching: watching);
 
-        if (snap.connectionState == ConnectionState.waiting) {
+        if (snap.connectionState == ConnectionState.waiting && !(_quiet && snap.hasData)) {
           return ListView(children: <Widget>[header, const SizedBox(height: 120), const Center(child: CircularProgressIndicator())]);
         }
         if (snap.hasError) {
