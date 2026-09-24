@@ -191,7 +191,11 @@ class _MatchHeader extends StatelessWidget {
           ] else
             line(PosterDisc(match: match, size: 44), match.title, 3),
           const SizedBox(height: 12),
+          // On one baseline: LIVE and the smaller meta text are different faces,
+          // and centring their boxes leaves the capitals at different heights.
           Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: <Widget>[
               if (isLiveNow(match)) ...<Widget>[const LiveTag(size: 15), const SizedBox(width: 10)],
               Expanded(child: Text(meta, style: TextStyle(fontSize: 12, letterSpacing: 0.8, color: cs.onSurfaceVariant))),
