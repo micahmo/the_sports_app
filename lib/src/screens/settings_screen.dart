@@ -72,7 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
               children: <Widget>[
                 Text('Appearance', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),

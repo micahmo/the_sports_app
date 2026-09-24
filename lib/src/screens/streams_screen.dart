@@ -3,13 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
-import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../theme.dart';
+import '../widgets/match_widgets.dart';
+import 'sports_screen.dart' show sportsNames;
 
 const MethodChannel _nowPlaying = MethodChannel('nowplaying');
 
@@ -23,7 +24,7 @@ class StreamsScreen extends StatefulWidget {
 
 class _StreamsScreenState extends State<StreamsScreen> {
   final StreamedApi _api = StreamedApi();
-  late Future<List<_Entry>> _future;
+  late Future<List<_SourceGroup>> _future;
 
   // Remember last-picked stream (per list view instance)
   String? _lastPlayedUrl;
@@ -41,7 +42,7 @@ class _StreamsScreenState extends State<StreamsScreen> {
     });
   }
 
-  Future<List<_Entry>> _loadAllStreams() async {
+  Future<List<_SourceGroup>> _loadAllStreams() async {
     // Best sources first, the way the website presents them. List.sort is not
     // stable, so tie-break on the original index to keep unranked sources in
     // the order the API gave them.
@@ -55,104 +56,57 @@ class _StreamsScreenState extends State<StreamsScreen> {
     // Fetch all sources in parallel
     final List<List<StreamInfo>> results = await Future.wait(sources.map((s) => _api.fetchStreams(s.source, s.id)), eagerError: true);
 
-    final List<_Entry> entries = <_Entry>[];
-    for (int i = 0; i < sources.length; i++) {
-      final MatchSourceRef ref = sources[i];
-      final List<StreamInfo> list = results[i];
-      if (list.isEmpty) continue;
+    return <_SourceGroup>[
+      for (int i = 0; i < sources.length; i++)
+        if (results[i].isNotEmpty) _SourceGroup(sources[i].source, results[i]),
+    ];
+  }
 
-      entries.add(_HeaderEntry(ref.source));
-      for (final StreamInfo s in list) {
-        entries.add(_StreamEntry(s));
-      }
-    }
-
-    return entries;
+  Future<void> _play(StreamInfo s) async {
+    // Set before navigating so it shows even if user backs out
+    setState(() => _lastPlayedUrl = s.embedUrl);
+    await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => StreamPlayerScreen(stream: s, title: widget.matchItem.title)));
   }
 
   @override
   Widget build(BuildContext context) {
-    final String title = widget.matchItem.title;
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: FutureBuilder<List<_Entry>>(
+      appBar: AppBar(title: const ScreenTitle('Streams')),
+      body: FutureBuilder<List<_SourceGroup>>(
         future: _future,
-        builder: (BuildContext ctx, AsyncSnapshot<List<_Entry>> snap) {
+        builder: (BuildContext ctx, AsyncSnapshot<List<_SourceGroup>> snap) {
+          final List<_SourceGroup> groups = snap.data ?? <_SourceGroup>[];
+          // Prefer the site's own match total, so the number matches the row you
+          // tapped. Summing the streams undercounts: sources that return nothing
+          // right now still have viewers in that total.
+          final int? watching =
+              widget.matchItem.viewers ?? (snap.hasData ? groups.expand((_SourceGroup g) => g.streams).fold<int>(0, (int sum, StreamInfo s) => sum + (s.viewers ?? 0)) : null);
+          final Widget header = _MatchHeader(match: widget.matchItem, watching: watching);
+
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return ListView(children: <Widget>[header, const SizedBox(height: 120), const Center(child: CircularProgressIndicator())]);
           }
           if (snap.hasError) {
-            return Center(child: Text('Error: ${snap.error}'));
+            return ListView(children: <Widget>[header, const SizedBox(height: 80), Center(child: Text('Error: ${snap.error}'))]);
+          }
+          if (groups.isEmpty) {
+            return ListView(children: <Widget>[header, const SizedBox(height: 80), const Center(child: Text('No streams available.'))]);
           }
 
-          final List<_Entry> entries = snap.data ?? <_Entry>[];
-          if (entries.isEmpty) {
-            return const Center(child: Text('No streams available.'));
-          }
-
-          return ListView.builder(
-            itemCount: entries.length,
-            itemBuilder: (_, int i) {
-              final _Entry e = entries[i];
-              if (e is _HeaderEntry) {
-                return _SourceHeader(source: toBeginningOfSentenceCase(e.source), sourceSubtitle: sourceSubtitles[e.source]);
-              } else if (e is _StreamEntry) {
-                final StreamInfo s = e.stream;
-                final String subtitle = s.language.isEmpty ? '' : s.language;
-
-                // Is this the last one we picked?
-                final bool isLast = (s.embedUrl == _lastPlayedUrl);
-
-                // ListTile recolours its title and subtitle when selected, so the
-                // viewer count has to follow or it is left stranded mid-line.
-                // The HD/SD badge deliberately does not — its colour carries
-                // meaning rather than state.
-                final ColorScheme cs = Theme.of(context).colorScheme;
-                final Color metaColor = isLast ? cs.primary : Theme.of(context).hintColor;
-
-                return ListTile(
-                  leading: Icon(s.hd ? Icons.hd : Icons.sd, color: s.hd ? hdColor(context) : sdColor(context)),
-                  // Bold rather than a tinted row: a tint would compete with the
-                  // source heading bands.
-                  title: Text(
-                    'Stream #${s.streamNo}',
-                    style: isLast ? const TextStyle(fontWeight: FontWeight.w700) : null,
+          return ListView(
+            padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
+            children: <Widget>[
+              header,
+              for (final _SourceGroup g in groups) ...<Widget>[
+                _SourceHeading(source: g.source, description: sourceSubtitles[g.source]),
+                for (int i = 0; i < g.streams.length; i++)
+                  CardSegment(
+                    first: i == 0,
+                    last: i == g.streams.length - 1,
+                    child: _StreamRow(stream: g.streams[i], lastPlayed: g.streams[i].embedUrl == _lastPlayedUrl, onTap: () => _play(g.streams[i])),
                   ),
-                  // Viewers sit on the second row here too, matching the match list.
-                  subtitle: (subtitle.isEmpty && s.viewers == null)
-                      ? null
-                      : Row(
-                          children: <Widget>[
-                            if (subtitle.isNotEmpty) Flexible(child: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                            if (s.viewers != null) ...<Widget>[
-                              if (subtitle.isNotEmpty) const SizedBox(width: 8),
-                              Icon(Icons.visibility, size: 13, color: metaColor),
-                              const SizedBox(width: 3),
-                              Text(
-                                formatViewers(s.viewers!),
-                                style: TextStyle(fontSize: 13, color: metaColor),
-                              ),
-                            ],
-                          ],
-                        ),
-                  trailing: Icon(isLast ? Icons.play_circle_fill : Icons.play_arrow),
-                  onTap: () async {
-                    // Set before navigating so it shows even if user backs out
-                    setState(() => _lastPlayedUrl = s.embedUrl);
-
-                    // Push the player
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => StreamPlayerScreen(stream: s, title: title),
-                      ),
-                    );
-                  },
-                  selected: isLast, // also gives a subtle highlight in many themes
-                );
-              }
-              return const SizedBox.shrink();
-            },
+              ],
+            ],
           );
         },
       ),
@@ -188,40 +142,146 @@ class _StreamsScreenState extends State<StreamsScreen> {
   }
 }
 
-class _SourceHeader extends StatelessWidget {
-  const _SourceHeader({required this.source, required this.sourceSubtitle});
+class _SourceGroup {
+  _SourceGroup(this.source, this.streams);
   final String source;
-  final String? sourceSubtitle;
+  final List<StreamInfo> streams;
+}
+
+/// Both teams large with their badges, then LIVE, sport, start time and how
+/// many are watching across every source.
+class _MatchHeader extends StatelessWidget {
+  const _MatchHeader({required this.match, required this.watching});
+  final ApiMatch match;
+  final int? watching;
 
   @override
   Widget build(BuildContext context) {
-    final TextTheme t = Theme.of(context).textTheme;
-    final EdgeInsets padding = MediaQuery.of(context).padding;
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final List<TeamInfo>? teams = orderedTeams(match);
+    final TextStyle nameStyle = condensed(25, FontWeight.w600, color: cs.onSurface);
+    final int total = watching ?? 0;
+    final String meta = <String>[
+      sportsNames[match.category] ?? match.category,
+      matchTimeLabel(match),
+      if (total > 0) '${formatViewers(total)} watching',
+    ].join(' · ').toUpperCase();
+
+    Widget line(Widget lead, String text, int maxLines) {
+      return Row(
+        children: <Widget>[
+          lead,
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, maxLines: maxLines, overflow: TextOverflow.ellipsis, style: nameStyle)),
+        ],
+      );
+    }
 
     return Container(
-      color: Theme.of(context).colorScheme.surfaceContainerHigh,
-      padding: EdgeInsets.fromLTRB(16 + padding.left, 6, 16 + padding.right, 6),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: cs.surfaceContainer, borderRadius: BorderRadius.circular(20)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(source, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-          if (sourceSubtitle != null) ...[const SizedBox(height: 4), Text(sourceSubtitle!, style: t.bodySmall)],
+        children: <Widget>[
+          if (teams != null) ...<Widget>[
+            line(TeamBadge(badgeId: teams[0].badge, category: match.category, size: 36), teams[0].name, 2),
+            const SizedBox(height: 10),
+            line(TeamBadge(badgeId: teams[1].badge, category: match.category, size: 36), teams[1].name, 2),
+          ] else
+            line(PosterDisc(match: match, size: 44), match.title, 3),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              if (isLiveNow(match)) ...<Widget>[const LiveTag(size: 15), const SizedBox(width: 10)],
+              Expanded(child: Text(meta, style: TextStyle(fontSize: 12, letterSpacing: 0.8, color: cs.onSurfaceVariant))),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-abstract class _Entry {}
-
-class _HeaderEntry extends _Entry {
-  _HeaderEntry(this.source);
+/// A source's name, with the site's description of it alongside.
+class _SourceHeading extends StatelessWidget {
+  const _SourceHeading({required this.source, this.description});
   final String source;
+  final String? description;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: <Widget>[
+          Text(source.toUpperCase(), style: condensed(17, FontWeight.w700, color: cs.onSurface, letterSpacing: 1.7)),
+          const SizedBox(width: 12),
+          if (description != null)
+            Expanded(
+              child: Text(description!, textAlign: TextAlign.right, style: TextStyle(fontSize: 12, color: cs.outline)),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
-class _StreamEntry extends _Entry {
-  _StreamEntry(this.stream);
+class _StreamRow extends StatelessWidget {
+  const _StreamRow({required this.stream, required this.lastPlayed, required this.onTap});
   final StreamInfo stream;
+  final bool lastPlayed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme cs = theme.colorScheme;
+    // The last-played stream picks up the accent and goes bold, viewer count
+    // included, so nothing on its line is left in the old colour.
+    final Color? accent = lastPlayed ? cs.primary : null;
+    return Semantics(
+      selected: lastPlayed,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: <Widget>[
+              // HD and SD differ by one letter, so colour carries the difference.
+              Container(
+                width: 40,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: stream.hd ? hdColor(context) : sdColor(context), borderRadius: BorderRadius.circular(7)),
+                child: Text(stream.hd ? 'HD' : 'SD', style: condensed(15, FontWeight.w700, color: theme.scaffoldBackgroundColor, letterSpacing: 0.6)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: <Widget>[
+                    Text('Stream ${stream.streamNo}', style: condensed(19, lastPlayed ? FontWeight.w700 : FontWeight.w500, color: accent ?? cs.onSurface)),
+                    if (stream.language.isNotEmpty) ...<Widget>[
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(stream.language, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: accent ?? cs.onSurfaceVariant)),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (stream.viewers != null) ...<Widget>[const SizedBox(width: 12), ViewerCount(stream.viewers!, color: accent)],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // embed.st hands the WebView a valid HLS url, then its own player bootstrap

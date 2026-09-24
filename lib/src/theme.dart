@@ -47,6 +47,21 @@ const Color _darkOnSurface = Color(0xFFE7E9EE);
 const Color _darkOnSurfaceVariant = Color(0xFFC2C7D0);
 const Color _darkPrimary = Color(0xFFAEB8FF);
 
+/// Headings, labels and numbers use this condensed face; body text stays Roboto.
+const String kCondensedFont = 'BarlowSemiCondensed';
+
+TextStyle condensed(double size, FontWeight weight, {Color? color, double letterSpacing = 0}) =>
+    TextStyle(fontFamily: kCondensedFont, fontSize: size, fontWeight: weight, color: color, letterSpacing: letterSpacing, height: 1.15);
+
+/// Barlow's ascent is five times its descent, so its capitals and figures sit
+/// below the middle of their line box. A dot or icon centred beside them looks
+/// high; move it down by this much to line up with the letters.
+double capsCenterShift(double fontSize) => fontSize * 0.065;
+
+/// Team badges sit on a light disc: plenty of logos are dark (Yankees, White
+/// Sox…) and disappear against the dark theme otherwise.
+Color badgeDiscColor(BuildContext c) => adaptiveColor(c, light: const Color(0xFFFFFFFF), dark: const Color(0xFFE6E8EE));
+
 /// Picks between two shades of the same hue so accent colours stay legible on
 /// both backgrounds — the light theme needs darker shades, the dark theme
 /// lighter ones.

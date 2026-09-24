@@ -3,4 +3,7 @@
     <!-- Keep in sync with the Flutter themes in lib/src/theme.dart so the
          native launch screen does not flash a different colour than the app. -->
     <color name="splash_background">#FBF8FF</color>
+    <!-- Adaptive icon backdrop: surfaceContainerHighest of the dark theme in
+         lib/src/theme.dart, in both themes. -->
+    <color name="ic_launcher_background">#3A3F48</color>
 </resources>

@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sports/src/screens/sports_screen.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
+import '../theme.dart';
+import '../widgets/match_widgets.dart';
 import 'streams_screen.dart';
 
 class MatchesScreen extends StatefulWidget {
@@ -28,6 +28,10 @@ class _MatchesScreenState extends State<MatchesScreen> {
   bool _popularOnly = false; // only used in bySport mode
   bool _todayOnly = false; // used in bySport + liveFavorites
   bool _showToggles = false; // AppBar "Filters" button controls this
+  bool _showSearch = false; // AppBar search button controls this
+
+  // Sport chip filter; null shows every sport. Only used when a list spans sports.
+  String? _category;
 
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
@@ -139,10 +143,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
     // Live, plus every scheduled match across all sports. This used to fetch
     // american-football and basketball specifically, which silently missed
     // favorites in any other sport.
-    final List<List<ApiMatch>> fetched = await Future.wait(<Future<List<ApiMatch>>>[
-      _api.fetchLiveMatches(),
-      _api.fetchAllMatches(),
-    ]);
+    final List<List<ApiMatch>> fetched = await Future.wait(<Future<List<ApiMatch>>>[_api.fetchLiveMatches(), _api.fetchAllMatches()]);
 
     // Combine them, de-duping by match ID
     final Map<String, ApiMatch> unique = <String, ApiMatch>{};
@@ -222,14 +223,48 @@ class _MatchesScreenState extends State<MatchesScreen> {
     });
   }
 
+  /// Drop-in label for a sport chip: the sport's name without its aside, so
+  /// "Fight (UFC, Boxing)" fits as "Fight".
+  static String _chipName(String category) => (sportsNames[category] ?? category).replaceAll(RegExp(r'\s*\(.*\)'), '');
+
+  /// Sport chips for lists that span sports (live, popular, favorites), with a
+  /// count per sport. Null when there is only one sport to choose from.
+  Widget? _buildSportChips(List<ApiMatch> base, String? selectedCategory) {
+    if (widget.mode == Mode.bySport) return null;
+    final Map<String, int> counts = <String, int>{};
+    for (final ApiMatch m in base) {
+      counts[m.category] = (counts[m.category] ?? 0) + 1;
+    }
+    if (counts.length < 2) return null;
+    final List<MapEntry<String, int>> cats = counts.entries.toList()..sort((MapEntry<String, int> a, MapEntry<String, int> b) => b.value.compareTo(a.value));
+
+    return SizedBox(
+      height: 36,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: <Widget>[
+          _SportChip(label: 'All', count: base.length, selected: selectedCategory == null, onTap: () => setState(() => _category = null)),
+          for (final MapEntry<String, int> e in cats) ...<Widget>[
+            const SizedBox(width: 8),
+            _SportChip(label: _chipName(e.key), count: e.value, selected: selectedCategory == e.key, onTap: () => setState(() => _category = e.key)),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final String title = switch (widget.mode) {
-      Mode.live => 'Live Matches',
+      Mode.live => 'Live',
       Mode.livePopular => 'Popular',
       Mode.bySport => widget.sport!.name,
       Mode.liveFavorites => 'Favorites',
     };
+
+    // Lists of what's on now show how many next to the title.
+    final bool showCount = widget.mode == Mode.live || widget.mode == Mode.livePopular;
 
     // Which toggles should appear (when header is visible)?
     final bool showPopularToggle = widget.mode == Mode.bySport;
@@ -238,8 +273,22 @@ class _MatchesScreenState extends State<MatchesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: FutureBuilder<List<ApiMatch>>(
+          future: _future,
+          builder: (BuildContext _, AsyncSnapshot<List<ApiMatch>> s) {
+            return ScreenTitle(title, count: showCount && s.hasData ? s.data!.length : null);
+          },
+        ),
         actions: <Widget>[
+          IconButton(
+            tooltip: _showSearch ? 'Close search' : 'Search',
+            icon: Icon(_showSearch ? Icons.search_off : Icons.search),
+            onPressed: () => setState(() {
+              _showSearch = !_showSearch;
+              // A hidden search that still filters the list would be confusing.
+              if (!_showSearch) _searchCtrl.clear();
+            }),
+          ),
           if (showAnyToggles)
             IconButton(
               tooltip: _showToggles ? 'Hide filters' : 'Show filters',
@@ -252,9 +301,17 @@ class _MatchesScreenState extends State<MatchesScreen> {
       body: FutureBuilder<List<ApiMatch>>(
         future: _future,
         builder: (BuildContext ctx, AsyncSnapshot<List<ApiMatch>> snap) {
+          // Base list from backend (already popular-filtered if bySport+popularOnly),
+          // then today-only, which the sport chips count against.
+          final List<ApiMatch> base = _applyTodayOnlyFilter(snap.data ?? <ApiMatch>[]);
+
+          // Forget a chip selection that no longer matches anything, e.g. after a refresh.
+          final String? category = (_category != null && base.any((ApiMatch m) => m.category == _category)) ? _category : null;
+
           // Header widget used in loading/error/empty/success to keep UX consistent
           final Widget header = _FiltersHeader(
             controller: _searchCtrl,
+            showSearch: _showSearch,
             showToggles: _showToggles,
             // Today
             showTodayToggle: showTodayToggle,
@@ -264,6 +321,8 @@ class _MatchesScreenState extends State<MatchesScreen> {
             showPopularToggle: showPopularToggle,
             popularOnly: _popularOnly,
             onPopularChanged: _togglePopularOnly,
+            // Sports
+            chips: snap.hasData ? _buildSportChips(base, category) : null,
           );
 
           if (snap.connectionState == ConnectionState.waiting) {
@@ -295,12 +354,9 @@ class _MatchesScreenState extends State<MatchesScreen> {
             );
           }
 
-          // Base list from backend (already popular-filtered if bySport+popularOnly).
-          List<ApiMatch> base = snap.data ?? <ApiMatch>[];
-
-          // Client-side filters in order: today-only → realtime text
-          base = _applyTodayOnlyFilter(base);
-          final List<ApiMatch> matches = _applyRealtimeFilter(base);
+          // Client-side filters in order: today-only → sport chip → realtime text
+          final List<ApiMatch> inCategory = category == null ? base : base.where((ApiMatch m) => m.category == category).toList();
+          final List<ApiMatch> matches = _applyRealtimeFilter(inCategory);
 
           if (matches.isEmpty) {
             final bool hasQuery = _searchQuery.trim().isNotEmpty;
@@ -329,93 +385,25 @@ class _MatchesScreenState extends State<MatchesScreen> {
             );
           }
 
-          // List with optional header row at index 0.
-          final int headerCount = 1;
+          // Header, then the games as one rounded card built row by row.
           return RefreshIndicator(
             onRefresh: _refreshMatchesQuiet,
-            child: ListView.separated(
+            child: ListView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: matches.length + headerCount,
-              separatorBuilder: (BuildContext _, int i) {
-                if (i == 0) return const Divider(height: 1);
-                return const Divider(height: 1);
-              },
+              padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
+              itemCount: matches.length + 1,
               itemBuilder: (BuildContext _, int i) {
-                if (i == 0) {
-                  return header;
-                }
-
-                final ApiMatch m = matches[i - headerCount];
-                final String poster = StreamedApi.posterUrlFromMatch(m);
-
-                final DateTime dt = DateTime.fromMillisecondsSinceEpoch(m.date, isUtc: true).toLocal();
-                final DateTime now = DateTime.now();
-
-                final DateFormat timeFmt = DateFormat('h:mm a');
-                final DateFormat dateFmt = DateFormat('MMM d'); // e.g. "Oct 10"
-
-                // Determine if it's today
-                final bool isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
-                final String timeDisplay = isToday ? timeFmt.format(dt) : '${dateFmt.format(dt)} • ${timeFmt.format(dt)}';
-
-                final bool isLive = dt.isBefore(DateTime.now().add(const Duration(minutes: 15)));
-
-                return ListTile(
-                  leading: SizedBox(
-                    width: 56,
-                    child: poster.isNotEmpty
-                        ? CachedNetworkImage(imageUrl: poster, fit: BoxFit.cover)
-                        : (m.teams?.home?.badge?.isNotEmpty == true || m.teams?.away?.badge?.isNotEmpty == true)
-                        ? _TeamsBadgesRow(m: m)
-                        : CachedNetworkImage(
-                            imageUrl:
-                                'https://streamed.pk/api/images/proxy/GwZg7AZpYEZgHCAjAJgCztsFYTAKbBgLBpgCckKArNACbrDnACGw8wADAcNcBJg5hs-AhUYpgUtgGMCkkCxAyQiFRBCaYikNsQaUyhXRDldIfKvMn4NYEiwzJUsPgSQmPSXyGvRhCCA.webp',
-                            //'https://streamed.pk/api/images/proxy/GwZg7AZpYEZgHCAjAJgCztsFYTAKbBgLBpgCckKArNACbrDnACGw8wADAcNcBJg5hs-AhUYpgUtgGMCkkCxAyQ5EOoggY6rSE37dIBUs2J8O7SpQh4NYEiwzJUsPgSQmPSXyGvRhCCA.webp',
-                            //'https://streamed.pk/api/images/proxy/GwZg7AZpYEZgHCAjAJgCztsFYTAKbBgLBpgCckKArNACbrDnACGw8wADAcNcBJg5hs-AhUYpgUtgGMCkkCxAyQ5EOoiKtmlCDohEK-Ao3KQMEPnOWDBmmiTUYaGZKlh8CSEx6S+Qj1FCCCA.webp',
-                            //'https://streamed.pk/api/images/proxy/GwZg7AZpYEZgHCAjAJgCztsFYTAKbBgLBpgCckKArNACbrDnACGw8wADAcNcBJg5hs-AhUYpgUtgGMCkkCxAyQ5EOoggYITXWUgUqncoWG1Kw-mN7N5GsCRYZkqWHwJITHpL5C3owgggA.webp',
-                            //'https://streamed.pk/api/images/proxy/GwZg7AZpYEZgHCAjAJgCztsFYTAKbBgLBpgCckKArNACbrDnACGw8wADAcNcBJg5hs-AhUYpgUtgGMCkkCxAyQiFRGUgUWkOR2IYihSsQbtiOpssoaYOYUoxJUsPgSQmPSXyGvRhCCA.webp',
-                            fit: BoxFit.cover,
-                          ),
+                if (i == 0) return header;
+                final ApiMatch m = matches[i - 1];
+                return CardSegment(
+                  first: i == 1,
+                  last: i == matches.length,
+                  child: MatchRow(
+                    match: m,
+                    // A sport's own list doesn't need the sport on every row.
+                    categoryLabel: widget.mode == Mode.bySport ? null : (sportsNames[m.category] ?? m.category),
+                    onTap: () => Navigator.push(context, MaterialPageRoute<Widget>(builder: (_) => StreamsScreen(matchItem: m))),
                   ),
-                  title: Row(
-                    children: <Widget>[
-                      if (isLive) ...<Widget>[
-                        const Icon(Icons.circle, color: Colors.red, size: 8),
-                        const SizedBox(width: 4),
-                        const Text(
-                          'LIVE',
-                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Expanded(child: Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                    ],
-                  ),
-
-                  // Viewers go on this row rather than the title: titles are long
-                  // enough to truncate already.
-                  subtitle: Row(
-                    children: <Widget>[
-                      Flexible(
-                        child: Text(
-                          '${widget.mode == Mode.bySport ? '' : '${sportsNames[m.category] ?? m.category} • '}$timeDisplay',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (m.viewers != null) ...<Widget>[
-                        const SizedBox(width: 8),
-                        Icon(Icons.visibility, size: 13, color: Theme.of(context).hintColor),
-                        const SizedBox(width: 3),
-                        Text(
-                          formatViewers(m.viewers!),
-                          style: TextStyle(fontSize: 13, color: Theme.of(context).hintColor),
-                        ),
-                      ],
-                    ],
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(context, MaterialPageRoute<Widget>(builder: (_) => StreamsScreen(matchItem: m))),
                 );
               },
             ),
@@ -426,9 +414,47 @@ class _MatchesScreenState extends State<MatchesScreen> {
   }
 }
 
+class _SportChip extends StatelessWidget {
+  const _SportChip({required this.label, required this.count, required this.selected, required this.onTap});
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    final Color fg = selected ? cs.surface : cs.onSurfaceVariant;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected ? cs.onSurface : cs.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(label.toUpperCase(), style: condensed(15, FontWeight.w600, color: fg, letterSpacing: 0.6)),
+                const SizedBox(width: 6),
+                Text('$count', style: condensed(15, FontWeight.w600, color: selected ? fg.withValues(alpha: 0.7) : liveColor(context))),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _FiltersHeader extends StatelessWidget {
   const _FiltersHeader({
     required this.controller,
+    required this.showSearch,
     required this.showToggles,
     // Today
     required this.showTodayToggle,
@@ -438,11 +464,16 @@ class _FiltersHeader extends StatelessWidget {
     required this.showPopularToggle,
     required this.popularOnly,
     required this.onPopularChanged,
+    // Sports
+    this.chips,
   });
 
   final TextEditingController controller;
 
+  final bool showSearch;
   final bool showToggles;
+
+  final Widget? chips;
 
   final bool showTodayToggle;
   final bool todayOnly;
@@ -493,77 +524,77 @@ class _FiltersHeader extends StatelessWidget {
         ),
     ];
 
+    // Nothing to show (search closed, no toggles, one sport): just a little air.
+    final bool hasToggles = showTodayToggle || showPopularToggle;
+    if (!showSearch && !hasToggles && chips == null) return const SizedBox(height: 4);
+
     return Material(
       color: scheme.surface,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        padding: const EdgeInsets.fromLTRB(0, 4, 0, 10),
         child: Column(
           children: <Widget>[
-            // Search — always visible
-            TextField(
-              controller: controller,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                prefixIcon: const Icon(Icons.search),
-                hintText: 'Filter by team, title, or category',
-                suffixIcon: controller.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          controller.clear();
-                          // listener on controller will trigger setState in parent
-                        },
+            // Search and toggles keep the gutter; the chip row scrolls edge to edge.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: <Widget>[
+                  // Search — opened from the AppBar, so it doesn't cost a row by default
+                  if (showSearch)
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                        prefixIcon: const Icon(Icons.search),
+                        hintText: 'Filter by team, title, or category',
+                        suffixIcon: controller.text.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  controller.clear();
+                                  // listener on controller will trigger setState in parent
+                                },
+                              ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
                       ),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                    ),
+                  // Toggles — collapsible via AppBar "Filters" button
+                  if (hasToggles)
+                    TweenAnimationBuilder<double>(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeInOut,
+                      tween: Tween<double>(begin: showToggles ? 1 : 0, end: showToggles ? 1 : 0),
+                      builder: (BuildContext context, double factor, Widget? child) {
+                        return ClipRect(
+                          child: Align(alignment: Alignment.topCenter, heightFactor: factor, child: child),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Column(
+                          children: [
+                            for (final w in toggleRows) ...[w, const SizedBox(height: 8)],
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-            // Toggles — collapsible via AppBar "Filters" button
-            TweenAnimationBuilder<double>(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeInOut,
-              tween: Tween<double>(begin: showToggles ? 1 : 0, end: showToggles ? 1 : 0),
-              builder: (BuildContext context, double factor, Widget? child) {
-                return ClipRect(
-                  child: Align(alignment: Alignment.topCenter, heightFactor: factor, child: child),
-                );
-              },
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Column(
-                  children: [
-                    for (final w in toggleRows) ...[w, const SizedBox(height: 8)],
-                  ],
-                ),
+            // Sport chips
+            if (chips != null)
+              Padding(
+                padding: EdgeInsets.only(top: showSearch ? 10 : 2),
+                child: chips,
               ),
-            ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _TeamsBadgesRow extends StatelessWidget {
-  const _TeamsBadgesRow({required this.m});
-  final ApiMatch m;
-
-  @override
-  Widget build(BuildContext context) {
-    final String? home = m.teams?.home?.badge;
-    final String? away = m.teams?.away?.badge;
-    if (home == null && away == null) {
-      return const Icon(Icons.sports);
-    }
-    return Row(
-      children: <Widget>[
-        if (home != null) Expanded(child: Image.network(StreamedApi.badgeUrl(home), height: 32, fit: BoxFit.contain)),
-        if (home != null && away != null) const SizedBox(width: 4),
-        if (away != null) Expanded(child: Image.network(StreamedApi.badgeUrl(away), height: 32, fit: BoxFit.contain)),
-      ],
     );
   }
 }

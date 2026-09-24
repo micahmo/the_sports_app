@@ -47,6 +47,12 @@ dependencies:
 flutter_launcher_icons:
   android: true
   image_path: "assets/icon/app_icon.png"
+  # White ball on the dark theme's lightest card grey. The inset keeps the ball
+  # inside the adaptive safe zone (about 54dp of 108dp) under any launcher mask.
+  adaptive_icon_background: "#3A3F48"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  adaptive_icon_foreground_inset: 25
+  adaptive_icon_monochrome: "assets/icon/app_icon_foreground.png"
 
 dev_dependencies:
   flutter_test:
@@ -70,6 +76,19 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Headings, labels and numbers. Bundled rather than fetched at runtime so it
+  # works offline and never flashes a fallback face. SIL OFL, see assets/fonts/OFL.txt.
+  fonts:
+    - family: BarlowSemiCondensed
+      fonts:
+        - asset: assets/fonts/BarlowSemiCondensed-Regular.ttf
+        - asset: assets/fonts/BarlowSemiCondensed-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/BarlowSemiCondensed-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/BarlowSemiCondensed-Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:
