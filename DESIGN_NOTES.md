@@ -172,6 +172,58 @@ with the app forced to dark will see a light splash. This is why the colours in
 fix would be reading the pref in `MainActivity` natively, which still cannot
 change the very first frame.
 
+## Windows
+
+`webview_flutter` has no Windows implementation, so `lib/src/player/player_webview.dart`
+wraps two backends behind one small interface: `webview_flutter` everywhere else,
+WebView2 via `webview_windows` on Windows. The takeover script is shared; on
+Windows a document-created script defines `window.AppPlayer.postMessage` on top of
+WebView2's `chrome.webview.postMessage`, so the page side is identical.
+
+Things that differ from Android and were each found the hard way:
+
+- **The page's own player keeps running.** On Android it gives up (that is the
+  sandbox notice); in WebView2 it loads jwplayer, Clappr, hls.js 1.6 and a P2P
+  engine (`@swarmcloud/hls`) and starts streaming. Two consequences:
+  - `window.Hls` is the page's P2P-patched copy. Building our player on it gave
+    corrupt fragment timings (one fragment "lasted" 31,320s) and a live edge
+    hours past the buffer, so nothing played. The takeover now always loads its
+    own pinned hls.js and keeps a private reference (`OurHls`) — never use
+    whatever `window.Hls` happens to be.
+  - After we replace the page, its player keeps downloading into a detached
+    `<video>`, doubling bandwidth. `jwplayer().remove()` stops it.
+- **Autoplay with sound is refused** unless the page itself was clicked, and the
+  click lands on Flutter. The WebView2 environment is created with
+  `--autoplay-policy=no-user-gesture-required`.
+- **Keyboard focus.** Once the video is clicked, WebView2 holds keyboard focus
+  and Flutter never sees keys, so the page forwards Esc/M/F as `key:<name>`
+  messages.
+- **Navigation can't be vetoed** from `webview_windows`; off-site navigations are
+  undone by reloading the embed URL (as `onUrlChange` does on Android), and
+  popups are denied outright.
+
+### Buffer gaps
+
+Some feeds leave holes in the buffer (seen: 1–4s and 9–18s buffered, nothing in
+between). Playback stalls at the hole, and `hls.liveSyncPosition` can point back
+into the stale stretch, so "jump to live" replayed the same few seconds forever.
+The watchdog now hops to the next buffered range after ~1s of stalling, and
+only trusts `liveSyncPosition` when it lies inside the buffer. This applies to
+Android too.
+
+### Debugging
+
+Launch with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223`
+and `curl http://127.0.0.1:9223/json/list` gives a CDP target, like the Android
+recipe below. `Runtime.queryObjects` on `Hls.prototype` finds every hls.js
+instance in the page, including ones hidden in closures.
+
+### Building
+
+Flutter 3.35 can't build with Visual Studio 2026 (it asks CMake for the 2019
+generator); 3.38+ can. If a build fails with "Does not match the generator used
+previously", delete `build/windows`.
+
 ## Debugging recipe
 
 `AndroidWebViewController.enableDebugging(true)` is not enabled in the committed

@@ -8,20 +8,31 @@ import '../widgets/match_widgets.dart';
 import 'streams_screen.dart';
 
 class MatchesScreen extends StatefulWidget {
-  const MatchesScreen.forSport(this.sport, {super.key}) : mode = Mode.bySport;
-  const MatchesScreen.live({super.key}) : sport = null, mode = Mode.live;
-  const MatchesScreen.livePopular({super.key}) : sport = null, mode = Mode.livePopular;
-  const MatchesScreen.liveFavorites({super.key}) : sport = null, mode = Mode.liveFavorites;
+  const MatchesScreen.forSport(this.sport, {super.key}) : mode = Mode.bySport, initialMatchId = null;
+  const MatchesScreen.live({super.key, this.initialMatchId}) : sport = null, mode = Mode.live;
+  const MatchesScreen.livePopular({super.key}) : sport = null, mode = Mode.livePopular, initialMatchId = null;
+  const MatchesScreen.liveFavorites({super.key}) : sport = null, mode = Mode.liveFavorites, initialMatchId = null;
 
   final Sport? sport;
   final Mode mode;
+
+  /// In the side-by-side layout, the match to show first (e.g. one picked on Home).
+  final String? initialMatchId;
 
   @override
   State<MatchesScreen> createState() => _MatchesScreenState();
 }
 
+// Width of the list when it sits beside the chosen match's streams.
+const double _kListWidth = 460;
+
 class _MatchesScreenState extends State<MatchesScreen> {
   final StreamedApi _api = StreamedApi();
+
+  // Side-by-side layout only: the match whose streams are showing, and the
+  // matches the list is currently showing (after filters).
+  late String? _selectedId = widget.initialMatchId;
+  List<ApiMatch> _shown = <ApiMatch>[];
   late Future<List<ApiMatch>> _future;
 
   // Filters
@@ -238,18 +249,32 @@ class _MatchesScreenState extends State<MatchesScreen> {
     if (counts.length < 2) return null;
     final List<MapEntry<String, int>> cats = counts.entries.toList()..sort((MapEntry<String, int> a, MapEntry<String, int> b) => b.value.compareTo(a.value));
 
+    final List<Widget> chips = <Widget>[
+      _SportChip(label: 'All', count: base.length, selected: selectedCategory == null, onTap: () => setState(() => _category = null)),
+      for (final MapEntry<String, int> e in cats)
+        _SportChip(label: _chipName(e.key), count: e.value, selected: selectedCategory == e.key, onTap: () => setState(() => _category = e.key)),
+    ];
+
+    // A mouse wheel can't scroll a sideways row, so on desktop every chip
+    // stays in view and they wrap onto more lines instead.
+    if (isDesktop) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: <Widget>[for (final Widget c in chips) SizedBox(height: 36, child: c)],
+        ),
+      );
+    }
     return SizedBox(
       height: 36,
-      child: ListView(
+      child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        children: <Widget>[
-          _SportChip(label: 'All', count: base.length, selected: selectedCategory == null, onTap: () => setState(() => _category = null)),
-          for (final MapEntry<String, int> e in cats) ...<Widget>[
-            const SizedBox(width: 8),
-            _SportChip(label: _chipName(e.key), count: e.value, selected: selectedCategory == e.key, onTap: () => setState(() => _category = e.key)),
-          ],
-        ],
+        itemCount: chips.length,
+        separatorBuilder: (BuildContext _, int __) => const SizedBox(width: 8),
+        itemBuilder: (BuildContext _, int i) => chips[i],
       ),
     );
   }
@@ -266,10 +291,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
     // Lists of what's on now show how many next to the title.
     final bool showCount = widget.mode == Mode.live || widget.mode == Mode.livePopular;
 
-    // Which toggles should appear (when header is visible)?
-    final bool showPopularToggle = widget.mode == Mode.bySport;
-    final bool showTodayToggle = widget.mode == Mode.bySport || widget.mode == Mode.liveFavorites;
-    final bool showAnyToggles = showPopularToggle || showTodayToggle;
+    final bool showAnyToggles = _showPopularToggle || _showTodayToggle;
 
     return Scaffold(
       appBar: AppBar(
@@ -298,114 +320,166 @@ class _MatchesScreenState extends State<MatchesScreen> {
           IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refreshMatches),
         ],
       ),
-      body: FutureBuilder<List<ApiMatch>>(
-        future: _future,
-        builder: (BuildContext ctx, AsyncSnapshot<List<ApiMatch>> snap) {
-          // Base list from backend (already popular-filtered if bySport+popularOnly),
-          // then today-only, which the sport chips count against.
-          final List<ApiMatch> base = _applyTodayOnlyFilter(snap.data ?? <ApiMatch>[]);
-
-          // Forget a chip selection that no longer matches anything, e.g. after a refresh.
-          final String? category = (_category != null && base.any((ApiMatch m) => m.category == _category)) ? _category : null;
-
-          // Header widget used in loading/error/empty/success to keep UX consistent
-          final Widget header = _FiltersHeader(
-            controller: _searchCtrl,
-            showSearch: _showSearch,
-            showToggles: _showToggles,
-            // Today
-            showTodayToggle: showTodayToggle,
-            todayOnly: _todayOnly,
-            onTodayChanged: _toggleTodayOnly,
-            // Popular
-            showPopularToggle: showPopularToggle,
-            popularOnly: _popularOnly,
-            onPopularChanged: _togglePopularOnly,
-            // Sports
-            chips: snap.hasData ? _buildSportChips(base, category) : null,
+      // Wide windows (desktop) show the list and the chosen match's streams
+      // side by side; narrow ones keep the phone layout.
+      body: LayoutBuilder(
+        builder: (BuildContext _, BoxConstraints box) {
+          final bool wide = box.maxWidth >= kWideLayout;
+          return FutureBuilder<List<ApiMatch>>(
+            future: _future,
+            builder: (BuildContext ctx, AsyncSnapshot<List<ApiMatch>> snap) {
+              final Widget list = _buildList(ctx, snap, wide);
+              if (!wide) return list;
+              final ApiMatch? selected = _selectedMatch();
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  SizedBox(width: _kListWidth, child: list),
+                  VerticalDivider(width: 1, thickness: 1, color: Theme.of(context).colorScheme.outlineVariant),
+                  Expanded(
+                    child: selected == null
+                        ? const SizedBox.shrink()
+                        // Capped so stream rows don't stretch across a big monitor.
+                        : Align(
+                            alignment: Alignment.topLeft,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 900),
+                              // Keyed by match so switching matches starts a fresh load.
+                              child: StreamsScreen(key: ValueKey<String>(selected.id), matchItem: selected, embedded: true),
+                            ),
+                          ),
+                  ),
+                ],
+              );
+            },
           );
+        },
+      ),
+    );
+  }
 
-          if (snap.connectionState == ConnectionState.waiting) {
-            // Keep pull-to-refresh usable while loading, but dismiss immediately:
-            return RefreshIndicator(
-              onRefresh: _refreshMatchesQuiet,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: <Widget>[
-                  header,
-                  const SizedBox(height: 240),
-                  const Center(child: CircularProgressIndicator()),
-                  const SizedBox(height: 240),
-                ],
-              ),
-            );
-          }
-          if (snap.hasError) {
-            return RefreshIndicator(
-              onRefresh: _refreshMatchesQuiet,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: <Widget>[
-                  header,
-                  const SizedBox(height: 120),
-                  Center(child: Text('Error: ${snap.error}')),
-                ],
-              ),
-            );
-          }
+  // Which toggles should appear (when header is visible)?
+  bool get _showPopularToggle => widget.mode == Mode.bySport;
+  bool get _showTodayToggle => widget.mode == Mode.bySport || widget.mode == Mode.liveFavorites;
 
-          // Client-side filters in order: today-only → sport chip → realtime text
-          final List<ApiMatch> inCategory = category == null ? base : base.where((ApiMatch m) => m.category == category).toList();
-          final List<ApiMatch> matches = _applyRealtimeFilter(inCategory);
+  // The chosen match if it is still listed, otherwise the first one, so the
+  // streams side is never empty.
+  ApiMatch? _selectedMatch() {
+    for (final ApiMatch m in _shown) {
+      if (m.id == _selectedId) return m;
+    }
+    return _shown.isEmpty ? null : _shown.first;
+  }
 
-          if (matches.isEmpty) {
-            final bool hasQuery = _searchQuery.trim().isNotEmpty;
-            final Widget empty = hasQuery
-                ? const Text('No matches match your filters')
-                : (widget.mode == Mode.liveFavorites
-                      ? const Text(
-                          'No live matches for your favorites right now\n'
-                          'Add teams in Settings or check back later',
-                          textAlign: TextAlign.center,
-                        )
-                      : const Text('No matches found'));
+  Widget _buildList(BuildContext ctx, AsyncSnapshot<List<ApiMatch>> snap, bool wide) {
+    _shown = <ApiMatch>[];
+    // Base list from backend (already popular-filtered if bySport+popularOnly),
+    // then today-only, which the sport chips count against.
+    final List<ApiMatch> base = _applyTodayOnlyFilter(snap.data ?? <ApiMatch>[]);
 
-            return RefreshIndicator(
-              onRefresh: _refreshMatchesQuiet,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: <Widget>[
-                  header,
-                  const SizedBox(height: 120),
-                  Center(
-                    child: Padding(padding: const EdgeInsets.all(24), child: empty),
-                  ),
-                ],
-              ),
-            );
-          }
+    // Forget a chip selection that no longer matches anything, e.g. after a refresh.
+    final String? category = (_category != null && base.any((ApiMatch m) => m.category == _category)) ? _category : null;
 
-          // Header, then the games as one rounded card built row by row.
-          return RefreshIndicator(
-            onRefresh: _refreshMatchesQuiet,
-            child: ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
-              itemCount: matches.length + 1,
-              itemBuilder: (BuildContext _, int i) {
-                if (i == 0) return header;
-                final ApiMatch m = matches[i - 1];
-                return CardSegment(
-                  first: i == 1,
-                  last: i == matches.length,
-                  child: MatchRow(
-                    match: m,
-                    // A sport's own list doesn't need the sport on every row.
-                    categoryLabel: widget.mode == Mode.bySport ? null : (sportsNames[m.category] ?? m.category),
-                    onTap: () => Navigator.push(context, MaterialPageRoute<Widget>(builder: (_) => StreamsScreen(matchItem: m))),
-                  ),
-                );
-              },
+    // Header widget used in loading/error/empty/success to keep UX consistent
+    final Widget header = _FiltersHeader(
+      controller: _searchCtrl,
+      showSearch: _showSearch,
+      showToggles: _showToggles,
+      // Today
+      showTodayToggle: _showTodayToggle,
+      todayOnly: _todayOnly,
+      onTodayChanged: _toggleTodayOnly,
+      // Popular
+      showPopularToggle: _showPopularToggle,
+      popularOnly: _popularOnly,
+      onPopularChanged: _togglePopularOnly,
+      // Sports
+      chips: snap.hasData ? _buildSportChips(base, category) : null,
+    );
+
+    if (snap.connectionState == ConnectionState.waiting) {
+      // Keep pull-to-refresh usable while loading, but dismiss immediately:
+      return RefreshIndicator(
+        onRefresh: _refreshMatchesQuiet,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: <Widget>[
+            header,
+            const SizedBox(height: 240),
+            const Center(child: CircularProgressIndicator()),
+            const SizedBox(height: 240),
+          ],
+        ),
+      );
+    }
+    if (snap.hasError) {
+      return RefreshIndicator(
+        onRefresh: _refreshMatchesQuiet,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: <Widget>[
+            header,
+            const SizedBox(height: 120),
+            Center(child: Text('Error: ${snap.error}')),
+          ],
+        ),
+      );
+    }
+
+    // Client-side filters in order: today-only → sport chip → realtime text
+    final List<ApiMatch> inCategory = category == null ? base : base.where((ApiMatch m) => m.category == category).toList();
+    final List<ApiMatch> matches = _applyRealtimeFilter(inCategory);
+    _shown = matches;
+    final String? selectedId = wide ? _selectedMatch()?.id : null;
+
+    if (matches.isEmpty) {
+      final bool hasQuery = _searchQuery.trim().isNotEmpty;
+      final Widget empty = hasQuery
+          ? const Text('No matches match your filters')
+          : (widget.mode == Mode.liveFavorites
+                ? const Text(
+                    'No live matches for your favorites right now\n'
+                    'Add teams in Settings or check back later',
+                    textAlign: TextAlign.center,
+                  )
+                : const Text('No matches found'));
+
+      return RefreshIndicator(
+        onRefresh: _refreshMatchesQuiet,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: <Widget>[
+            header,
+            const SizedBox(height: 120),
+            Center(
+              child: Padding(padding: const EdgeInsets.all(24), child: empty),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Header, then the games as one rounded card built row by row.
+    return RefreshIndicator(
+      onRefresh: _refreshMatchesQuiet,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
+        itemCount: matches.length + 1,
+        itemBuilder: (BuildContext _, int i) {
+          if (i == 0) return header;
+          final ApiMatch m = matches[i - 1];
+          return CardSegment(
+            first: i == 1,
+            last: i == matches.length,
+            child: MatchRow(
+              match: m,
+              // A sport's own list doesn't need the sport on every row.
+              categoryLabel: widget.mode == Mode.bySport ? null : (sportsNames[m.category] ?? m.category),
+              selected: m.id == selectedId,
+              onTap: wide
+                  ? () => setState(() => _selectedId = m.id)
+                  : () => Navigator.push(context, MaterialPageRoute<Widget>(builder: (_) => StreamsScreen(matchItem: m))),
             ),
           );
         },

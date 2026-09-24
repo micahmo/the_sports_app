@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
@@ -69,8 +71,14 @@ class _SportsScreenState extends State<SportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // On wide windows the title and settings line up with the centred content.
+    final double width = MediaQuery.sizeOf(context).width;
+    final bool wide = width >= kWideLayout;
+    final double side = wide ? math.max(16, (width - _kMaxContentWidth) / 2) : 16;
     return Scaffold(
       appBar: AppBar(
+        titleSpacing: side,
+        actionsPadding: wide ? EdgeInsets.only(right: math.max(0, side - 12)) : null,
         title: const ScreenTitle('Sports'),
         actions: <Widget>[
           IconButton(
@@ -102,75 +110,116 @@ class _SportsScreenState extends State<SportsScreen> {
           }
 
           final _HomeData d = snap.data!;
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
-              children: <Widget>[
-                Row(
+          return LayoutBuilder(
+            builder: (BuildContext _, BoxConstraints box) {
+              // Desktop windows: keep the content to a readable width and use
+              // the room for more columns rather than longer rows.
+              final bool wide = box.maxWidth >= kWideLayout;
+              final double side = wide ? math.max(16, (box.maxWidth - _kMaxContentWidth) / 2) : 16;
+              final double content = box.maxWidth - 2 * side;
+              return RefreshIndicator(
+                onRefresh: _refresh,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(side, 4, side, 24 + MediaQuery.paddingOf(context).bottom),
                   children: <Widget>[
-                    Expanded(
-                      child: _ShortcutTile(
-                        icon: Icons.live_tv,
-                        color: liveColor(context),
-                        label: 'Live now',
-                        count: d.liveTotal,
-                        onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.live())),
-                      ),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: _ShortcutTile(
+                            icon: Icons.live_tv,
+                            color: liveColor(context),
+                            label: 'Live now',
+                            count: d.liveTotal,
+                            onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.live())),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _ShortcutTile(
+                            icon: Icons.local_fire_department,
+                            color: popularColor(context),
+                            label: 'Popular',
+                            onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.livePopular())),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _ShortcutTile(
+                            icon: Icons.favorite,
+                            color: favoriteColor(context),
+                            label: 'Favorites',
+                            onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.liveFavorites())),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _ShortcutTile(
-                        icon: Icons.local_fire_department,
-                        color: popularColor(context),
-                        label: 'Popular',
-                        onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.livePopular())),
+                    if (d.top.isNotEmpty) ...<Widget>[
+                      const SectionLabel('Most watched now'),
+                      if (wide)
+                        // Side by side as separate cards; each opens the live
+                        // list with that match's streams alongside.
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              for (int i = 0; i < d.top.length; i++) ...<Widget>[
+                                if (i > 0) const SizedBox(width: 8),
+                                Expanded(
+                                  child: CardSegment(
+                                    first: true,
+                                    last: true,
+                                    horizontalMargin: 0,
+                                    child: MatchRow(
+                                      match: d.top[i],
+                                      categoryLabel: sportsNames[d.top[i].category] ?? d.top[i].category,
+                                      onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MatchesScreen.live(initialMatchId: d.top[i].id))),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        )
+                      else
+                        for (int i = 0; i < d.top.length; i++)
+                          CardSegment(
+                            first: i == 0,
+                            last: i == d.top.length - 1,
+                            horizontalMargin: 0,
+                            child: MatchRow(
+                              match: d.top[i],
+                              categoryLabel: sportsNames[d.top[i].category] ?? d.top[i].category,
+                              onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => StreamsScreen(matchItem: d.top[i]))),
+                            ),
+                          ),
+                    ],
+                    const SectionLabel('All sports'),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: EdgeInsets.zero,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        // Two on a phone; on desktop as many ~260px tiles as fit.
+                        crossAxisCount: wide ? (content / 260).floor().clamp(2, 6) : 2,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        mainAxisExtent: 56,
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _ShortcutTile(
-                        icon: Icons.favorite,
-                        color: favoriteColor(context),
-                        label: 'Favorites',
-                        onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.liveFavorites())),
-                      ),
+                      itemCount: d.sports.length,
+                      itemBuilder: (BuildContext _, int i) {
+                        final Sport s = d.sports[i];
+                        return _SportTile(
+                          sport: s,
+                          live: d.liveByCategory[s.id] ?? 0,
+                          onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MatchesScreen.forSport(s))),
+                        );
+                      },
                     ),
                   ],
                 ),
-                if (d.top.isNotEmpty) ...<Widget>[
-                  const SectionLabel('Most watched now'),
-                  for (int i = 0; i < d.top.length; i++)
-                    CardSegment(
-                      first: i == 0,
-                      last: i == d.top.length - 1,
-                      horizontalMargin: 0,
-                      child: MatchRow(
-                        match: d.top[i],
-                        categoryLabel: sportsNames[d.top[i].category] ?? d.top[i].category,
-                        onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => StreamsScreen(matchItem: d.top[i]))),
-                      ),
-                    ),
-                ],
-                const SectionLabel('All sports'),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 8, crossAxisSpacing: 8, mainAxisExtent: 56),
-                  itemCount: d.sports.length,
-                  itemBuilder: (BuildContext _, int i) {
-                    final Sport s = d.sports[i];
-                    return _SportTile(
-                      sport: s,
-                      live: d.liveByCategory[s.id] ?? 0,
-                      onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MatchesScreen.forSport(s))),
-                    );
-                  },
-                ),
-              ],
-            ),
+              );
+            },
           );
         },
       ),
@@ -269,5 +318,8 @@ class _SportTile extends StatelessWidget {
     );
   }
 }
+
+// Home's content stops widening past this on desktop windows.
+const double _kMaxContentWidth = 1100;
 
 Map<String, String> sportsNames = {};

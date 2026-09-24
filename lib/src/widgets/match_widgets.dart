@@ -1,9 +1,17 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../theme.dart';
+
+/// A mouse-and-keyboard platform, where sideways-swiping rows don't work.
+bool get isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
+/// From this width, screens lay out for a desktop window rather than a phone.
+const double kWideLayout = 900;
 
 /// Material icon for an API sport id.
 IconData sportIcon(String category) => switch (category) {
@@ -201,9 +209,12 @@ class PosterDisc extends StatelessWidget {
 /// One game: each team on its own line at full name, LIVE and viewers on the
 /// right, sport and start time underneath.
 class MatchRow extends StatelessWidget {
-  const MatchRow({super.key, required this.match, required this.onTap, this.categoryLabel});
+  const MatchRow({super.key, required this.match, required this.onTap, this.categoryLabel, this.selected = false});
   final ApiMatch match;
   final VoidCallback onTap;
+
+  /// The match showing alongside the list, in the side-by-side layout.
+  final bool selected;
 
   /// Sport name for the meta line; null leaves it out (e.g. inside a sport's own list).
   final String? categoryLabel;
@@ -235,33 +246,36 @@ class MatchRow extends StatelessWidget {
           ]
         : <Widget>[line(PosterDisc(match: m), m.title, maxLines: 2)];
 
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: lines)),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: <Widget>[
-                    if (live) const LiveTag(),
-                    if (live && m.viewers != null) const SizedBox(height: 8),
-                    if (m.viewers != null) ViewerCount(m.viewers!),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.only(left: 36),
-              child: Text(meta, style: TextStyle(fontSize: 12, letterSpacing: 0.8, color: cs.outline)),
-            ),
-          ],
+    return Material(
+      color: selected ? cs.surfaceContainerHighest : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: lines)),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: <Widget>[
+                      if (live) const LiveTag(),
+                      if (live && m.viewers != null) const SizedBox(height: 8),
+                      if (m.viewers != null) ViewerCount(m.viewers!),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.only(left: 36),
+                child: Text(meta, style: TextStyle(fontSize: 12, letterSpacing: 0.8, color: cs.outline)),
+              ),
+            ],
+          ),
         ),
       ),
     );

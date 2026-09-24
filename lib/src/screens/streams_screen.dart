@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:window_manager/window_manager.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
+import '../player/player_webview.dart';
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
 import 'sports_screen.dart' show sportsNames;
@@ -15,8 +15,11 @@ import 'sports_screen.dart' show sportsNames;
 const MethodChannel _nowPlaying = MethodChannel('nowplaying');
 
 class StreamsScreen extends StatefulWidget {
-  const StreamsScreen({super.key, required this.matchItem});
+  const StreamsScreen({super.key, required this.matchItem, this.embedded = false});
   final ApiMatch matchItem;
+
+  /// Just the content, no app bar: shown beside the match list on wide windows.
+  final bool embedded;
 
   @override
   State<StreamsScreen> createState() => _StreamsScreenState();
@@ -70,46 +73,49 @@ class _StreamsScreenState extends State<StreamsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final Widget body = FutureBuilder<List<_SourceGroup>>(
+      future: _future,
+      builder: (BuildContext ctx, AsyncSnapshot<List<_SourceGroup>> snap) {
+        final List<_SourceGroup> groups = snap.data ?? <_SourceGroup>[];
+        // Prefer the site's own match total, so the number matches the row you
+        // tapped. Summing the streams undercounts: sources that return nothing
+        // right now still have viewers in that total.
+        final int? watching =
+            widget.matchItem.viewers ?? (snap.hasData ? groups.expand((_SourceGroup g) => g.streams).fold<int>(0, (int sum, StreamInfo s) => sum + (s.viewers ?? 0)) : null);
+        final Widget header = _MatchHeader(match: widget.matchItem, watching: watching);
+
+        if (snap.connectionState == ConnectionState.waiting) {
+          return ListView(children: <Widget>[header, const SizedBox(height: 120), const Center(child: CircularProgressIndicator())]);
+        }
+        if (snap.hasError) {
+          return ListView(children: <Widget>[header, const SizedBox(height: 80), Center(child: Text('Error: ${snap.error}'))]);
+        }
+        if (groups.isEmpty) {
+          return ListView(children: <Widget>[header, const SizedBox(height: 80), const Center(child: Text('No streams available.'))]);
+        }
+
+        return ListView(
+          padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
+          children: <Widget>[
+            header,
+            for (final _SourceGroup g in groups) ...<Widget>[
+              _SourceHeading(source: g.source, description: sourceSubtitles[g.source]),
+              for (int i = 0; i < g.streams.length; i++)
+                CardSegment(
+                  first: i == 0,
+                  last: i == g.streams.length - 1,
+                  child: _StreamRow(stream: g.streams[i], lastPlayed: g.streams[i].embedUrl == _lastPlayedUrl, onTap: () => _play(g.streams[i])),
+                ),
+            ],
+          ],
+        );
+      },
+    );
+
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(title: const ScreenTitle('Streams')),
-      body: FutureBuilder<List<_SourceGroup>>(
-        future: _future,
-        builder: (BuildContext ctx, AsyncSnapshot<List<_SourceGroup>> snap) {
-          final List<_SourceGroup> groups = snap.data ?? <_SourceGroup>[];
-          // Prefer the site's own match total, so the number matches the row you
-          // tapped. Summing the streams undercounts: sources that return nothing
-          // right now still have viewers in that total.
-          final int? watching =
-              widget.matchItem.viewers ?? (snap.hasData ? groups.expand((_SourceGroup g) => g.streams).fold<int>(0, (int sum, StreamInfo s) => sum + (s.viewers ?? 0)) : null);
-          final Widget header = _MatchHeader(match: widget.matchItem, watching: watching);
-
-          if (snap.connectionState == ConnectionState.waiting) {
-            return ListView(children: <Widget>[header, const SizedBox(height: 120), const Center(child: CircularProgressIndicator())]);
-          }
-          if (snap.hasError) {
-            return ListView(children: <Widget>[header, const SizedBox(height: 80), Center(child: Text('Error: ${snap.error}'))]);
-          }
-          if (groups.isEmpty) {
-            return ListView(children: <Widget>[header, const SizedBox(height: 80), const Center(child: Text('No streams available.'))]);
-          }
-
-          return ListView(
-            padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
-            children: <Widget>[
-              header,
-              for (final _SourceGroup g in groups) ...<Widget>[
-                _SourceHeading(source: g.source, description: sourceSubtitles[g.source]),
-                for (int i = 0; i < g.streams.length; i++)
-                  CardSegment(
-                    first: i == 0,
-                    last: i == g.streams.length - 1,
-                    child: _StreamRow(stream: g.streams[i], lastPlayed: g.streams[i].embedUrl == _lastPlayedUrl, onTap: () => _play(g.streams[i])),
-                  ),
-              ],
-            ],
-          );
-        },
-      ),
+      body: body,
     );
   }
 
@@ -301,6 +307,11 @@ const String _takeoverJs = r'''
   var HLS_SRC = "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js";
   var hls = null;
   var video = null;
+  // Our own pinned hls.js. Where the page's player still runs (WebView2 on
+  // Windows), it has put its own P2P-patched hls.js on window.Hls; built on
+  // that one, fragment timings come out wrong and the live edge lands hours
+  // past the buffer. So never use whatever window.Hls happens to be.
+  var OurHls = null;
   var lastTime = -1;
   var stalledFor = 0;
   // Whether we have told the app to lift its spinner.
@@ -338,6 +349,14 @@ const String _takeoverJs = r'''
     } catch (e) {}
   }
 
+  // On desktop the web view keeps keyboard focus once clicked, so the app
+  // never sees its shortcuts; pass them on.
+  window.addEventListener("keydown", function (e) {
+    if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+    var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (k === "Escape" || k === "m" || k === "f") { e.preventDefault(); post("key:" + k); }
+  }, true);
+
   hidePage();
   // The page can replace its own <head>; keep the blanking in place until we
   // decide what to do.
@@ -357,20 +376,47 @@ const String _takeoverJs = r'''
 
   function loadHls() {
     return new Promise(function (res, rej) {
-      if (typeof Hls !== "undefined") return res();
+      if (OurHls) return res();
       var el = document.createElement("script");
       el.src = HLS_SRC;
-      el.onload = function () { res(); };
+      el.onload = function () { OurHls = window.Hls; res(); };
       el.onerror = function () { rej(new Error("hls.js failed to load")); };
       (document.head || document.documentElement).appendChild(el);
     });
+  }
+
+  function isBuffered(t) {
+    for (var i = 0; i < video.buffered.length; i++) {
+      if (t >= video.buffered.start(i) && t <= video.buffered.end(i)) return true;
+    }
+    return false;
+  }
+
+  // Start of the first buffered stretch after t, or -1.
+  function nextBufferedStart(t) {
+    for (var i = 0; i < video.buffered.length; i++) {
+      if (video.buffered.start(i) > t) return video.buffered.start(i);
+    }
+    return -1;
   }
 
   // These are live feeds, so being anywhere but the live edge is a bug.
   function toLiveEdge() {
     if (!video) return;
     try {
-      if (hls && hls.liveSyncPosition > 0) { video.currentTime = hls.liveSyncPosition; return; }
+      var b = video.buffered;
+      // Some feeds carry timestamps that throw hls.js's live position off (it
+      // has pointed hours past the buffer, or back into stale data), so only
+      // trust it once there is a buffer to check it against.
+      if (hls && hls.liveSyncPosition > 0 && (b.length === 0 || isBuffered(hls.liveSyncPosition))) {
+        video.currentTime = hls.liveSyncPosition;
+        return;
+      }
+      if (b.length) {
+        var last = b.length - 1;
+        video.currentTime = Math.max(b.start(last), b.end(last) - 3);
+        return;
+      }
       if (video.seekable.length) {
         video.currentTime = Math.max(0, video.seekable.end(video.seekable.length - 1) - 1);
       } else if (video.buffered.length) {
@@ -388,7 +434,14 @@ const String _takeoverJs = r'''
     });
   }
 
+  // Where the page's own player did start, it keeps streaming into a detached
+  // video after we replace the page, doubling the download. Shut it down.
+  function stopPagePlayer() {
+    try { if (typeof jwplayer === "function") jwplayer().remove(); } catch (e) {}
+  }
+
   function build(url) {
+    stopPagePlayer();
     document.documentElement.innerHTML =
       "<head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head><body></body>";
     document.body.style.cssText = "margin:0;padding:0;background:#000;overflow:hidden";
@@ -411,14 +464,14 @@ const String _takeoverJs = r'''
     if (hls) { try { hls.destroy(); } catch (e) {} }
     // Not low-latency HLS, and these feeds carry ad discontinuities, so keep a
     // real buffer rather than hugging the edge.
-    hls = new Hls({ liveSyncDurationCount: 3, backBufferLength: 30 });
+    hls = new OurHls({ liveSyncDurationCount: 3, backBufferLength: 30 });
     hls.loadSource(url);
     hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, function () { toLiveEdge(); play(); });
-    hls.on(Hls.Events.ERROR, function (_, d) {
+    hls.on(OurHls.Events.MANIFEST_PARSED, function () { toLiveEdge(); play(); });
+    hls.on(OurHls.Events.ERROR, function (_, d) {
       if (!d.fatal) return;
-      if (d.type === Hls.ErrorTypes.NETWORK_ERROR) { try { hls.startLoad(); } catch (e) {} }
-      else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) { try { hls.recoverMediaError(); } catch (e) {} }
+      if (d.type === OurHls.ErrorTypes.NETWORK_ERROR) { try { hls.startLoad(); } catch (e) {} }
+      else if (d.type === OurHls.ErrorTypes.MEDIA_ERROR) { try { hls.recoverMediaError(); } catch (e) {} }
       else { post("fatal"); }
     });
     lastTime = -1;
@@ -430,7 +483,7 @@ const String _takeoverJs = r'''
   function takeOver(url) {
     window.__appPlayer.url = url;
     loadHls().then(function () {
-      if (typeof Hls === "undefined" || !Hls.isSupported()) return post("unsupported");
+      if (!OurHls || !OurHls.isSupported()) return post("unsupported");
       build(url);
     }, function () { post("hls-load-failed"); });
   }
@@ -441,6 +494,9 @@ const String _takeoverJs = r'''
     if (video.paused) return;
     if (video.currentTime === lastTime) {
       stalledFor += 1;
+      // Stuck at a hole in the buffer with newer data past it: hop over it.
+      var next = nextBufferedStart(video.currentTime);
+      if (stalledFor >= 2 && next >= 0) { stalledFor = 0; video.currentTime = next + 0.1; return; }
       // ~4s without progress: skip whatever we are stuck on and rejoin live.
       if (stalledFor >= 8) { stalledFor = 0; toLiveEdge(); video.play().catch(function () {}); }
     } else {
@@ -522,10 +578,12 @@ class StreamPlayerScreen extends StatefulWidget {
 
 class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBindingObserver {
   late final Uri _allowedUri;
-  late final WebViewController _controller;
+  late final PlayerWebView _web;
 
   bool _inPip = false;
   bool _muted = false;
+  // Desktop only: the window itself is fullscreen (no title bar or taskbar).
+  bool _fullscreen = false;
   // The embed page shows its own broken-player message before we take over,
   // so keep it covered until our player reports back.
   bool _ready = false;
@@ -581,60 +639,16 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
     _allowedUri = Uri.parse(widget.stream.embedUrl);
 
-    // Build controller + allow autoplay on Android
-    const PlatformWebViewControllerCreationParams params = PlatformWebViewControllerCreationParams();
-    final WebViewController controller = WebViewController.fromPlatformCreationParams(params)
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.black)
-      ..addJavaScriptChannel(
-        'AppPlayer',
-        onMessageReceived: (JavaScriptMessage m) {
-          if (!mounted) return;
-          setState(() {
-            // Anything other than success means we cannot do better than
-            // showing the page itself, so stop covering it either way.
-            if (m.message == 'playing' || m.message == 'passthrough') {
-              _ready = true;
-              _failed = false;
-            } else if (m.message == 'muted') {
-              _muted = true;
-            } else if (m.message == 'unmuted') {
-              _muted = false;
-            } else {
-              // no-stream / fatal / unsupported / hls-load-failed
-              _failed = true;
-            }
-          });
-        },
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (String url) {
-            _cover();
-            _inject();
-          },
-          onPageFinished: (String url) => _inject(),
-          onNavigationRequest: (NavigationRequest req) {
-            final Uri dest = Uri.parse(req.url);
-            return _isAllowedDestination(dest) ? NavigationDecision.navigate : NavigationDecision.prevent;
-          },
-          onUrlChange: (UrlChange change) {
-            final String? u = change.url;
-            if (u == null) return;
-            final Uri dest = Uri.parse(u);
-            if (!_isAllowedDestination(dest)) {
-              _controller.loadRequest(_allowedUri);
-            }
-          },
-        ),
-      );
-
-    if (controller.platform is AndroidWebViewController) {
-      final AndroidWebViewController a = controller.platform as AndroidWebViewController;
-      a.setMediaPlaybackRequiresUserGesture(false);
-    }
-
-    _controller = controller..loadRequest(_allowedUri);
+    _web = PlayerWebView(
+      url: _allowedUri,
+      isAllowed: _isAllowedDestination,
+      onMessage: _onPlayerMessage,
+      onPageStarted: () {
+        _cover();
+        _inject();
+      },
+      onPageFinished: _inject,
+    );
 
     // Always light status bar (icons) over black
     SystemChrome.setSystemUIOverlayStyle(
@@ -653,8 +667,60 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     WidgetsBinding.instance.addObserver(this);
   }
 
+  void _onPlayerMessage(String message) {
+    if (!mounted) return;
+    if (message.startsWith('key:')) {
+      _onKey(message.substring(4));
+      return;
+    }
+    setState(() {
+      // Anything other than success means we cannot do better than
+      // showing the page itself, so stop covering it either way.
+      if (message == 'playing' || message == 'passthrough') {
+        _ready = true;
+        _failed = false;
+      } else if (message == 'muted') {
+        _muted = true;
+      } else if (message == 'unmuted') {
+        _muted = false;
+      } else {
+        // no-stream / fatal / unsupported / hls-load-failed
+        _failed = true;
+      }
+    });
+  }
+
+  // Keyboard shortcuts, whether they reach Flutter or come from the page.
+  void _onKey(String key) {
+    switch (key.toLowerCase()) {
+      case 'escape':
+        _escape();
+      case 'm':
+        _toggleMute();
+      case 'f':
+        _setFullscreen(!_fullscreen);
+    }
+  }
+
+  // Esc leaves fullscreen first, then the player.
+  void _escape() {
+    if (_fullscreen) {
+      _setFullscreen(false);
+    } else {
+      Navigator.maybePop(context);
+    }
+  }
+
+  Future<void> _setFullscreen(bool on) async {
+    if (!Platform.isWindows) return;
+    try {
+      await windowManager.setFullScreen(on);
+      if (mounted) setState(() => _fullscreen = on);
+    } catch (_) {}
+  }
+
   void _inject() {
-    _controller.runJavaScript(_takeoverJs).catchError((_) {});
+    _web.runJavaScript(_takeoverJs).catchError((_) {});
   }
 
   void _cover() {
@@ -669,7 +735,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   Future<void> _toggleMute() async {
     const String js = '(function(){var v=document.getElementById("appPlayer");if(!v)return "none";v.muted=!v.muted;if(!v.muted)v.play().catch(function(){});return v.muted?"muted":"unmuted";})();';
     try {
-      final Object res = await _controller.runJavaScriptReturningResult(js);
+      final Object? res = await _web.runJavaScriptReturningResult(js);
       final String r = res.toString().replaceAll('"', '');
       if (mounted && r != 'none') setState(() => _muted = r == 'muted');
     } catch (_) {}
@@ -689,7 +755,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   Future<void> _refresh() async {
     _cover();
     try {
-      await _controller.reload();
+      await _web.reload();
     } catch (_) {}
   }
 
@@ -708,6 +774,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     // Disable auto-PiP when leaving this screen
     _pip.invokeMethod('setAutoPipOnUserLeave', <String, dynamic>{'enabled': false}).catchError((_) {});
     WidgetsBinding.instance.removeObserver(this);
+    // Leaving the player gives the window back its title bar.
+    if (_fullscreen) windowManager.setFullScreen(false).catchError((_) {});
+    _web.dispose();
     super.dispose();
   }
 
@@ -769,16 +838,16 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     ''';
 
     try {
-      final Object res = await _controller.runJavaScriptReturningResult(js);
+      final Object? res = await _web.runJavaScriptReturningResult(js);
       final bool jumped = res == true;
       if (!jumped) {
         // If the page didn't expose seekable ranges, refresh to reattach at live
-        await _controller.reload();
+        await _web.reload();
       }
     } catch (_) {
       // If JS failed (cross-origin restrictions, etc.), just reload
       try {
-        await _controller.reload();
+        await _web.reload();
       } catch (_) {}
     }
   }
@@ -797,91 +866,107 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       }
     }
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.black,
-        systemNavigationBarIconBrightness: Brightness.light,
-      ),
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: SafeArea(
-          top: false,
-          bottom: false,
-          child: Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              const SizedBox.expand(child: _WebViewHolder()),
-              if (_failed)
-                ColoredBox(
-                  color: Colors.black,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Icon(Icons.videocam_off, color: Colors.white54, size: 40),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'This stream is unavailable.',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Try another stream or source.',
-                          style: TextStyle(color: Colors.white54, fontSize: 12),
-                        ),
-                        const SizedBox(height: 16),
-                        TextButton(onPressed: _refresh, child: const Text('Retry')),
-                      ],
-                    ),
-                  ),
-                )
-              else if (!_ready)
-                const ColoredBox(
-                  color: Colors.black,
-                  child: Center(child: CircularProgressIndicator(color: Colors.white)),
-                ),
-            ],
+    // Desktop has no system back button: Esc leaves the player, M mutes and F
+    // goes fullscreen. (The page forwards these too, for when the web view has
+    // keyboard focus.)
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.escape): _escape,
+        const SingleActivator(LogicalKeyboardKey.keyM): _toggleMute,
+        const SingleActivator(LogicalKeyboardKey.keyF): () => _setFullscreen(!_fullscreen),
+      },
+      child: Focus(
+        autofocus: true,
+        child: AnnotatedRegion<SystemUiOverlayStyle>(
+          value: const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+            systemNavigationBarColor: Colors.black,
+            systemNavigationBarIconBrightness: Brightness.light,
           ),
-        ),
-        floatingActionButton: _inPip
-            ? null
-            : SpeedDial(
-                icon: Icons.menu,
-                foregroundColor: Colors.white,
-                backgroundColor: Colors.black,
-                overlayOpacity: 0.0,
-                buttonSize: const Size(40, 40),
-                childrenButtonSize: const Size(40, 40),
-                childPadding: const EdgeInsets.all(0),
-                spaceBetweenChildren: 5,
-                children: [
-                  SpeedDialChild(
-                    shape: const CircleBorder(),
-                    child: Center(
-                      child: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white, size: 18),
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: SafeArea(
+              top: false,
+              bottom: false,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  const SizedBox.expand(child: _WebViewHolder()),
+                  if (_failed)
+                    ColoredBox(
+                      color: Colors.black,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            const Icon(Icons.videocam_off, color: Colors.white54, size: 40),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'This stream is unavailable.',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Try another stream or source.',
+                              style: TextStyle(color: Colors.white54, fontSize: 12),
+                            ),
+                            const SizedBox(height: 16),
+                            TextButton(onPressed: _refresh, child: const Text('Retry')),
+                          ],
+                        ),
+                      ),
+                    )
+                  else if (!_ready)
+                    const ColoredBox(
+                      color: Colors.black,
+                      child: Center(child: CircularProgressIndicator(color: Colors.white)),
                     ),
-                    backgroundColor: Colors.black,
-                    onTap: _toggleMute,
-                  ),
-                  SpeedDialChild(
-                    shape: const CircleBorder(),
-                    child: const Center(child: Icon(Icons.picture_in_picture, color: Colors.white, size: 15)),
-                    backgroundColor: Colors.black,
-                    onTap: _enterPip,
-                  ),
-                  SpeedDialChild(
-                    shape: const CircleBorder(),
-                    child: const Center(child: Icon(Icons.refresh, color: Colors.white, size: 18)),
-                    backgroundColor: Colors.black,
-                    onTap: () async {
-                      await _refresh();
-                    },
-                  ),
                 ],
               ),
+            ),
+            // Nothing over the picture in PiP or fullscreen.
+            floatingActionButton: (_inPip || _fullscreen)
+                ? null
+                : SpeedDial(
+                    icon: Icons.menu,
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.black,
+                    overlayOpacity: 0.0,
+                    buttonSize: const Size(40, 40),
+                    childrenButtonSize: const Size(40, 40),
+                    childPadding: const EdgeInsets.all(0),
+                    spaceBetweenChildren: 5,
+                    children: [
+                      SpeedDialChild(
+                        shape: const CircleBorder(),
+                        child: Center(
+                          child: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white, size: 18),
+                        ),
+                        backgroundColor: Colors.black,
+                        onTap: _toggleMute,
+                      ),
+                      // Picture-in-picture is Android's; a desktop window can just be resized.
+                      if (Platform.isAndroid)
+                        SpeedDialChild(
+                          shape: const CircleBorder(),
+                          child: const Center(child: Icon(Icons.picture_in_picture, color: Colors.white, size: 15)),
+                          backgroundColor: Colors.black,
+                          onTap: _enterPip,
+                        ),
+                      SpeedDialChild(
+                        shape: const CircleBorder(),
+                        child: const Center(child: Icon(Icons.refresh, color: Colors.white, size: 18)),
+                        backgroundColor: Colors.black,
+                        onTap: () async {
+                          await _refresh();
+                        },
+                      ),
+                    ],
+                  ),
+          ),
+        ),
       ),
     );
   }
@@ -896,7 +981,7 @@ class _WebViewHolder extends StatelessWidget {
     // This widget is intentionally empty; the actual WebView is inserted by the parent state.
     // But WebViewWidget must still be in the tree, so we find the state's controller via context.
     final _StreamPlayerScreenState? s = context.findAncestorStateOfType<_StreamPlayerScreenState>();
-    return s == null ? const SizedBox.shrink() : WebViewWidget(controller: s._controller);
+    return s == null ? const SizedBox.shrink() : s._web.build(context);
   }
 }
 
