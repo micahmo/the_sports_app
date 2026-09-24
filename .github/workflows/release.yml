@@ -1,7 +1,7 @@
-name: Flutter Android APK Release
+name: Flutter Release (Android + Windows)
 
 concurrency:
-  group: flutter-android-apk-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -23,11 +23,28 @@ on:
         default: ''
 
 jobs:
+  # The release number. This file was flutter-android-apk.yml until v1.0.63, and
+  # GitHub counts run_number per workflow file, so renaming it restarted the
+  # count at 1. The offset carries on from there. BUILD_NUMBER is also Android's
+  # versionCode, which must never go down or updates won't install.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.v.outputs.build }}
+      name: ${{ steps.v.outputs.name }}
+    steps:
+      - id: v
+        run: |
+          build=$(( ${{ github.run_number }} + 63 ))
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "name=1.0.$build" >> "$GITHUB_OUTPUT"
+
   build-apk:
+    needs: version
     runs-on: ubuntu-latest
     env:
-      VERSION_NAME: 1.0.${{ github.run_number }}
-      FLUTTER_VERSION: '3.35.6'
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build }}
 
     steps:
       - name: Checkout
@@ -42,6 +59,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # .fvmrc pins the Flutter version for local builds too; read it so the two
+      # cannot drift apart.
+      - name: Read Flutter version from .fvmrc
+        run: echo "FLUTTER_VERSION=$(jq -r .flutter .fvmrc)" >> "$GITHUB_ENV"
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -55,7 +77,7 @@ jobs:
         shell: bash
         run: |
           ver="${{ env.VERSION_NAME }}"
-          build="${{ github.run_number }}"
+          build="${{ env.BUILD_NUMBER }}"
           sed -i "s/^version: .*/version: ${ver}+${build}/" pubspec.yaml
           echo "pubspec version set to ${ver}+${build}"
 
@@ -93,6 +115,74 @@ jobs:
           name: android-apk
           path: artifacts/sports-${{ env.VERSION_NAME }}.apk
 
+  # A portable build: unzip anywhere and run sports.exe. Flutter's Windows
+  # output is the exe plus DLLs and a data folder, not a single file; nothing
+  # needs installing except what Windows 10/11 already has (WebView2), and the
+  # Visual C++ runtime DLLs are copied in so it runs on PCs without them.
+  build-windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read Flutter version from .fvmrc
+        shell: bash
+        run: echo "FLUTTER_VERSION=$(jq -r .flutter .fvmrc)" >> "$GITHUB_ENV"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Set version in pubspec.yaml
+        shell: bash
+        run: |
+          sed -i "s/^version: .*/version: ${{ env.VERSION_NAME }}+${{ env.BUILD_NUMBER }}/" pubspec.yaml
+
+      - name: Build Windows (release)
+        run: flutter build windows --release
+
+      - name: Bundle the Visual C++ runtime
+        shell: pwsh
+        run: |
+          foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            Copy-Item "$env:WINDIR/System32/$dll" build/windows/x64/runner/Release/
+          }
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "artifacts/sports-windows-x64-${{ env.VERSION_NAME }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: artifacts/sports-windows-x64-${{ env.VERSION_NAME }}.zip
+
+  release:
+    needs: [version, build-apk, build-windows]
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
       # --- Changelog (git log since last tag, or manual notes) ---
       - name: Generate changelog
         id: changelog
@@ -115,11 +205,11 @@ jobs:
             fi
           fi
 
-      - name: Download artifact (for release upload)
+      - name: Download the builds
         uses: actions/download-artifact@v4
         with:
-          name: android-apk
           path: artifacts
+          merge-multiple: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -127,7 +217,9 @@ jobs:
           tag_name: v${{ env.VERSION_NAME }}
           name: v${{ env.VERSION_NAME }}
           body: ${{ steps.changelog.outputs.changelog }}
-          files: artifacts/sports-${{ env.VERSION_NAME }}.apk
+          files: |
+            artifacts/sports-${{ env.VERSION_NAME }}.apk
+            artifacts/sports-windows-x64-${{ env.VERSION_NAME }}.zip
           fail_on_unmatched_files: true
           prerelease: ${{ inputs.prerelease }}
         env:
