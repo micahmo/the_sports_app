@@ -47,7 +47,6 @@ The Sports App is a wrapper around the [streamed.pk API](https://streamed.pk/doc
 
 ## Known Issues
 
-- **Multiple Taps to Start Stream** - Sometimes you may need to tap the video player multiple times to start playback
 - **Stream Interruption** - Occasionally streams may stop playing and require manual restart
 - **Live Status Limitation** - The "live" status indicator is based on the scheduled event start time. The streamed.pk API does not provide a real-time "live" flag, so this may not always reflect the actual streaming status
 
