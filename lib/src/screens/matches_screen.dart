@@ -223,7 +223,8 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
 
     bool matchesQuery(ApiMatch m) {
       final String title = m.title.toLowerCase();
-      final String category = (m.category).toLowerCase();
+      // The name as shown, so "soccer" finds soccer and "football" doesn't.
+      final String category = (sportsNames[m.category] ?? m.category).toLowerCase();
       final String home = (m.teams?.home?.name ?? '').toLowerCase();
       final String away = (m.teams?.away?.name ?? '').toLowerCase();
       return title.contains(q) || category.contains(q) || home.contains(q) || away.contains(q);

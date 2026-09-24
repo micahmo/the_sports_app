@@ -1,8 +1,16 @@
+/// Sport names as North Americans say them. Only the names change: the ids,
+/// which requests and icons use, stay as the API has them. (The Roku app has
+/// the same list in common.brs.)
+const Map<String, String> _renamedSports = <String, String>{'football': 'Soccer', 'american-football': 'Football'};
+
 class Sport {
   final String id;
   final String name;
   Sport({required this.id, required this.name});
-  factory Sport.fromJson(Map<String, dynamic> j) => Sport(id: j['id'] as String, name: j['name'] as String);
+  factory Sport.fromJson(Map<String, dynamic> j) {
+    final String id = j['id'] as String;
+    return Sport(id: id, name: _renamedSports[id] ?? j['name'] as String);
+  }
 }
 
 class TeamInfo {
