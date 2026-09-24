@@ -31,6 +31,10 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
+# webview_windows and permission_handler_windows compile with /await, which
+# newer MSVC (14.51+, on GitHub's runners) rejects outright. Microsoft's own
+# error message names this define as the way to keep building for now.
+add_definitions(-D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
 
 # Compilation settings that should be applied to most targets.
 #
