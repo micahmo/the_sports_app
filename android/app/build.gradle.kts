@@ -2,7 +2,6 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -15,10 +14,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     signingConfigs {
@@ -55,6 +50,11 @@ android {
         }
     }
 
+    // The flavors set app_name with resValue, which AGP 9 turns off by default.
+    buildFeatures {
+        resValues = true
+    }
+
     flavorDimensions += "default"
 
     productFlavors {
@@ -68,6 +68,12 @@ android {
             applicationIdSuffix = ".dev"
             resValue("string", "app_name", "Sports (Dev)")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
