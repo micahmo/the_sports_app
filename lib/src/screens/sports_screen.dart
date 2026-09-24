@@ -5,6 +5,7 @@ import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
+import '../widgets/refresh_on_resume.dart';
 import 'matches_screen.dart';
 import 'settings_screen.dart';
 import 'streams_screen.dart';
@@ -27,7 +28,7 @@ class _HomeData {
   final List<ApiMatch> top;
 }
 
-class _SportsScreenState extends State<SportsScreen> {
+class _SportsScreenState extends State<SportsScreen> with RefreshOnResume {
   final StreamedApi _api = StreamedApi();
   late Future<_HomeData> _future;
 
@@ -61,6 +62,9 @@ class _SportsScreenState extends State<SportsScreen> {
 
     return _HomeData(sports: sports, liveByCategory: byCategory, liveTotal: live?.length, top: top.take(3).toList());
   }
+
+  @override
+  void onResumeRefresh() => _refresh();
 
   Future<void> _refresh() async {
     setState(() => _future = _load());

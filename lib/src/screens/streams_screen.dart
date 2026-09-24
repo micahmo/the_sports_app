@@ -10,6 +10,7 @@ import '../api/streamed_api.dart';
 import '../player/player_webview.dart';
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
+import '../widgets/refresh_on_resume.dart';
 import 'sports_screen.dart' show sportsNames;
 
 const MethodChannel _nowPlaying = MethodChannel('nowplaying');
@@ -25,7 +26,7 @@ class StreamsScreen extends StatefulWidget {
   State<StreamsScreen> createState() => _StreamsScreenState();
 }
 
-class _StreamsScreenState extends State<StreamsScreen> {
+class _StreamsScreenState extends State<StreamsScreen> with RefreshOnResume {
   final StreamedApi _api = StreamedApi();
   late Future<List<_SourceGroup>> _future;
 
@@ -44,6 +45,9 @@ class _StreamsScreenState extends State<StreamsScreen> {
       await _showNowPlaying();
     });
   }
+
+  @override
+  void onResumeRefresh() => setState(() => _future = _loadAllStreams());
 
   Future<List<_SourceGroup>> _loadAllStreams() async {
     // Best sources first, the way the website presents them. List.sort is not

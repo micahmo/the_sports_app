@@ -5,6 +5,7 @@ import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
+import '../widgets/refresh_on_resume.dart';
 import 'streams_screen.dart';
 
 class MatchesScreen extends StatefulWidget {
@@ -26,7 +27,7 @@ class MatchesScreen extends StatefulWidget {
 // Width of the list when it sits beside the chosen match's streams.
 const double _kListWidth = 460;
 
-class _MatchesScreenState extends State<MatchesScreen> {
+class _MatchesScreenState extends State<MatchesScreen> with RefreshOnResume {
   final StreamedApi _api = StreamedApi();
 
   // Side-by-side layout only: the match whose streams are showing, and the
@@ -124,6 +125,9 @@ class _MatchesScreenState extends State<MatchesScreen> {
   }
 
   /// Normal refresh (awaits completion). Good for the AppBar button.
+  @override
+  void onResumeRefresh() => _refreshMatchesQuiet();
+
   Future<void> _refreshMatches() async {
     // reassign the future to trigger FutureBuilder
     setState(() {
