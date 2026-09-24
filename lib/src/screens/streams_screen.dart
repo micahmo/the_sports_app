@@ -584,6 +584,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   bool _muted = false;
   // Desktop only: the window itself is fullscreen (no title bar or taskbar).
   bool _fullscreen = false;
+  // Whether the window was maximized before going fullscreen, to put it back.
+  bool _wasMaximized = false;
   // The embed page shows its own broken-player message before we take over,
   // so keep it covered until our player reports back.
   bool _ready = false;
@@ -714,9 +716,23 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   Future<void> _setFullscreen(bool on) async {
     if (!Platform.isWindows) return;
     try {
-      await windowManager.setFullScreen(on);
+      if (on) {
+        // window_manager leaves the title bar (and the taskbar) in place when
+        // the window starts out maximized, so go from a normal window instead.
+        _wasMaximized = await windowManager.isMaximized();
+        if (_wasMaximized) await windowManager.unmaximize();
+        await windowManager.setFullScreen(true);
+      } else {
+        await _leaveFullscreen();
+      }
       if (mounted) setState(() => _fullscreen = on);
     } catch (_) {}
+  }
+
+  Future<void> _leaveFullscreen() async {
+    await windowManager.setFullScreen(false);
+    if (_wasMaximized) await windowManager.maximize();
+    _wasMaximized = false;
   }
 
   void _inject() {
@@ -775,7 +791,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _pip.invokeMethod('setAutoPipOnUserLeave', <String, dynamic>{'enabled': false}).catchError((_) {});
     WidgetsBinding.instance.removeObserver(this);
     // Leaving the player gives the window back its title bar.
-    if (_fullscreen) windowManager.setFullScreen(false).catchError((_) {});
+    if (_fullscreen) _leaveFullscreen().catchError((_) {});
     _web.dispose();
     super.dispose();
   }
