@@ -363,12 +363,13 @@ const String _takeoverJs = r'''
   var stalledFor = 0;
   // When the video last played on (or was paused on purpose); see watch().
   var lastProgressAt = Date.now();
-  // For measure(): the last few segments' sizes and lengths, the frame count
-  // at the start of the current window, and the last report sent.
+  // For measure(): the last few segments' sizes and lengths, and the frame
+  // count at the start of the current window.
   var fragStats = [];
   var frames0 = null;
   var fpsMax = 0;
-  var lastReport = "";
+  // The stream's own frame rate, from the frames in each segment (see build()).
+  var streamFps = 0;
   // Whether we have told the app to lift its spinner.
   var announced = false;
   var waitingFor = 0;
@@ -530,6 +531,15 @@ const String _takeoverJs = r'''
     fragStats = [];
     frames0 = null;
     fpsMax = 0;
+    streamFps = 0;
+    // Frames in a segment over its length: the stream's real frame rate, however
+    // fast this device decodes (a slow one drops frames and would read low).
+    hls.on(OurHls.Events.FRAG_PARSING_DATA, function (_, d) {
+      try {
+        var secs = d.endDTS - d.startDTS;
+        if (d.type === "video" && d.nb > 0 && secs > 0) streamFps = d.nb / secs;
+      } catch (e) {}
+    });
     hls.on(OurHls.Events.FRAG_LOADED, function (_, d) {
       try {
         var bytes = (d.payload && d.payload.byteLength) || (d.frag.stats && d.frag.stats.loaded) || 0;
@@ -561,9 +571,9 @@ const String _takeoverJs = r'''
   }
 
   // What's actually playing, for the app to show and remember: resolution from
-  // the video, frame rate from the frames it decodes (over ~4s of playback),
-  // bitrate from the recent segments' sizes over their lengths. Nothing extra
-  // is downloaded.
+  // the video, frame rate from the stream's segments (or, failing that, the
+  // frames it decodes over ~4s of playback), bitrate from the recent segments'
+  // sizes over their lengths. Nothing extra is downloaded.
   function measure() {
     if (!video || video.paused || !video.videoHeight || !video.getVideoPlaybackQuality) return;
     // Only while it's actually playing on; a stall would read as a low frame rate.
@@ -576,15 +586,15 @@ const String _takeoverJs = r'''
     // the stream's frame rate is the highest seen.
     fpsMax = Math.max(fpsMax, (n - frames0.n) * 1000 / (t - frames0.t));
     frames0 = { n: n, t: t };
-    var fps = fpsMax;
+    var fps = streamFps > 0 ? streamFps : fpsMax;
     var best = Math.round(fps);
     var std = [24, 25, 30, 50, 60];
     for (var i = 0; i < std.length; i++) if (Math.abs(fps - std[i]) / std[i] < 0.1) best = std[i];
     var bytes = 0, secs = 0;
     for (var j = 0; j < fragStats.length; j++) { bytes += fragStats[j][0]; secs += fragStats[j][1]; }
     if (!secs) return;
-    var report = JSON.stringify({ h: video.videoHeight, fps: best, mbps: Math.round(bytes * 8 / secs / 1e5) / 10 });
-    if (report !== lastReport) { lastReport = report; post("quality:" + report); }
+    // Every window, changed or not: the app averages the bitrate over them.
+    post("quality:" + JSON.stringify({ h: video.videoHeight, fps: best, mbps: Math.round(bytes * 8 / secs / 1e5) / 10 }));
   }
 
   function watch() {
@@ -719,8 +729,13 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // that never started.
   // What's playing (from the page), for the title bar.
   StreamQuality? _quality;
-  // The best this viewing has reached, which is what the streams list keeps.
-  StreamQuality? _bestQuality;
+  // What the streams list keeps: the best resolution and frame rate this
+  // viewing reached, with the average bitrate while at it (see _onQuality).
+  int _bestHeight = 0;
+  int _bestFps = 0;
+  double _mbpsSum = 0;
+  int _mbpsCount = 0;
+  DateTime? _savedAt;
   // The title bar shows while the menu is open.
   bool _menuOpen = false;
 
@@ -816,19 +831,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       try {
         final Map<String, dynamic> j = jsonDecode(message.substring(8)) as Map<String, dynamic>;
         final StreamQuality q = StreamQuality(height: j['h'] as int, fps: j['fps'] as int, mbps: (j['mbps'] as num).toDouble());
-        if (q != _quality) {
-          setState(() => _quality = q);
-          // The list keeps the best this viewing reached: an adaptive player
-          // climbs as it measures the connection, and a dip just before
-          // leaving shouldn't stick. At the same resolution and frame rate the
-          // bitrate stays current. Each viewing starts afresh, in case the site
-          // swaps the feed behind a stream.
-          final StreamQuality? best = _bestQuality;
-          if (best == null || q.height > best.height || (q.height == best.height && q.fps >= best.fps)) {
-            _bestQuality = q;
-            q.save(widget.stream.embedUrl);
-          }
-        }
+        if (q != _quality) setState(() => _quality = q);
+        _onQuality(q);
       } catch (_) {}
       return;
     }
@@ -864,6 +868,33 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         _failed = true;
       }
     });
+  }
+
+  // The list keeps the best resolution and frame rate this viewing reached (an
+  // adaptive player climbs as it measures the connection, and a dip just before
+  // leaving shouldn't stick), with the average bitrate while at that level: the
+  // stream's typical rate, not whatever the last few seconds happened to be.
+  // Each viewing starts afresh, in case the site swaps the feed behind a stream.
+  void _onQuality(StreamQuality q) {
+    final bool better = q.height > _bestHeight || (q.height == _bestHeight && q.fps > _bestFps);
+    if (better) {
+      _bestHeight = q.height;
+      _bestFps = q.fps;
+      _mbpsSum = 0;
+      _mbpsCount = 0;
+    }
+    if (q.height != _bestHeight || q.fps != _bestFps) return;
+    _mbpsSum += q.mbps;
+    _mbpsCount++;
+    // Readings come every few seconds; save when the level changes and every
+    // half minute, and once more on leaving (dispose).
+    if (better || _savedAt == null || DateTime.now().difference(_savedAt!) > const Duration(seconds: 30)) _saveQuality();
+  }
+
+  void _saveQuality() {
+    if (_mbpsCount == 0) return;
+    _savedAt = DateTime.now();
+    StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10).save(widget.stream.embedUrl);
   }
 
   void _heal() {
@@ -1006,6 +1037,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _pip.invokeMethod('setAutoPipOnUserLeave', <String, dynamic>{'enabled': false}).catchError((_) {});
     WidgetsBinding.instance.removeObserver(this);
     _healTimer?.cancel();
+    _saveQuality();
     // Leaving the player gives the window back its title bar.
     if (_fullscreen) _leaveFullscreen().catchError((_) {});
     _web.dispose();
