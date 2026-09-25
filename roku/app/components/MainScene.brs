@@ -31,6 +31,36 @@ sub init()
 
     ' First run: find the browser server on the LAN without being asked.
     if getDriver() = "" then startDiscovery()
+
+    if appVersion() <> "" then
+        checkForUpdate()
+        m.updateTimer = m.top.findNode("updateTimer")
+        m.updateTimer.observeField("fire", "checkForUpdate")
+        m.updateTimer.control = "start"
+    end if
+end sub
+
+' A newer release? Home and Settings say so; installing it is up to the user.
+sub checkForUpdate()
+    if m.top.updateStatus <> "done" then m.top.updateStatus = "checking"
+    m.updateCheck = CreateObject("roSGNode", "ApiTask")
+    m.updateCheck.requests = {latest: "https://api.github.com/repos/micahmo/the_sports_app/releases/latest"}
+    m.updateCheck.observeField("results", "onUpdateChecked")
+    m.updateCheck.control = "run"
+end sub
+
+sub onUpdateChecked()
+    json = ParseJson(m.updateCheck.results.latest)
+    m.updateCheck = invalid
+    if json = invalid or json.tag_name = invalid then
+        ' Keep an answer from an earlier check rather than forget it.
+        if m.top.updateStatus <> "done" then m.top.updateStatus = "failed"
+        return
+    end if
+    latest = json.tag_name
+    if Left(latest, 1) = "v" then latest = Mid(latest, 2)
+    if isNewerVersion(latest, appVersion()) then m.top.newVersion = latest else m.top.newVersion = ""
+    m.top.updateStatus = "done"
 end sub
 
 sub startDiscovery()

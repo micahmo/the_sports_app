@@ -220,6 +220,8 @@ the others or is added here as a deliberate gap.
 | Picture-in-picture, now-playing notification | yes | no | no |
 | Fullscreen, keyboard shortcuts, remembered window | no | yes | no |
 | Light and dark themes | yes | yes | dark only |
+| Version in Settings | yes | yes | yes |
+| Updates | through Obtainium | checks at every start, installs itself and restarts | checks at start and hourly, says one is available; installing is up to the user |
 | Asks before exiting on Back | no | no | yes: TV convention |
 | Needs the Chrome stream server | no | no | yes (see Roku) |
 | `golf` streams | don't play | don't play | don't play |

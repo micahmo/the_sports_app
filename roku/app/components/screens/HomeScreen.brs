@@ -13,6 +13,7 @@ sub init()
     m.top.observeField("focusedChild", "onFocusChanged")
     m.scene = m.top.getScene()
     m.scene.observeField("driverStatus", "onDriverStatus")
+    m.scene.observeField("newVersion", "onDriverStatus")
     showLoading()
     load()
 end sub
@@ -54,6 +55,7 @@ function driverNote() as String
     st = m.scene.driverStatus
     if st = "searching" then return "Looking for the stream server..."
     if st = "missing" then return "No stream server found"
+    if m.scene.newVersion <> "" then return "Update available"
     return ""
 end function
 

@@ -27,7 +27,38 @@ sub init()
     end for
     m.focus = 0
     m.top.observeField("focusedChild", "onFocusChanged")
+
+    mkLabel(m.page, "APP", condensed("SemiBold", 30), t.textDim, x0 + 4, 552, 800, 40)
+    mkCard(m.page, x0, 600, W, 170, t.card)
+    ' Two lines, centred in a card as tall as the stream server's.
+    m.version = mkLabel(m.page, "", condensed("SemiBold", 44), t.text, x0 + 32, 633, W - 64, 60)
+    m.versionNote = mkLabel(m.page, "", bodyFont(28), t.textDim, x0 + 32, 695, W - 64, 44)
+    m.top.getScene().observeField("newVersion", "showVersion")
+    m.top.getScene().observeField("updateStatus", "showVersion")
+    showVersion()
     refresh()
+end sub
+
+' This build, and whether a newer one is out.
+sub showVersion()
+    current = appVersion()
+    latest = m.top.getScene().newVersion
+    status = m.top.getScene().updateStatus
+    if current = "" then
+        m.version.text = "Development build"
+        m.versionNote.text = "Doesn't check for updates."
+        return
+    end if
+    m.version.text = "Version " + current
+    if latest <> "" then
+        m.versionNote.text = "Version " + latest + " is available."
+    else if status = "done" then
+        m.versionNote.text = "This is the latest version."
+    else if status = "failed" then
+        m.versionNote.text = "Couldn't check for updates."
+    else
+        m.versionNote.text = "Checking for updates..."
+    end if
 end sub
 
 sub onFocusChanged()

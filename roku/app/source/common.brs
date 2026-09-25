@@ -322,3 +322,23 @@ sub setDriver(url as String)
     s.Write("driver", url)
     s.Flush()
 end sub
+
+' This build's version, e.g. "1.0.80" (the release workflow stamps the
+' manifest); "" for a local build, whose manifest says 0.x.
+function appVersion() as String
+    v = CreateObject("roAppInfo").GetVersion()
+    if Left(v, 2) = "0." then return ""
+    return v
+end function
+
+' Whether version a (e.g. "1.0.81") is newer than b, comparing the numbers.
+function isNewerVersion(a as String, b as String) as Boolean
+    x = a.Split(".")
+    y = b.Split(".")
+    n = x.Count()
+    if y.Count() < n then n = y.Count()
+    for i = 0 to n - 1
+        if x[i].ToInt() <> y[i].ToInt() then return x[i].ToInt() > y[i].ToInt()
+    end for
+    return x.Count() > y.Count()
+end function

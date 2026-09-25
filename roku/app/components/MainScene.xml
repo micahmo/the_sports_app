@@ -5,6 +5,10 @@
   <interface>
     <field id="driverStatus" type="string" />
     <field id="exitApp" type="boolean" alwaysNotify="true" />
+    <!-- A newer release on GitHub, e.g. "1.0.81"; "" when this is the latest. -->
+    <field id="newVersion" type="string" />
+    <!-- "checking", "failed" or "done"; "" for a local build, which doesn't check. -->
+    <field id="updateStatus" type="string" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/common.brs" />
   <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
@@ -12,5 +16,7 @@
   <children>
     <!-- Keeps what's showing current; see onFreshTimer. -->
     <Timer id="freshTimer" duration="60" repeat="true" />
+    <!-- The app tends to stay open on the TV, so look for a release hourly too. -->
+    <Timer id="updateTimer" duration="3600" repeat="true" />
   </children>
 </component>
