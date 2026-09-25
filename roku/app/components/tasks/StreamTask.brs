@@ -19,6 +19,12 @@ sub work()
     ' For measure(): segment lengths from the playlists, recent bitrates, and
     ' what the first segments showed.
     m.segDur = {}
+    ' Segment downloads (see "segments" below): by URL, which transfer belongs to
+    ' which URL, what's already been served, and a counter for file names.
+    m.dl = {}
+    m.xferOf = {}
+    m.served = {}
+    m.fileSeq = 0
     m.bitrates = []
     m.measured = 0
     m.height = 0
@@ -202,6 +208,7 @@ function playlist(url as String) as Dynamic
     ' Each segment's length (its #EXTINF), for measure().
     if m.segDur.Count() > 100 then m.segDur = {}
     dur = 0
+    segs = []
     for each line in text.Split(Chr(10))
         line = line.Trim()
         if Left(line, 8) = "#EXTINF:" then dur = Val(Mid(line, 9))
@@ -212,10 +219,12 @@ function playlist(url as String) as Dynamic
             else
                 line = "/seg?u=" + esc.Escape(target)
                 m.segDur[target] = dur
+                segs.Push(target)
             end if
         end if
         out.Push(line)
     end for
+    prefetch(segs)
     return out.Join(Chr(10)) + Chr(10)
 end function
 
@@ -267,16 +276,173 @@ end function
 
 ' ---- segments ---------------------------------------------------------------
 
-' A segment from TikTok's CDN minus its fake WebP header: plain MPEG-TS.
-function segment(u as String) as Dynamic
+' Segments download in the background, so the proxy can serve other requests
+' meanwhile. The newest few start as soon as a playlist lists them, before the
+' player asks: a live stream plays near its newest segment, so the player holds
+' only a segment or two, and one slow download (the 1080p sources' servers
+' sometimes take ~11 s over a 6 s segment) was enough to run it dry. A download
+' that takes longer than 4 s gets a second copy running alongside, and whichever
+' finishes first is served: those slow downloads look like a request stuck on
+' the server, not a slow network.
+
+' The newest few of a playlist's segments: start any not already downloading.
+sub prefetch(segs as Object)
+    first = segs.Count() - 3
+    if first < 0 then first = 0
+    for i = first to segs.Count() - 1
+        u = segs[i]
+        if m.dl[u] = invalid and m.served[u] = invalid then startDownload(u)
+    end for
+end sub
+
+function startDownload(u as String) as Object
+    ' asked: when the player asked, if it had to wait; active: copies running.
+    d = {url: u, xfers: [], started: CreateObject("roTimespan"), done: false, file: "", took: 0, waiters: [], asked: invalid, hedged: false, active: 0, retries: 0}
+    m.dl[u] = d
+    addTransfer(d)
+    return d
+end function
+
+' Another copy of a segment's download, into its own file.
+sub addTransfer(d as Object)
+    m.fileSeq = m.fileSeq + 1
+    path = "tmp:/seg" + m.fileSeq.ToStr() + ".bin"
     x = CreateObject("roUrlTransfer")
-    x.SetUrl(u)
+    x.SetUrl(d.url)
     x.SetCertificatesFile("common:/certs/ca-bundle.crt")
     x.InitClientCertificates()
-    if x.GetToFile("tmp:/seg.bin") <> 200 then return invalid
-    size = CreateObject("roFileSystem").Stat("tmp:/seg.bin").size
+    x.SetMessagePort(m.port)
+    if x.AsyncGetToFile(path) then
+        id = x.GetIdentity().ToStr()
+        d.xfers.Push({x: x, path: path, id: id})
+        d.active = d.active + 1
+        m.xferOf[id] = d.url
+    end if
+end sub
+
+' A download finished (or failed).
+sub onDownload(ev as Object)
+    if ev.GetInt() <> 1 then return
+    id = ev.GetSourceIdentity().ToStr()
+    u = m.xferOf[id]
+    if u = invalid then return
+    m.xferOf.Delete(id)
+    d = m.dl[u]
+    if d <> invalid then d.active = d.active - 1
+    mine = invalid
+    if d <> invalid then
+        for each t in d.xfers
+            if t.id = id then mine = t
+        end for
+    end if
+    if mine = invalid then return
+    if d.done then
+        ' The other copy won.
+        DeleteFile(mine.path)
+        return
+    end if
+    if ev.GetResponseCode() = 200 then
+        d.done = true
+        d.file = mine.path
+        d.took = d.started.TotalMilliseconds()
+        for each t in d.xfers
+            if t.id <> id then
+                t.x.AsyncCancel()
+                m.xferOf.Delete(t.id)
+                DeleteFile(t.path)
+            end if
+        end for
+        if d.hedged then
+            which = "first"
+            if mine.id <> d.xfers[0].id then which = "second"
+            print "[stream] segment: the "; which; " copy won"
+        end if
+        if d.waiters.Count() > 0 then serveSegment(u)
+        return
+    end if
+    DeleteFile(mine.path)
+    if d.active > 0 then return   ' another copy is still going
+    if d.retries < 2 then
+        d.retries = d.retries + 1
+        addTransfer(d)
+        return
+    end if
+    print "[stream] segment FAILED after "; d.started.TotalMilliseconds(); " ms"
+    for each sock in d.waiters
+        respond(sock, "502 Bad Gateway", "text/plain", invalid)
+        sock.Close()
+    end for
+    m.dl.Delete(u)
+end sub
+
+' Send a downloaded segment to whoever asked for it, then forget it.
+sub serveSegment(u as String)
+    d = m.dl[u]
+    ba = strippedSegment(d.file)
+    for each sock in d.waiters
+        if ba = invalid then
+            respond(sock, "502 Bad Gateway", "text/plain", invalid)
+        else
+            respond(sock, "200 OK", "video/mp2t", ba)
+        end if
+        sock.Close()
+    end for
+    if ba = invalid then
+        print "[stream] segment FAILED (not MPEG-TS)"
+    else
+        ' How long the download took, and whether it was ready when the player
+        ' asked (prefetched) or the player waited for it.
+        how = "ready"
+        if d.asked <> invalid then how = "waited " + d.asked.TotalMilliseconds().ToStr() + " ms"
+        print "[stream] segment  "; ba.Count(); " bytes  "; d.took; " ms ("; how; ")"
+        measure(u, ba)
+    end if
+    DeleteFile(d.file)
+    m.dl.Delete(u)
+    m.served[u] = true
+    if m.served.Count() > 60 then m.served = {}
+end sub
+
+' The player asked for a segment: serve it now if it's here, else when it is.
+' True if the request was answered (so the connection can close).
+function askSegment(sock as Object, u as String) as Boolean
+    d = m.dl[u]
+    if d = invalid then d = startDownload(u)
+    if d.done then
+        d.waiters = [sock]
+        serveSegment(u)
+        return true
+    end if
+    d.asked = CreateObject("roTimespan")
+    d.waiters.Push(sock)
+    return false
+end function
+
+' Every half second: second copies for slow downloads, and cleanup.
+sub tick()
+    stale = []
+    for each u in m.dl
+        d = m.dl[u]
+        if not d.done and not d.hedged and d.started.TotalMilliseconds() > 4000 then
+            d.hedged = true
+            print "[stream] segment slow after "; d.started.TotalMilliseconds(); " ms: starting a second copy"
+            addTransfer(d)
+        end if
+        ' Prefetched but never asked for (the player moved on): drop it.
+        if d.done and d.waiters.Count() = 0 and d.started.TotalSeconds() > 90 then stale.Push(u)
+    end for
+    for each u in stale
+        DeleteFile(m.dl[u].file)
+        m.dl.Delete(u)
+    end for
+end sub
+
+' A downloaded segment minus its fake WebP header: plain MPEG-TS.
+function strippedSegment(path as String) as Dynamic
+    size = CreateObject("roFileSystem").Stat(path).size
+    if size = invalid then return invalid
     head = CreateObject("roByteArray")
-    head.ReadFile("tmp:/seg.bin", 0, 2048)
+    head.ReadFile(path, 0, 2048)
     off = -1
     for i = 0 to head.Count() - 377
         if head[i] = &h47 and head[i + 188] = &h47 and head[i + 376] = &h47 then
@@ -286,9 +452,23 @@ function segment(u as String) as Dynamic
     end for
     if off < 0 then return invalid
     ba = CreateObject("roByteArray")
-    ba.ReadFile("tmp:/seg.bin", off, size - off)
+    ba.ReadFile(path, off, size - off)
     return ba
 end function
+
+sub cancelDownloads()
+    for each u in m.dl
+        for each t in m.dl[u].xfers
+            t.x.AsyncCancel()
+            DeleteFile(t.path)
+        end for
+        for each sock in m.dl[u].waiters
+            sock.Close()
+        end for
+    end for
+    m.dl = {}
+    m.xferOf = {}
+end sub
 
 ' ---- local HTTP server --------------------------------------------------------
 
@@ -318,9 +498,13 @@ sub serve()
     m.top.streamUrl = "http://127.0.0.1:" + portNum.ToStr() + "/live.m3u8"
     conns = {}
     while true
-        ev = wait(0, m.port)
-        if type(ev) = "roSGNodeEvent" and ev.getField() = "quit" then
+        ev = wait(500, m.port)
+        if ev = invalid then
+            tick()
+        else if type(ev) = "roSGNodeEvent" and ev.getField() = "quit" then
             exit while
+        else if type(ev) = "roUrlEvent" then
+            onDownload(ev)
         else if type(ev) = "roSocketEvent" then
             id = ev.getSocketID()
             if id = srv.GetID() then
@@ -343,8 +527,10 @@ sub serve()
                     else
                         cn.buf = cn.buf + s
                         if Instr(1, cn.buf, Chr(13) + Chr(10) + Chr(13) + Chr(10)) > 0 then
-                            handle(cn.sock, cn.buf)
-                            cn.sock.Close()
+                            ' A segment that's still downloading is answered later
+                            ' (onDownload), which also closes the connection.
+                            cn.sock.NotifyReadable(false)
+                            if handle(cn.sock, cn.buf) then cn.sock.Close()
                             conns.Delete(k)
                         end if
                     end if
@@ -355,10 +541,13 @@ sub serve()
     for each k in conns
         conns[k].sock.Close()
     end for
+    cancelDownloads()
     srv.Close()
 end sub
 
-sub handle(sock as Object, req as String)
+' True if the request was answered; a segment still downloading is answered
+' when it arrives.
+function handle(sock as Object, req as String) as Boolean
     path = req.Split(" ")[1]
     esc = CreateObject("roUrlTransfer")
     t = CreateObject("roTimespan")
@@ -375,20 +564,12 @@ sub handle(sock as Object, req as String)
         end if
         print "[stream] playlist "; t.TotalMilliseconds(); " ms"
     else if Left(path, 7) = "/seg?u=" then
-        u = esc.Unescape(Mid(path, 8))
-        ba = segment(u)
-        if ba = invalid then
-            respond(sock, "502 Bad Gateway", "text/plain", invalid)
-            print "[stream] segment FAILED "; t.TotalMilliseconds(); " ms"
-        else
-            respond(sock, "200 OK", "video/mp2t", ba)
-            print "[stream] segment "; ba.Count(); " bytes "; t.TotalMilliseconds(); " ms"
-            measure(u, ba)
-        end if
+        return askSegment(sock, esc.Unescape(Mid(path, 8)))
     else
         respond(sock, "404 Not Found", "text/plain", invalid)
     end if
-end sub
+    return true
+end function
 
 ' What's playing, for the player to show and remember. Bitrate from the last
 ' few segments' sizes over their lengths; resolution and frame rate read from

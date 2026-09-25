@@ -309,6 +309,15 @@ Source reliability differs: on 2026-09-24, admin's 720p segments (TikTok's CDN)
 had 2 of 1,794 downloads over 5 s; foxtrot/hotel's 1080p segments (the site's
 own servers) had 12 of 891, each ~11 s against 6 s segments, enough to stall.
 
+So the proxy downloads segments in the background: the newest few as soon as a
+playlist lists them, and a second copy of any download still running after 4 s,
+serving whichever copy finishes first (those slow downloads look like a request
+stuck on the server). Tested by pointing every 4th segment's first copy at an
+unreachable address: each cost ~4.4 s instead of stalling, and playback never
+buffered. Prefetch alone gains little, because the player asks for a segment
+almost as soon as the playlist lists it; hiding the newest segment from the
+player would buy a whole segment of cushion, at ~6 s more delay behind live.
+
 Things that were tried and didn't pan out: headers/HTTP-2 tricks for the
 playlist (it's the TLS fingerprint), and a server relay that re-serves the video
 (works, but unnecessary once the Roku can unwrap segments itself).
