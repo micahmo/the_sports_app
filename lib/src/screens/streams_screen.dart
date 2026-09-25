@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../player/player_webview.dart';
+import '../player/stream_quality.dart';
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
 import '../widgets/keep_fresh.dart';
@@ -38,10 +40,14 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
   // Remember last-picked stream (per list view instance)
   String? _lastPlayedUrl;
 
+  // What streams measured when they were played (see StreamQuality).
+  Map<String, StreamQuality> _qualities = <String, StreamQuality>{};
+
   @override
   void initState() {
     super.initState();
     _future = _loadAllStreams();
+    _loadQualities();
 
     // Ask, then show once granted
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -84,6 +90,13 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     // Set before navigating so it shows even if user backs out
     setState(() => _lastPlayedUrl = s.embedUrl);
     await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => StreamPlayerScreen(stream: s, title: widget.matchItem.title)));
+    // The player measured it; show that on its row.
+    _loadQualities();
+  }
+
+  Future<void> _loadQualities() async {
+    final Map<String, StreamQuality> q = await StreamQuality.all();
+    if (mounted) setState(() => _qualities = q);
   }
 
   @override
@@ -119,7 +132,12 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
                 CardSegment(
                   first: i == 0,
                   last: i == g.streams.length - 1,
-                  child: _StreamRow(stream: g.streams[i], lastPlayed: g.streams[i].embedUrl == _lastPlayedUrl, onTap: () => _play(g.streams[i])),
+                  child: _StreamRow(
+                    stream: g.streams[i],
+                    lastPlayed: g.streams[i].embedUrl == _lastPlayedUrl,
+                    quality: _qualities[g.streams[i].embedUrl],
+                    onTap: () => _play(g.streams[i]),
+                  ),
                 ),
             ],
           ],
@@ -256,10 +274,13 @@ class _SourceHeading extends StatelessWidget {
 }
 
 class _StreamRow extends StatelessWidget {
-  const _StreamRow({required this.stream, required this.lastPlayed, required this.onTap});
+  const _StreamRow({required this.stream, required this.lastPlayed, required this.quality, required this.onTap});
   final StreamInfo stream;
   final bool lastPlayed;
   final VoidCallback onTap;
+
+  /// What it measured when played, on a quiet second line; null if never played.
+  final StreamQuality? quality;
 
   @override
   Widget build(BuildContext context) {
@@ -286,17 +307,28 @@ class _StreamRow extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Text('Stream ${stream.streamNo}', style: condensed(19, lastPlayed ? FontWeight.w700 : FontWeight.w500, color: accent ?? cs.onSurface)),
-                    if (stream.language.isNotEmpty) ...<Widget>[
-                      const SizedBox(width: 10),
-                      Flexible(
-                        child: Text(stream.language, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: accent ?? cs.onSurfaceVariant)),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: <Widget>[
+                        Text('Stream ${stream.streamNo}', style: condensed(19, lastPlayed ? FontWeight.w700 : FontWeight.w500, color: accent ?? cs.onSurface)),
+                        if (stream.language.isNotEmpty) ...<Widget>[
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(stream.language, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: accent ?? cs.onSurfaceVariant)),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (quality != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(quality!.label, style: TextStyle(fontSize: 12, color: cs.outline)),
                       ),
-                    ],
                   ],
                 ),
               ),
@@ -331,6 +363,12 @@ const String _takeoverJs = r'''
   var stalledFor = 0;
   // When the video last played on (or was paused on purpose); see watch().
   var lastProgressAt = Date.now();
+  // For measure(): the last few segments' sizes and lengths, the frame count
+  // at the start of the current window, and the last report sent.
+  var fragStats = [];
+  var frames0 = null;
+  var fpsMax = 0;
+  var lastReport = "";
   // Whether we have told the app to lift its spinner.
   var announced = false;
   var waitingFor = 0;
@@ -489,6 +527,18 @@ const String _takeoverJs = r'''
     hls.loadSource(url);
     hls.attachMedia(video);
     hls.on(OurHls.Events.MANIFEST_PARSED, function () { toLiveEdge(); play(); });
+    fragStats = [];
+    frames0 = null;
+    fpsMax = 0;
+    hls.on(OurHls.Events.FRAG_LOADED, function (_, d) {
+      try {
+        var bytes = (d.payload && d.payload.byteLength) || (d.frag.stats && d.frag.stats.loaded) || 0;
+        if (bytes > 0 && d.frag.duration > 0) {
+          fragStats.push([bytes, d.frag.duration]);
+          if (fragStats.length > 5) fragStats.shift();
+        }
+      } catch (e) {}
+    });
     hls.on(OurHls.Events.ERROR, function (_, d) {
       if (!d.fatal) return;
       if (d.type === OurHls.ErrorTypes.NETWORK_ERROR) { try { hls.startLoad(); } catch (e) {} }
@@ -508,6 +558,33 @@ const String _takeoverJs = r'''
       if (!OurHls || !OurHls.isSupported()) return post("unsupported");
       build(url);
     }, function () { post("hls-load-failed"); });
+  }
+
+  // What's actually playing, for the app to show and remember: resolution from
+  // the video, frame rate from the frames it decodes (over ~4s of playback),
+  // bitrate from the recent segments' sizes over their lengths. Nothing extra
+  // is downloaded.
+  function measure() {
+    if (!video || video.paused || !video.videoHeight || !video.getVideoPlaybackQuality) return;
+    // Only while it's actually playing on; a stall would read as a low frame rate.
+    if (Date.now() - lastProgressAt > 1500) { frames0 = null; return; }
+    var n = video.getVideoPlaybackQuality().totalVideoFrames;
+    var t = performance.now();
+    if (!frames0 || n < frames0.n) { frames0 = { n: n, t: t }; return; }
+    if (t - frames0.t < 4000) return;
+    // A slow decoder drops frames, so a window can read low but never high:
+    // the stream's frame rate is the highest seen.
+    fpsMax = Math.max(fpsMax, (n - frames0.n) * 1000 / (t - frames0.t));
+    frames0 = { n: n, t: t };
+    var fps = fpsMax;
+    var best = Math.round(fps);
+    var std = [24, 25, 30, 50, 60];
+    for (var i = 0; i < std.length; i++) if (Math.abs(fps - std[i]) / std[i] < 0.1) best = std[i];
+    var bytes = 0, secs = 0;
+    for (var j = 0; j < fragStats.length; j++) { bytes += fragStats[j][0]; secs += fragStats[j][1]; }
+    if (!secs) return;
+    var report = JSON.stringify({ h: video.videoHeight, fps: best, mbps: Math.round(bytes * 8 / secs / 1e5) / 10 });
+    if (report !== lastReport) { lastReport = report; post("quality:" + report); }
   }
 
   function watch() {
@@ -572,6 +649,7 @@ const String _takeoverJs = r'''
   setInterval(function () {
     if (window.__appPlayer.built) {
       watch();
+      measure();
       // Took over, but the feed never actually started: say so rather than
       // leave a black screen up.
       if (video && video.readyState === 0 && !settled) {
@@ -639,6 +717,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // starts at the live edge. With the network fine, three reloads that don't
   // get it playing mean the stream itself is gone: say so, as for a stream
   // that never started.
+  // What's playing (from the page), for the title bar and the streams list.
+  StreamQuality? _quality;
+  // The title bar shows while the menu is open.
+  bool _menuOpen = false;
+
   bool _everPlayed = false;
   bool _healing = false;
   bool _offline = false;
@@ -725,6 +808,17 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     if (!mounted) return;
     if (message.startsWith('key:')) {
       _onKey(message.substring(4));
+      return;
+    }
+    if (message.startsWith('quality:')) {
+      try {
+        final Map<String, dynamic> j = jsonDecode(message.substring(8)) as Map<String, dynamic>;
+        final StreamQuality q = StreamQuality(height: j['h'] as int, fps: j['fps'] as int, mbps: (j['mbps'] as num).toDouble());
+        if (q != _quality) {
+          setState(() => _quality = q);
+          q.save(widget.stream.embedUrl);
+        }
+      } catch (_) {}
       return;
     }
     if (message == 'stalled') {
@@ -1064,6 +1158,36 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                         ),
                       ),
                     ),
+                  // The game and what's playing, while the menu is open.
+                  if (!_inPip && !_fullscreen)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: IgnorePointer(
+                        ignoring: !_menuOpen,
+                        child: AnimatedOpacity(
+                          opacity: _menuOpen ? 1 : 0,
+                          duration: const Duration(milliseconds: 150),
+                          child: Container(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 16, 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: condensed(19, FontWeight.w600, color: Colors.white)),
+                                if (_quality != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(_quality!.label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1075,6 +1199,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                     foregroundColor: Colors.white,
                     backgroundColor: Colors.black,
                     overlayOpacity: 0.0,
+                    onOpen: () => setState(() => _menuOpen = true),
+                    onClose: () => setState(() => _menuOpen = false),
                     buttonSize: const Size(40, 40),
                     childrenButtonSize: const Size(40, 40),
                     childPadding: const EdgeInsets.all(0),
