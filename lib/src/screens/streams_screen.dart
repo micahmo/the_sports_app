@@ -717,8 +717,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // starts at the live edge. With the network fine, three reloads that don't
   // get it playing mean the stream itself is gone: say so, as for a stream
   // that never started.
-  // What's playing (from the page), for the title bar and the streams list.
+  // What's playing (from the page), for the title bar.
   StreamQuality? _quality;
+  // The best this viewing has reached, which is what the streams list keeps.
+  StreamQuality? _bestQuality;
   // The title bar shows while the menu is open.
   bool _menuOpen = false;
 
@@ -816,7 +818,16 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         final StreamQuality q = StreamQuality(height: j['h'] as int, fps: j['fps'] as int, mbps: (j['mbps'] as num).toDouble());
         if (q != _quality) {
           setState(() => _quality = q);
-          q.save(widget.stream.embedUrl);
+          // The list keeps the best this viewing reached: an adaptive player
+          // climbs as it measures the connection, and a dip just before
+          // leaving shouldn't stick. At the same resolution and frame rate the
+          // bitrate stays current. Each viewing starts afresh, in case the site
+          // swaps the feed behind a stream.
+          final StreamQuality? best = _bestQuality;
+          if (best == null || q.height > best.height || (q.height == best.height && q.fps >= best.fps)) {
+            _bestQuality = q;
+            q.save(widget.stream.embedUrl);
+          }
         }
       } catch (_) {}
       return;
