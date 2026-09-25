@@ -10,6 +10,8 @@ The Sports App is a wrapper around the [streamed.pk API](https://streamed.pk/doc
 
 ## Download
 
+**Android:** add it to [Obtainium](https://github.com/ImranR98/Obtainium) with the button below to get updates automatically, or download `sports-<version>.apk` from the [latest release](https://github.com/micahmo/the_sports_app/releases/latest).
+
 <a href="http://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/micahmo/the_sports_app">
   <img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" width="25%" />
 </a>
