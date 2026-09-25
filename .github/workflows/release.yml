@@ -110,7 +110,7 @@ jobs:
 
       # --- Build a single universal signed APK (simple to distribute) ---
       - name: Build APK (release)
-        run: flutter build apk --release --flavor production
+        run: flutter build apk --release --flavor production --dart-define=APP_VERSION=${{ env.VERSION_NAME }}
 
       - name: Rename APK with version
         run: |
@@ -156,8 +156,9 @@ jobs:
         run: |
           sed -i "s/^version: .*/version: ${{ env.VERSION_NAME }}+${{ env.BUILD_NUMBER }}/" pubspec.yaml
 
+      # APP_VERSION: shown in Settings, and compared with the latest release (Updater).
       - name: Build Windows (release)
-        run: flutter build windows --release
+        run: flutter build windows --release --dart-define=APP_VERSION=${{ env.VERSION_NAME }}
 
       - name: Bundle the Visual C++ runtime
         shell: pwsh

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../app_version.dart';
+import '../desktop/updater.dart';
 import '../theme.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -16,6 +18,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _controller = TextEditingController();
   bool _loading = true;
   Timer? _debounce;
+  // Desktop: whether to look for a new version at startup.
+  bool _autoUpdate = true;
 
   @override
   void initState() {
@@ -28,6 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final List<String> saved = prefs.getStringList(_prefsKey) ?? <String>[];
     // Join into a comma-separated string for the textbox
     _controller.text = saved.join(', ');
+    _autoUpdate = await Updater.checksAutomatically();
     setState(() => _loading = false);
   }
 
@@ -104,6 +109,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text('Tip: Separate with commas. Duplicates are ignored, spaces are trimmed.', style: Theme.of(context).textTheme.bodySmall),
+
+                const SizedBox(height: 28),
+                Text('About', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                // Desktop release builds update themselves (Android uses Obtainium).
+                if (!Updater.available)
+                  Text(appVersion.isEmpty ? 'Development build' : 'Version $appVersion')
+                else ...<Widget>[
+                  // Inset and rounded like the home screen's cards, so its hover
+                  // highlight has room around the text.
+                  SwitchListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    title: const Text('Check for updates when the app starts'),
+                    subtitle: const Text('Version $appVersion'),
+                    value: _autoUpdate,
+                    onChanged: (bool on) {
+                      setState(() => _autoUpdate = on);
+                      Updater.setChecksAutomatically(on);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(onPressed: () => Updater.checkNow(context), icon: const Icon(Icons.system_update_alt), label: const Text('Check now')),
+                  ),
+                ],
 
                 // Room to grow: add more settings here later...
               ],

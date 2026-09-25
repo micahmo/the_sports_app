@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
+import 'src/desktop/updater.dart';
 import 'src/desktop/window_state.dart';
 import 'src/screens/sports_screen.dart';
 import 'src/theme.dart';
@@ -17,6 +18,13 @@ Future<void> main() async {
   }
   await loadThemeMode();
   runApp(const SportsApp());
+  // Desktop: a newer release? Asked a little after startup, so it doesn't hold
+  // up the first screen.
+  if (Updater.available) {
+    Future<void>.delayed(const Duration(seconds: 3), () {
+      if (_navigatorKey.currentContext != null) Updater.checkAtStartup(() => _navigatorKey.currentContext!);
+    });
+  }
 }
 
 final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();

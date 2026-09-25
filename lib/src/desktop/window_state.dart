@@ -62,6 +62,9 @@ class WindowState with WindowListener {
     await windowManager.setPreventClose(true);
   }
 
+  /// Save now, e.g. before the updater quits the app.
+  static Future<void> saveNow() => _instance._save();
+
   // Whether the window's title bar would be on one of the connected screens.
   static Future<bool> _onScreen(Rect r) async {
     final List<Display> displays = await screenRetriever.getAllDisplays();
