@@ -61,12 +61,14 @@ sub showMessage(text as String)
     m.page.removeChildrenIndex(m.page.getChildCount(), 0)
     t = theme()
     mkLabel(m.page, "SPORTS", condensed("SemiBold", 60), t.text, 96, 44, 600, 80)
-    mkLabel(m.page, text, bodyFont(30), t.textDim, 96, 480, 1728, 60, "center")
+    ' Centred in the space below the title, not the whole screen: the title
+    ' makes a true-centre spinner look high.
+    mkLabel(m.page, text, bodyFont(30), t.textDim, 96, 570, 1728, 60, "center")
 end sub
 
 sub showLoading()
     showMessage("")
-    mkSpinner(m.page, 960, 510)
+    mkSpinner(m.page, 960, 600)
 end sub
 
 sub onLoaded()

@@ -106,9 +106,9 @@ sub loading(where as String)
     if m.spin = invalid then m.spin = {}
     if m.spin[where] = invalid then
         ' The list only loads visibly when the screen opens and is still empty,
-        ' so its spinner sits mid-screen (as on Home); the streams' sits in
-        ' their panel, beside the list.
-        centres = {list: [960, 510], streams: [1374, 550]}
+        ' so its spinner sits in the middle of the space below the title (as on
+        ' Home); the streams' sits in their panel, beside the list.
+        centres = {list: [960, 600], streams: [1374, 550]}
         c = centres[where]
         m.spin[where] = mkSpinner(m.messages, c[0], c[1])
     end if
