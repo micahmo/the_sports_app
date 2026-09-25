@@ -98,7 +98,11 @@ class WindowState with WindowListener {
     try {
       await _save();
     } finally {
-      await windowManager.destroy();
+      // Close the usual way now, which takes the window down at once.
+      // (destroy() only quits the message loop, so the window stays up for
+      // the seconds the engine takes to shut down.)
+      await windowManager.setPreventClose(false);
+      await windowManager.close();
     }
   }
 
