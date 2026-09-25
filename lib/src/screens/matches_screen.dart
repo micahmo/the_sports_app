@@ -9,16 +9,16 @@ import '../widgets/keep_fresh.dart';
 import 'streams_screen.dart';
 
 class MatchesScreen extends StatefulWidget {
-  const MatchesScreen.forSport(this.sport, {super.key}) : mode = Mode.bySport, initialMatchId = null;
-  const MatchesScreen.live({super.key, this.initialMatchId}) : sport = null, mode = Mode.live;
-  const MatchesScreen.livePopular({super.key}) : sport = null, mode = Mode.livePopular, initialMatchId = null;
-  const MatchesScreen.liveFavorites({super.key}) : sport = null, mode = Mode.liveFavorites, initialMatchId = null;
+  const MatchesScreen.forSport(this.sport, {super.key}) : mode = Mode.bySport, initialMatch = null;
+  const MatchesScreen.live({super.key, this.initialMatch}) : sport = null, mode = Mode.live;
+  const MatchesScreen.livePopular({super.key}) : sport = null, mode = Mode.livePopular, initialMatch = null;
+  const MatchesScreen.liveFavorites({super.key}) : sport = null, mode = Mode.liveFavorites, initialMatch = null;
 
   final Sport? sport;
   final Mode mode;
 
   /// In the side-by-side layout, the match to show first (e.g. one picked on Home).
-  final String? initialMatchId;
+  final ApiMatch? initialMatch;
 
   @override
   State<MatchesScreen> createState() => _MatchesScreenState();
@@ -32,7 +32,7 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
 
   // Side-by-side layout only: the match whose streams are showing, and the
   // matches the list is currently showing (after filters).
-  late String? _selectedId = widget.initialMatchId;
+  late String? _selectedId = widget.initialMatch?.id;
   List<ApiMatch> _shown = <ApiMatch>[];
   late Future<List<ApiMatch>> _future;
 
@@ -67,7 +67,7 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
   Future<List<ApiMatch>> _loadData() {
     switch (widget.mode) {
       case Mode.live:
-        return _withViewCounts(_api.fetchLiveMatches());
+        return _withViewCounts(_api.fetchLiveMatches()).then(_withInitialMatch);
       case Mode.livePopular:
         return _withViewCounts(_api.fetchLivePopular());
       case Mode.bySport:
@@ -75,6 +75,16 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
       case Mode.liveFavorites:
         return _loadLiveFavorites();
     }
+  }
+
+  /// Opened from a Home card whose match isn't in the Live list: Most watched
+  /// comes from the view counts, which include games the site hasn't marked
+  /// live yet and 24/7 channels. Put it first, so the streams shown beside the
+  /// list are that match's rather than the first game's. (The Roku does the same.)
+  List<ApiMatch> _withInitialMatch(List<ApiMatch> list) {
+    final ApiMatch? m = widget.initialMatch;
+    if (m == null || list.any((ApiMatch x) => x.id == m.id)) return list;
+    return <ApiMatch>[m, ...list];
   }
 
   /// Attach match-level viewer totals where the API has them. Only the biggest

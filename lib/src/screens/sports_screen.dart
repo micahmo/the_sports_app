@@ -189,7 +189,7 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                                     child: MatchRow(
                                       match: d.top[i],
                                       categoryLabel: sportsNames[d.top[i].category] ?? d.top[i].category,
-                                      onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MatchesScreen.live(initialMatchId: d.top[i].id))),
+                                      onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MatchesScreen.live(initialMatch: d.top[i]))),
                                     ),
                                   ),
                                 ),
