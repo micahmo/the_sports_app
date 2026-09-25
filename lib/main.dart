@@ -3,13 +3,18 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
+import 'src/desktop/window_state.dart';
 import 'src/screens/sports_screen.dart';
 import 'src/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Lets the player take the window fullscreen.
-  if (Platform.isWindows) await windowManager.ensureInitialized();
+  // Lets the player take the window fullscreen, and the window come back the
+  // way it was left.
+  if (Platform.isWindows) {
+    await windowManager.ensureInitialized();
+    await WindowState.restore();
+  }
   await loadThemeMode();
   runApp(const SportsApp());
 }

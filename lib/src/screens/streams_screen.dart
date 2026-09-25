@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:window_manager/window_manager.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
+import '../desktop/window_state.dart';
 import '../player/player_webview.dart';
 import '../player/stream_quality.dart';
 import '../theme.dart';
@@ -405,6 +406,18 @@ const String _takeoverJs = r'''
     } catch (e) {}
   }
 
+  // The mouse moving over the video, or a tap on it: the app shows its title
+  // bar for a moment. (The page, not the app, gets these over the video.)
+  var lastPointer = 0;
+  function pointer() {
+    var now = Date.now();
+    if (now - lastPointer < 300) return;
+    lastPointer = now;
+    post("pointer");
+  }
+  window.addEventListener("pointermove", function (e) { if (e.pointerType === "mouse") pointer(); }, true);
+  window.addEventListener("pointerdown", pointer, true);
+
   // On desktop the web view keeps keyboard focus once clicked, so the app
   // never sees its shortcuts; pass them on.
   window.addEventListener("keydown", function (e) {
@@ -736,8 +749,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   double _mbpsSum = 0;
   int _mbpsCount = 0;
   DateTime? _savedAt;
-  // The title bar shows while the menu is open.
+  // The title bar shows while the menu is open, and for a few seconds after the
+  // mouse moves or the video is tapped (_peek), fullscreen included.
   bool _menuOpen = false;
+  bool _peek = false;
+  Timer? _peekTimer;
 
   bool _everPlayed = false;
   bool _healing = false;
@@ -836,6 +852,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       } catch (_) {}
       return;
     }
+    if (message == 'pointer') {
+      _peekTitle();
+      return;
+    }
     if (message == 'stalled') {
       _heal();
       return;
@@ -895,6 +915,15 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     if (_mbpsCount == 0) return;
     _savedAt = DateTime.now();
     StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10).save(widget.stream.embedUrl);
+  }
+
+  void _peekTitle() {
+    if (!mounted) return;
+    if (!_peek) setState(() => _peek = true);
+    _peekTimer?.cancel();
+    _peekTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _peek = false);
+    });
   }
 
   void _heal() {
@@ -963,6 +992,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     if (!Platform.isWindows) return;
     try {
       if (on) {
+        WindowState.playerFullscreen = true;
         // window_manager leaves the title bar (and the taskbar) in place when
         // the window starts out maximized, so go from a normal window instead.
         _wasMaximized = await windowManager.isMaximized();
@@ -979,6 +1009,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     await windowManager.setFullScreen(false);
     if (_wasMaximized) await windowManager.maximize();
     _wasMaximized = false;
+    // Let the resize events from giving the window back settle first.
+    Future<void>.delayed(const Duration(seconds: 1), () => WindowState.playerFullscreen = false);
   }
 
   void _inject() {
@@ -1037,6 +1069,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _pip.invokeMethod('setAutoPipOnUserLeave', <String, dynamic>{'enabled': false}).catchError((_) {});
     WidgetsBinding.instance.removeObserver(this);
     _healTimer?.cancel();
+    _peekTimer?.cancel();
     _saveQuality();
     // Leaving the player gives the window back its title bar.
     if (_fullscreen) _leaveFullscreen().catchError((_) {});
@@ -1201,31 +1234,38 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                         ),
                       ),
                     ),
-                  // The game and what's playing, while the menu is open.
-                  if (!_inPip && !_fullscreen)
+                  // The game and what's playing, while the menu is open or for a
+                  // moment after the mouse moves or the video is tapped. In
+                  // fullscreen too, where it's the only way to see them.
+                  if (!_inPip)
                     Positioned(
                       top: 0,
                       left: 0,
                       right: 0,
                       child: IgnorePointer(
-                        ignoring: !_menuOpen,
+                        ignoring: !(_menuOpen || _peek),
                         child: AnimatedOpacity(
-                          opacity: _menuOpen ? 1 : 0,
+                          opacity: (_menuOpen || _peek) ? 1 : 0,
                           duration: const Duration(milliseconds: 150),
-                          child: Container(
-                            color: Colors.black.withValues(alpha: 0.7),
-                            padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 16, 10),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: condensed(19, FontWeight.w600, color: Colors.white)),
-                                if (_quality != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Text(_quality!.label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
-                                  ),
-                              ],
+                          // The page can't see the mouse over the bar itself, so resting on
+                          // it keeps it up.
+                          child: MouseRegion(
+                            onHover: (_) => _peekTitle(),
+                            child: Container(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 16, 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: condensed(19, FontWeight.w600, color: Colors.white)),
+                                  if (_quality != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(_quality!.label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
