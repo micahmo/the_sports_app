@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Looks for a WebDriver server (Selenium on 4444, or a bare ChromeDriver on
+     9515) on the Roku's own /24. Sets `found` to its base URL, or "" if none;
+     `progress` reports how far the scan has got. -->
+<component name="DiscoveryTask" extends="Task">
+  <interface>
+    <field id="found" type="string" alwaysNotify="true" />
+    <field id="progress" type="string" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/components/tasks/DiscoveryTask.brs" />
+</component>

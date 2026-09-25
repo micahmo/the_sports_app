@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- The stream server (a Selenium standalone Chrome on the LAN): see what's set,
+     check it, find one automatically, or type an address. -->
+<component name="SettingsScreen" extends="Group">
+  <interface>
+    <field id="navigate" type="assocarray" alwaysNotify="true" />
+    <field id="closing" type="boolean" />
+    <field id="params" type="assocarray" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/components/screens/SettingsScreen.brs" />
+  <children>
+    <Group id="page" />
+  </children>
+</component>

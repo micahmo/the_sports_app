@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- A team's logo on a light disc, as in the phone app, or (`cover`) an
+     event's poster cropped into the disc. Falls back to the sport's icon when
+     there is no image or it fails to load. -->
+<component name="TeamBadge" extends="Group">
+  <interface>
+    <field id="size" type="float" onChange="update" />
+    <field id="uri" type="string" onChange="update" />
+    <field id="fallback" type="string" onChange="update" />
+    <field id="cover" type="string" onChange="update" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/components/widgets/TeamBadge.brs" />
+  <children>
+    <Poster id="disc" uri="pkg:/images/disc.png" />
+    <Poster id="logo" loadDisplayMode="scaleToFit" />
+    <Poster id="icon" loadDisplayMode="scaleToFit" />
+    <MaskGroup id="mask" maskUri="pkg:/images/disc.png" visible="false">
+      <Poster id="coverImage" loadDisplayMode="scaleToZoom" />
+    </MaskGroup>
+  </children>
+</component>

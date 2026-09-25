@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HomeScreen" extends="Group">
+  <interface>
+    <field id="navigate" type="assocarray" alwaysNotify="true" />
+    <field id="closing" type="boolean" />
+    <!-- Set by MainScene: reload quietly, keeping the cursor where it is. -->
+    <field id="refresh" type="boolean" alwaysNotify="true" />
+    <field id="params" type="assocarray" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/components/screens/HomeScreen.brs" />
+  <children>
+    <Group id="page" />
+  </children>
+</component>

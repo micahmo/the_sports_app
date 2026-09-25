@@ -43,13 +43,23 @@ below), not guessed at:
 The `ERR_ABORTED` you will see on `embed.st/ad.html` is a *symptom*, not a
 cause — the page removes that iframe itself after 9s.
 
-## The playlist URL only works inside the WebView
+## The playlist is gated on Chrome's TLS handshake
 
-The signed `lb*.strmd.st/secure/<token>/…/playlist.m3u8` returns **403** when
-fetched from anywhere else, even with identical headers and a fresh token. It is
-not cookie-based (there are no `strmd.st` cookies) and not single-use. So a
-native Flutter player (`video_player` et al) cannot be handed the URL — playback
-has to stay inside the WebView that obtained it.
+The signed `lb*.strmd.st/secure/<token>/…/playlist.m3u8` returns **403** to
+anything that isn't Chrome. Established 2026-09-24 by elimination: the exact
+header set the browser sends (captured over CDP, including `sec-ch-ua`), from
+the same PC, still got 403 from curl; there are no cookies and the server only
+speaks HTTP/1.1. `curl_cffi` impersonating **Chrome or Edge gets 200**, Safari
+gets 403 — so nginx is checking the TLS handshake fingerprint. It also wants
+`Origin`/`Referer: https://embed.st`. A request from inside the embed page (a
+real Chrome, correct origin) passes, which is why every player we have fetches
+it from there.
+
+The segments are *not* gated: they live on TikTok's image CDN as signed
+`…~tplv-tiktokx-origin.image` URLs that anything can download. Each is a
+**42-byte fake WebP header** (`RIFF…WEBPVP8L…EXIF`) followed by plain MPEG-TS;
+hls.js scans past the junk, most native players don't. A 4-second segment
+is ~3.6 MB (1080p60 H.264 + AAC).
 
 ## Hiding the notice
 
@@ -223,6 +233,85 @@ instance in the page, including ones hidden in closures.
 Flutter 3.35 can't build with Visual Studio 2026 (it asks CMake for the 2019
 generator); 3.38+ can. If a build fails with "Does not match the generator used
 previously", delete `build/windows`.
+
+## Roku
+
+A Roku can't run the embed page (no JS/WASM engine, no web view) and its TLS
+stack is fixed, so it can't get or fetch the playlist itself — tested: 403 from
+the device. What it *can* do, measured on an 85" Roku TV (OS 15.3):
+
+- download a segment from TikTok's CDN in ~0.4–0.6 s and strip the fake header
+  with `roByteArray.ReadFile(path, offset, length)` in ~25 ms;
+- run its own HTTP server on a `roStreamSocket` and have its `Video` node play
+  `http://127.0.0.1:<port>/…` from it;
+- speak WebDriver (plain HTTP + JSON) with `roUrlTransfer`.
+
+So the design is: a **Selenium standalone Chrome container** on the LAN
+(`selenium/standalone-chrome`, template in micahmo/docker-templates) does the
+browser part. The Roku app opens a WebDriver session, loads the embed page,
+reads the playlist URL from `performance.getEntriesByType("resource")`, removes
+the page's own player (`jwplayer().remove()`, or the server decodes and
+downloads the whole stream for nothing), and from then on asks that page to
+`fetch()` each playlist (~120 ms round trip). Its local proxy rewrites segment
+URLs to itself, downloads them straight from TikTok, strips the header and
+serves plain TS to the player. The video never passes through the server.
+
+**Serve one rendition, never the master.** The page may hand over a master
+playlist (1080p at 8 Mbps and 540p). Given the choice, Roku's player starts on
+540p and stalls trying to switch up through the local proxy: one frame of
+video, then paused/buffering cycles and black. The app picks the master's
+highest-bandwidth rendition itself and serves only that media playlist. Which
+one the page exposed first used to be a matter of timing, which is how this
+showed up as a "regression".
+
+A stream that isn't broadcasting still hands over a playlist URL, but the
+playlist answers HTTP 200 with the body `Not found`. Check that a fetched
+playlist starts with `#EXTM3U` before playing, and say the stream is
+unavailable (as the phone app does) instead of letting the player fail with
+"an unexpected problem".
+
+Each stream's local server takes the first free port from 8888–8911: the
+previous stream's server can still be finishing a request when the next
+starts, and sharing a port hands the player the old stream.
+
+Sessions: Home kills a Roku app outright (`EXIT_USER_NAV`) with no chance to
+clean up, so the app remembers its session id in the registry and deletes it on
+the next launch, and Selenium's idle session timeout reaps anything else.
+Selenium also needs `browserName: chrome` in the capabilities to route a session.
+
+Background refresh: every minute the screen on top reloads quietly, but only
+after 10 s without input. `roDeviceInfo.TimeSinceLastKeypress()` counts only
+the physical remote; keys from the Roku mobile app (ECP) don't reset it, so the
+screens also record input themselves (`noteInput`) and the timer goes by the
+more recent of the two.
+
+Stream quality (resolution, frame rate, bitrate) is measured by the proxy:
+bitrate from segment sizes over their `#EXTINF` lengths, resolution and frame
+rate from the H.264 SPS and PES timestamps at the start of a segment
+(`source/tsinfo.brs`), since the Video node reports height 0 and no frame rate.
+Two things to keep:
+- Read only the start of a segment. Walking a whole 6 MB segment in BrightScript
+  blocks the proxy's thread long enough for the player to run dry.
+- Don't touch the Video's content during playback, not even `content.title`:
+  doing so made the next segment take ~11 s and the stream stall, every time.
+  That's why the quality isn't shown in the player's own title bar.
+
+Reconnects overlap: the old stream task can still be stuck in a slow fetch when
+the new one starts. So a task closes only its own browser session (never "the
+remembered one", except the first stream of an app run tidying up after a
+crash), a failed link refresh keeps the old link, and `quitRequested()` reads
+the `quit` field instead of draining the message port, which also carries the
+stream server's socket events. Getting any of these wrong crashed the app on
+2026-09-24 whenever a reconnect met a slow fetch. (With the debug console
+attached, a crash freezes the app in the debugger rather than exiting it.)
+
+Source reliability differs: on 2026-09-24, admin's 720p segments (TikTok's CDN)
+had 2 of 1,794 downloads over 5 s; foxtrot/hotel's 1080p segments (the site's
+own servers) had 12 of 891, each ~11 s against 6 s segments, enough to stall.
+
+Things that were tried and didn't pan out: headers/HTTP-2 tricks for the
+playlist (it's the TLS fingerprint), and a server relay that re-serves the video
+(works, but unnecessary once the Roku can unwrap segments itself).
 
 ## Debugging recipe
 

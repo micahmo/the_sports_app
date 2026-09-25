@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Holds a stack of screens: Back pops one (and on Home asks before exiting).
+     Screens ask to open another by setting their `navigate` field. -->
+<component name="MainScene" extends="Scene">
+  <interface>
+    <field id="driverStatus" type="string" />
+    <field id="exitApp" type="boolean" alwaysNotify="true" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/components/MainScene.brs" />
+  <children>
+    <!-- Keeps what's showing current; see onFreshTimer. -->
+    <Timer id="freshTimer" duration="60" repeat="true" />
+  </children>
+</component>

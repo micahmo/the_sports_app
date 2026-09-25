@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Fetches several URLs in parallel. Set `requests` ({name: url}), run it, and
+     `results` arrives as {name: body}; a failed request gives "". -->
+<component name="ApiTask" extends="Task">
+  <interface>
+    <field id="requests" type="assocarray" />
+    <field id="results" type="assocarray" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/components/tasks/ApiTask.brs" />
+</component>

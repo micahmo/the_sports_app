@@ -11,8 +11,11 @@ never show one app newer than another.
 | `android-streams.png` | One game's streams (the most-watched game) | 540×1170 |
 | `windows-home.png` | Home at 1280 px wide | 1280×630 |
 | `windows-matches.png` | A sport's games beside the chosen game's streams | 1280×831 |
+| `roku-home.png` | Home on the TV | 1200×675 |
+| `roku-live.png` | Live: games beside the chosen game's streams | 1200×675 |
 
-The main README uses them.
+The main README uses the Android and Windows images; `roku/README.md` uses the
+Roku ones.
 
 ## Before you start
 
@@ -131,3 +134,40 @@ Things that went wrong before, and why the script is the way it is:
 - `PrintWindow` is called with flag 2 (`PW_RENDERFULLCONTENT`), the flag for
   windows drawn by the GPU, as Flutter's are.
 
+## Roku
+
+`roku/tools/roku.ps1 screenshot out/file.jpg` saves the TV's screen at
+1920×1080; scale it to 1200×675 for the README. It needs `ROKU_HOST` and
+`ROKU_DEV_PASSWORD` set, like `npm run deploy` (see `roku/README.md`), and the
+dev app running.
+
+**Captures come out completely black once an event poster has been on screen**
+(the round images for matches without two teams: racing, "NFL Network" and
+the like), and stay black until the app is restarted. The TV itself shows
+everything fine. It's the posters (lossy WebP; a build with them turned off
+captured fine), not the round mask or their size, and the server only has
+them as WebP. Opening the on-screen keyboard does the same. So:
+
+1. **Restart the app before capturing** (ECP needs no login):
+
+   ```bash
+   curl -X POST http://$ROKU_HOST:8060/keypress/Home
+   curl -X POST http://$ROKU_HOST:8060/launch/dev
+   ```
+2. **Capture screens whose rows are all two-team games.** Home usually is. Live
+   usually is too, because the most-watched games sort to the top, and that's
+   where the cursor starts.
+3. **Check each capture isn't black**; the script's "Saved" only means a JPEG
+   came back:
+
+   ```bash
+   python -c "from PIL import Image; print(max(Image.open('roku/out/shot.jpg').convert('L').getdata()))"   # 0 = black
+   ```
+4. If a screen you need has a poster on it, make a temporary build that leaves
+   posters out: in `roku/app/components/widgets/TeamBadge.brs`, `update()`,
+   change `if m.top.cover <> "" then` to `if false then`. Deploy, capture,
+   then change it back and deploy again.
+
+Move around with ECP keypresses (`Up`, `Down`, `Left`, `Right`, `Select`,
+`Back`, `Home`), e.g. `curl -X POST http://$ROKU_HOST:8060/keypress/Select`.
+From a fresh launch the cursor is on Live now, so `Select` opens Live.

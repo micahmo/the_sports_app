@@ -1,0 +1,8 @@
+{
+  "rootDir": "app",
+  "files": ["manifest", "source/**/*", "components/**/*", "images/**/*", "fonts/**/*"],
+  "stagingDir": "out/staging",
+  "outFile": "out/sports.zip",
+  "retainStagingDir": false,
+  "diagnosticFilters": []
+}

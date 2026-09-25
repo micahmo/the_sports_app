@@ -1,0 +1,14 @@
+{
+  "name": "sports-roku",
+  "private": true,
+  "description": "Roku version of the app. See ../DESIGN_NOTES.md (Roku).",
+  "scripts": {
+    "check": "bsc --project bsconfig.json --createPackage false",
+    "package": "bsc --project bsconfig.json",
+    "deploy": "npm run package && powershell -NoProfile -ExecutionPolicy Bypass -File tools/roku.ps1 install",
+    "screenshot": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/roku.ps1 screenshot"
+  },
+  "devDependencies": {
+    "brighterscript": "^0.73.5"
+  }
+}

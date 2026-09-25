@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- One game, like MatchRow in the phone app: each team on its own line with
+     its badge, LIVE and viewers on the right, sport and time underneath.
+     Draws content only; the card behind it belongs to whoever places it. -->
+<component name="MatchCard" extends="Group">
+  <interface>
+    <field id="match" type="assocarray" onChange="render" />
+    <field id="sportName" type="string" onChange="render" />
+    <field id="width" type="float" value="780" />
+    <field id="height" type="float" value="190" />
+    <!-- Set by whoever draws the focus: names too long for their line scroll. -->
+    <field id="focused" type="boolean" onChange="onFocused" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/components/widgets/MatchCard.brs" />
+</component>

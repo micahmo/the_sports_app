@@ -18,6 +18,8 @@ The Sports App is a wrapper around the [streamed.pk API](https://streamed.pk/doc
 
 **Windows:** download `sports-windows-x64-<version>.zip` from the [latest release](https://github.com/micahmo/the_sports_app/releases/latest), unzip it anywhere and run `sports.exe`. Nothing to install.
 
+**Roku:** there's also a Roku version, installed through the Roku's developer mode. It needs a small Chrome service running on your network; see [roku/README.md](roku/README.md) for setup.
+
 ## Features
 
 - **Live Event Browser** - Browse all live sports events in real-time

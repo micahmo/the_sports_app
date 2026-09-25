@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Full-screen playback of one stream. params: embedUrl, title. -->
+<component name="PlayerScreen" extends="Group">
+  <interface>
+    <field id="navigate" type="assocarray" alwaysNotify="true" />
+    <field id="closing" type="boolean" onChange="onClosing" />
+    <field id="params" type="assocarray" onChange="start" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/components/screens/PlayerScreen.brs" />
+  <children>
+    <Video id="video" width="1920" height="1080" />
+    <!-- Centred, or just below the middle while the video buffers (see
+         placeStatus), where the player draws its own spinner. -->
+    <Label id="status" translation="[160, 440]" width="1600" height="200" horizAlign="center" vertAlign="center" wrap="true" />
+    <!-- Buffering this long means the stream has stalled: start it again. -->
+    <Timer id="stall" duration="20" />
+    <!-- The next try while reconnecting. -->
+    <Timer id="retry" />
+    <!-- Our own title bar: the game and what's playing, full width, for a few
+         seconds after OK (see onKeyEvent). -->
+    <Group id="bar" visible="false">
+      <Rectangle id="barBg" width="1920" height="150" color="0x000000B3" />
+    </Group>
+    <Timer id="barTimer" duration="5" />
+  </children>
+</component>

@@ -1,4 +1,4 @@
-name: Flutter Release (Android + Windows)
+name: Release (Android + Windows + Roku)
 
 concurrency:
   group: release-${{ github.ref }}
@@ -170,8 +170,55 @@ jobs:
           name: windows-zip
           path: artifacts/sports-windows-x64-${{ env.VERSION_NAME }}.zip
 
+  # The Roku app (roku/): a zip to install through the Roku's developer mode.
+  # See roku/README.md.
+  build-roku:
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build }}
+    defaults:
+      run:
+        working-directory: roku
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: roku/package-lock.json
+
+      - name: Install BrighterScript
+        run: npm ci
+
+      # The same 1.0.<build> as the other apps.
+      - name: Set version in the manifest
+        run: |
+          IFS=. read -r major minor _ <<< "${{ env.VERSION_NAME }}"
+          sed -i -e "s/^major_version=.*/major_version=$major/" \
+                 -e "s/^minor_version=.*/minor_version=$minor/" \
+                 -e "s/^build_version=.*/build_version=${{ env.BUILD_NUMBER }}/" app/manifest
+          grep _version app/manifest
+
+      - name: Build
+        run: |
+          npm run package
+          mkdir -p ../artifacts
+          cp out/sports.zip "../artifacts/sports-roku-${{ env.VERSION_NAME }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: roku-zip
+          path: artifacts/sports-roku-${{ env.VERSION_NAME }}.zip
+
   release:
-    needs: [version, build-apk, build-windows]
+    needs: [version, build-apk, build-windows, build-roku]
     runs-on: ubuntu-latest
     env:
       VERSION_NAME: ${{ needs.version.outputs.name }}
@@ -220,6 +267,7 @@ jobs:
           files: |
             artifacts/sports-${{ env.VERSION_NAME }}.apk
             artifacts/sports-windows-x64-${{ env.VERSION_NAME }}.zip
+            artifacts/sports-roku-${{ env.VERSION_NAME }}.zip
           fail_on_unmatched_files: true
           prerelease: ${{ inputs.prerelease }}
         env:

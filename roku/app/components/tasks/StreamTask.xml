@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Plays one stream: a browser session on the WebDriver server loads the
+     embed page and fetches playlists (only a Chrome handshake gets them), and a
+     small HTTP server on this Roku unwraps the TikTok-hosted segments. See
+     DESIGN_NOTES.md, "Roku". Set embedUrl + driver, run; the Video node plays
+     `streamUrl`. Set `quit` to stop and close the browser session. -->
+<component name="StreamTask" extends="Task">
+  <interface>
+    <field id="embedUrl" type="string" />
+    <field id="driver" type="string" />
+    <field id="status" type="string" />
+    <field id="error" type="string" />
+    <field id="streamUrl" type="string" />
+    <field id="quit" type="boolean" alwaysNotify="true" />
+    <!-- What's playing: {height, fps, mbps} (see measure()). -->
+    <field id="quality" type="assocarray" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/webdriver.brs" />
+  <script type="text/brightscript" uri="pkg:/source/tsinfo.brs" />
+  <script type="text/brightscript" uri="pkg:/components/tasks/StreamTask.brs" />
+</component>

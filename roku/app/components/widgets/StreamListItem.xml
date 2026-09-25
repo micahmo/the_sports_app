@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- MarkupList row for one stream: HD/SD badge, "Stream N", language and
+     viewers (the source is the section heading). Draws its own focus ring.
+     itemContent carries `stream` and `lastPlayed`. -->
+<component name="StreamListItem" extends="Group">
+  <interface>
+    <field id="itemContent" type="node" onChange="render" />
+    <field id="width" type="float" onChange="render" />
+    <field id="height" type="float" onChange="render" />
+    <field id="focusPercent" type="float" onChange="onFocus" />
+    <field id="listHasFocus" type="boolean" onChange="onFocus" />
+    <field id="gridHasFocus" type="boolean" onChange="onFocus" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/components/widgets/StreamListItem.brs" />
+  <children>
+    <Poster id="bg" uri="pkg:/images/card.9.png" />
+    <Group id="content" />
+    <Poster id="ring" uri="pkg:/images/ring.9.png" visible="false" />
+  </children>
+</component>

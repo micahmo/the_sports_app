@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- A rounded card that screens lay out and focus themselves: put content in
+     the "content" group; `focused` swaps in the lighter fill and the ring. -->
+<component name="FocusCard" extends="Group">
+  <interface>
+    <field id="width" type="float" onChange="layout" />
+    <field id="height" type="float" onChange="layout" />
+    <field id="focused" type="boolean" onChange="onFocused" />
+    <field id="action" type="assocarray" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/components/widgets/FocusCard.brs" />
+  <children>
+    <Poster id="bg" uri="pkg:/images/card.9.png" />
+    <Group id="content" />
+    <Poster id="ring" uri="pkg:/images/ring.9.png" visible="false" />
+  </children>
+</component>

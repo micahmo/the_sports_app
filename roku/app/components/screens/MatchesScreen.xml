@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- A list of matches (live, popular or one sport) beside the focused match's
+     streams — the wide-window layout of the phone app. params: mode
+     ("live" | "popular" | "sport"), sportId, sportName, initialMatch. -->
+<component name="MatchesScreen" extends="Group">
+  <interface>
+    <field id="navigate" type="assocarray" alwaysNotify="true" />
+    <field id="closing" type="boolean" />
+    <!-- Set by MainScene: reload quietly, keeping the cursor where it is. -->
+    <field id="refresh" type="boolean" alwaysNotify="true" />
+    <field id="params" type="assocarray" onChange="start" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/components/screens/MatchesScreen.brs" />
+  <children>
+    <Group id="titleGroup" />
+    <MarkupList
+      id="list"
+      translation="[96, 150]"
+      itemComponentName="MatchListItem"
+      itemSize="[780, 190]"
+      itemSpacing="[0, 16]"
+      numRows="4"
+      vertFocusAnimationStyle="floatingFocus"
+      drawFocusFeedback="false" />
+    <Group id="header" translation="[924, 150]" />
+    <!-- Streams, with a heading row before each source's streams (Roku lists'
+         own section dividers didn't render); the cursor skips the headings. -->
+    <MarkupList
+      id="streams"
+      translation="[924, 406]"
+      itemComponentName="StreamListItem"
+      itemSize="[900, 92]"
+      itemSpacing="[0, 12]"
+      numRows="6"
+      vertFocusAnimationStyle="floatingFocus"
+      drawFocusFeedback="false" />
+    <Group id="messages" />
+  </children>
+</component>
