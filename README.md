@@ -39,13 +39,17 @@ The Sports App is a wrapper around the [streamed.pk API](https://streamed.pk/doc
 
 ## Screenshots
 
-| **Main Screen** | **Sport Screen** |
-|---|---|
-| ![Main Screen](https://i.imgur.com/DomICW1.png) | ![Sport Screen](https://i.imgur.com/ZoZfH3W.png) |
+**Android**
 
-| **Stream Screen** | **Settings Screen** |
-|---|---|
-| ![Stream Screen](https://i.imgur.com/ctpVXaf.png) | ![Settings Screen](https://i.imgur.com/37bvujK.png) |
+| Home | Live | Streams |
+|---|---|---|
+| <img src="docs/screenshots/android-home.png" width="260" alt="Home: live now, most watched and all sports" /> | <img src="docs/screenshots/android-live.png" width="260" alt="Live games, filtered by sport" /> | <img src="docs/screenshots/android-streams.png" width="260" alt="A game's streams, grouped by source" /> |
+
+**Windows**
+
+<img src="docs/screenshots/windows-home.png" alt="Home on Windows" />
+
+<img src="docs/screenshots/windows-matches.png" alt="A sport's games beside the chosen game's streams" />
 
 ## Known Issues
 
