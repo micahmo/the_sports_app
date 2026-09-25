@@ -11,6 +11,7 @@
     <field id="params" type="assocarray" onChange="start" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
   <script type="text/brightscript" uri="pkg:/components/screens/MatchesScreen.brs" />
   <children>
     <Group id="titleGroup" />

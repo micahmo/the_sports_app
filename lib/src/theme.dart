@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'generated/app_data.dart';
 
 /// Current theme preference. The app listens to this so Settings can change the
 /// theme without restarting.
@@ -40,12 +41,14 @@ ThemeMode _decode(String? s) => switch (s) {
 // and it keeps the elevation steps visible. Text is kept well clear of the
 // minimum contrast (body text lands around 12:1 on the background, secondary
 // text around 9:1, against a WCAG AA floor of 4.5:1).
-const Color _darkSurface = Color(0xFF22252A);
-const Color _darkContainer = Color(0xFF2B2F36);
-const Color _darkContainerHigh = Color(0xFF32363E);
-const Color _darkOnSurface = Color(0xFFE7E9EE);
-const Color _darkOnSurfaceVariant = Color(0xFFC2C7D0);
-const Color _darkPrimary = Color(0xFFAEB8FF);
+// The Roku draws with the same colours: they come from shared/app_data.json
+// (AppPalette).
+const Color _darkSurface = AppPalette.bg;
+const Color _darkContainer = AppPalette.card;
+const Color _darkContainerHigh = AppPalette.cardHigh;
+const Color _darkOnSurface = AppPalette.text;
+const Color _darkOnSurfaceVariant = AppPalette.textDim;
+const Color _darkPrimary = AppPalette.primary;
 
 /// Headings, labels and numbers use this condensed face; body text stays Roboto.
 const String kCondensedFont = 'BarlowSemiCondensed';
@@ -60,7 +63,7 @@ double capsCenterShift(double fontSize) => fontSize * 0.065;
 
 /// Team badges sit on a light disc: plenty of logos are dark (Yankees, White
 /// Sox…) and disappear against the dark theme otherwise.
-Color badgeDiscColor(BuildContext c) => adaptiveColor(c, light: const Color(0xFFFFFFFF), dark: const Color(0xFFE6E8EE));
+Color badgeDiscColor(BuildContext c) => adaptiveColor(c, light: AppPalette.discLight, dark: AppPalette.disc);
 
 /// Picks between two shades of the same hue so accent colours stay legible on
 /// both backgrounds — the light theme needs darker shades, the dark theme
@@ -69,15 +72,15 @@ Color adaptiveColor(BuildContext context, {required Color light, required Color 
     Theme.of(context).brightness == Brightness.dark ? dark : light;
 
 /// Accents for the shortcut rows at the top of the sports list.
-Color liveColor(BuildContext c) => adaptiveColor(c, light: const Color(0xFFD32F2F), dark: const Color(0xFFFF6B6B));
-Color popularColor(BuildContext c) => adaptiveColor(c, light: const Color(0xFFC0410A), dark: const Color(0xFFFFA24D));
-Color favoriteColor(BuildContext c) => adaptiveColor(c, light: const Color(0xFFC2185B), dark: const Color(0xFFFF7BAC));
+Color liveColor(BuildContext c) => adaptiveColor(c, light: AppPalette.liveLight, dark: AppPalette.live);
+Color popularColor(BuildContext c) => adaptiveColor(c, light: AppPalette.popularLight, dark: AppPalette.popular);
+Color favoriteColor(BuildContext c) => adaptiveColor(c, light: AppPalette.favoriteLight, dark: AppPalette.favorite);
 
 /// The two glyphs differ by a single letter and were hard to tell apart when
 /// both were grey. Green for HD and amber for SD so the colour matches the
 /// quality rather than fighting it.
-Color hdColor(BuildContext c) => adaptiveColor(c, light: const Color(0xFF277A31), dark: const Color(0xFF7BD88F));
-Color sdColor(BuildContext c) => adaptiveColor(c, light: const Color(0xFFA15C00), dark: const Color(0xFFE8B76B));
+Color hdColor(BuildContext c) => adaptiveColor(c, light: AppPalette.hdLight, dark: AppPalette.hd);
+Color sdColor(BuildContext c) => adaptiveColor(c, light: AppPalette.sdLight, dark: AppPalette.sd);
 
 ThemeData buildLightTheme() => ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo);
 
@@ -95,10 +98,10 @@ ThemeData buildDarkTheme() {
     surfaceContainerLow: Color(0xFF262A30),
     surfaceContainer: _darkContainer,
     surfaceContainerHigh: _darkContainerHigh,
-    surfaceContainerHighest: Color(0xFF3A3F48),
+    surfaceContainerHighest: AppPalette.cardHighest,
     onSurfaceVariant: _darkOnSurfaceVariant,
-    outline: Color(0xFF8C919B),
-    outlineVariant: Color(0xFF44484F),
+    outline: AppPalette.outline,
+    outlineVariant: AppPalette.divider,
     error: Color(0xFFFFB4AB),
     onError: Color(0xFF690005),
   );

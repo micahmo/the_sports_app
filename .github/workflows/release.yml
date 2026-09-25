@@ -33,6 +33,14 @@ jobs:
       build: ${{ steps.v.outputs.build }}
       name: ${{ steps.v.outputs.name }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # shared/app_data.json is written into both apps as code; stop here if that
+      # code wasn't regenerated after an edit (see DESIGN_NOTES.md).
+      - name: Check the shared app data was regenerated
+        run: python3 shared/generate.py --check
+
       - id: v
         run: |
           build=$(( ${{ github.run_number }} + 63 ))

@@ -9,6 +9,7 @@
     <field id="action" type="assocarray" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
   <script type="text/brightscript" uri="pkg:/components/widgets/FocusCard.brs" />
   <children>
     <Poster id="bg" uri="pkg:/images/card.9.png" />

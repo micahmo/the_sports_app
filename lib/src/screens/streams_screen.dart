@@ -11,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../desktop/window_state.dart';
+import '../generated/app_data.dart';
 import '../player/player_webview.dart';
 import '../player/stream_quality.dart';
 import '../theme.dart';
@@ -128,7 +129,7 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
           children: <Widget>[
             header,
             for (final _SourceGroup g in groups) ...<Widget>[
-              _SourceHeading(source: g.source, description: sourceSubtitles[g.source]),
+              _SourceHeading(source: g.source, description: sourceDescriptions[g.source]),
               for (int i = 0; i < g.streams.length; i++)
                 CardSegment(
                   first: i == 0,
@@ -1335,28 +1336,11 @@ class _WebViewHolder extends StatelessWidget {
   }
 }
 
-// Not in the API — scraped from the wording streamed.pk uses on its watch pages
-// (last checked 2026-09-20). Sources that are not currently being served are
-// kept: they have come and gone before.
-Map<String, String> sourceSubtitles = {
-  'admin': 'Admin added streams',
-  'alpha': 'Most reliable (720p 30fps)',
-  'charlie': 'Good backup (poor quality occasionally)',
-  'delta': 'Okayish backup',
-  'echo': 'Great quality overall',
-  'foxtrot': 'High quality, sometimes 4K',
-  'golf': 'Very stable, good quality',
-  'hotel': 'Good backup, many motorsports events',
-  'intel': 'Large event coverage, iffy quality',
-};
-
 // streamed.pk orders sources best-first rather than however the API returns
-// them, and demotes the weaker ones. Mirror that order (we show them all —
-// scrolling is cheaper than hiding). Anything unknown sorts to the end, keeping
-// its relative order.
-const List<String> _sourceOrder = <String>['admin', 'golf', 'foxtrot', 'hotel', 'delta'];
-
+// them, and demotes the weaker ones. Mirror that order (sourceOrder, from
+// shared/app_data.json; we show them all, since scrolling is cheaper than
+// hiding). Anything unknown sorts to the end, keeping its relative order.
 int _sourceRank(String source) {
-  final int i = _sourceOrder.indexOf(source.toLowerCase());
-  return i == -1 ? _sourceOrder.length : i;
+  final int i = sourceOrder.indexOf(source.toLowerCase());
+  return i == -1 ? sourceOrder.length : i;
 }

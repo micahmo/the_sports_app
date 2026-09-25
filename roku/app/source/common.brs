@@ -1,24 +1,10 @@
 ' Shared by the scenes and the tasks. Mirrors lib/src/theme.dart (dark) and the
 ' helpers in lib/src/widgets/match_widgets.dart.
 
+' The app's colours, the same as the phone app's dark theme: from
+' shared/app_data.json, via source/generated/app_data.brs.
 function theme() as Object
-    return {
-        bg: "0x22252AFF"
-        card: "0x2B2F36FF"
-        cardHigh: "0x32363EFF"
-        cardHighest: "0x3A3F48FF"
-        text: "0xE7E9EEFF"
-        textDim: "0xC2C7D0FF"
-        outline: "0x8C919BFF"
-        divider: "0x44484FFF"
-        primary: "0xAEB8FFFF"
-        live: "0xFF6B6BFF"
-        popular: "0xFFA24DFF"
-        favorite: "0xFF7BACFF"
-        hd: "0x7BD88FFF"
-        sd: "0xE8B76BFF"
-        disc: "0xE6E8EEFF"
-    }
+    return appPalette()
 end function
 
 function apiBase() as String
@@ -135,12 +121,12 @@ sub noteInput()
     m.global.lastInput = CreateObject("roDateTime").AsSeconds()
 end sub
 
-' Sport names as North Americans say them. Only the names change: the ids,
-' which requests and icons use, stay as the API has them. (The Flutter app has
-' the same list in models.dart.) Renames the parsed /api/sports list in place.
+' Sport names as North Americans say them (shared/app_data.json). Only the names
+' change: the ids, which requests and icons use, stay as the API has them.
+' Renames the parsed /api/sports list in place.
 sub renameSports(sports as Dynamic)
     if type(sports) <> "roArray" then return
-    renamed = {football: "Soccer", "american-football": "Football"}
+    renamed = appSportDisplayNames()
     for each s in sports
         if s.id <> invalid and renamed.DoesExist(s.id) then s.name = renamed[s.id]
     end for
@@ -245,14 +231,8 @@ end function
 ' ---- API data ---------------------------------------------------------------
 
 function sportIcon(category as String) as String
-    icons = {
-        "basketball": "basketball", "football": "soccer", "american-football": "football",
-        "hockey": "hockey", "baseball": "baseball", "motor-sports": "motorsports",
-        "fight": "mma", "tennis": "tennis", "rugby": "rugby", "afl": "rugby",
-        "golf": "golf", "cricket": "cricket", "billiards": "adjust", "darts": "track_changes"
-    }
-    name = icons[category]
-    if name = invalid then name = "sports"
+    name = appSportIcons()[category]
+    if name = invalid then name = appDefaultSportIcon()
     return "pkg:/images/icons/" + name + ".png"
 end function
 
@@ -286,7 +266,7 @@ end function
 
 ' streamed.pk lists its better sources first; mirror that (unknown ones last).
 function sourceRank(source as String) as Integer
-    order = ["admin", "golf", "foxtrot", "hotel", "delta"]
+    order = appSourceOrder()
     for i = 0 to order.Count() - 1
         if order[i] = LCase(source) then return i
     end for
@@ -294,13 +274,7 @@ function sourceRank(source as String) as Integer
 end function
 
 function sourceDescription(source as String) as String
-    d = {
-        "admin": "Admin added streams", "alpha": "Most reliable (720p 30fps)",
-        "charlie": "Good backup", "delta": "Okayish backup", "echo": "Great quality overall",
-        "foxtrot": "High quality, sometimes 4K", "golf": "Very stable, good quality",
-        "hotel": "Good backup, many motorsports", "intel": "Large event coverage"
-    }
-    v = d[LCase(source)]
+    v = appSourceDescriptions()[LCase(source)]
     if v = invalid then return ""
     return v
 end function

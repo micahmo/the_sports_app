@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
+import '../generated/app_data.dart';
 import '../theme.dart';
 
 /// A mouse-and-keyboard platform, where sideways-swiping rows don't work.
@@ -14,22 +15,7 @@ bool get isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS
 const double kWideLayout = 900;
 
 /// Material icon for an API sport id.
-IconData sportIcon(String category) => switch (category) {
-  'basketball' => Icons.sports_basketball,
-  'football' => Icons.sports_soccer,
-  'american-football' => Icons.sports_football,
-  'hockey' => Icons.sports_hockey,
-  'baseball' => Icons.sports_baseball,
-  'motor-sports' => Icons.sports_motorsports,
-  'fight' => Icons.sports_mma,
-  'tennis' => Icons.sports_tennis,
-  'rugby' || 'afl' => Icons.sports_rugby,
-  'golf' => Icons.sports_golf,
-  'cricket' => Icons.sports_cricket,
-  'billiards' => Icons.adjust,
-  'darts' => Icons.track_changes,
-  _ => Icons.sports,
-};
+IconData sportIcon(String category) => sportIcons[category] ?? defaultSportIcon;
 
 /// The two teams in the order the title names them — the API's home/away
 /// does not always match the title. Null when the match has no teams (e.g. a

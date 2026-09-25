@@ -10,6 +10,7 @@
     <field id="cover" type="string" onChange="update" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
   <script type="text/brightscript" uri="pkg:/components/widgets/TeamBadge.brs" />
   <children>
     <Poster id="disc" uri="pkg:/images/disc.png" />

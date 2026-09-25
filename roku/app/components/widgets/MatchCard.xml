@@ -12,5 +12,6 @@
     <field id="focused" type="boolean" onChange="onFocused" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
   <script type="text/brightscript" uri="pkg:/components/widgets/MatchCard.brs" />
 </component>

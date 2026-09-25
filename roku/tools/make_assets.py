@@ -1,28 +1,36 @@
 # Generates the Roku app's images from the Flutter app's assets.
 #   python roku/tools/make_assets.py        (from the repo root)
 # Everything drawn here is white so the app can tint it with blendColor.
-import math, os, shutil
+import json, math, os, re, shutil
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 APP = os.path.join(ROOT, 'roku', 'app')
 IMG = os.path.join(APP, 'images')
-FLUTTER = os.path.expanduser('~/fvm/versions/3.47.5/bin/cache/artifacts/material_fonts')
+# The Flutter SDK the app builds with (.fvmrc): its icon font and icon table.
+with open(os.path.join(ROOT, '.fvmrc'), encoding='utf-8') as f:
+    SDK = os.path.expanduser('~/fvm/versions/' + json.load(f)['flutter'])
+FLUTTER = os.path.join(SDK, 'bin', 'cache', 'artifacts', 'material_fonts')
 os.makedirs(os.path.join(IMG, 'icons'), exist_ok=True)
 os.makedirs(os.path.join(APP, 'fonts'), exist_ok=True)
 
 WHITE = (255, 255, 255, 255)
 SS = 4  # supersampling for smooth edges
 
-# Material icons used by the app (codepoints from Flutter's icons.dart).
-ICONS = {
-    'basketball': 0xe5e6, 'soccer': 0xe5f2, 'football': 0xe5e9, 'hockey': 0xe5ec,
-    'baseball': 0xe5e5, 'motorsports': 0xe5ef, 'mma': 0xe5ee, 'tennis': 0xe5f3,
-    'rugby': 0xe5f0, 'golf': 0xe5ea, 'cricket': 0xe5e7, 'adjust': 0xe061,
-    'track_changes': 0xe673, 'sports': 0xe5e3, 'live_tv': 0xe387,
-    'fire': 0xe392, 'favorite': 0xe25b, 'settings': 0xe57f, 'visibility': 0xe6bd,
-    'wifi_find': 0xf05a8,
-}
+# Each Material icon's codepoint, from Flutter's own icons.dart.
+with open(os.path.join(SDK, 'packages', 'flutter', 'lib', 'src', 'material', 'icons.dart'), encoding='utf-8') as f:
+    CODEPOINTS = {m.group(1): int(m.group(2), 16) for m in re.finditer(
+        r"static const IconData (\w+) =\s*IconData\((0x[0-9a-fA-F]+),\s*fontFamily: 'MaterialIcons'", f.read())}
+
+# Icons to draw, as images/icons/<file>.png: file name -> Material icon name.
+# Sport icons come from shared/app_data.json (the phone app uses the same);
+# the rest are the Roku's own screens'.
+with open(os.path.join(ROOT, 'shared', 'app_data.json'), encoding='utf-8') as f:
+    SHARED = json.load(f)
+ICONS = {v['icon']: v['icon'] for k, v in SHARED['sports'].items() if not k.startswith('_')}
+ICONS[SHARED['defaultSportIcon']] = SHARED['defaultSportIcon']
+ICONS.update({'live_tv': 'live_tv', 'fire': 'local_fire_department', 'favorite': 'favorite',
+              'settings': 'settings', 'visibility': 'visibility', 'wifi_find': 'wifi_find'})
 
 
 def icon(name, cp, size=96):
@@ -107,8 +115,11 @@ def brand():
     card(1920, 1080, 0.16, 150, 44).save(os.path.join(IMG, 'splash_fhd.png'))
 
 
-for n, cp in ICONS.items():
-    icon(n, cp)
+# Start from an empty folder, so an icon no longer used doesn't linger.
+for old in os.listdir(os.path.join(IMG, 'icons')):
+    os.remove(os.path.join(IMG, 'icons', old))
+for file, material in ICONS.items():
+    icon(file, CODEPOINTS[material])
 nine_patch('card', 20)        # list rows, tiles, cards
 nine_patch('chip', 10)        # HD/SD badges, small pills
 nine_patch('ring', 22, 4)     # focus outline, drawn over a card

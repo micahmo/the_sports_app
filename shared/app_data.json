@@ -1,0 +1,56 @@
+{
+  "_about": "Data the phone/desktop app and the Roku app both use. Edit it here, run `python shared/generate.py`, and commit the result: that writes lib/src/generated/app_data.dart and roku/app/source/generated/app_data.brs (and the Roku's icon images come from `icon` via roku/tools/make_assets.py). CI fails if the generated files are out of date. See DESIGN_NOTES.md, \"Keeping the apps in sync\".",
+
+  "sports": {
+    "_about": "By the API's sport id. `name` overrides the API's name (we say Soccer and Football); `icon` is a Material icon name (Flutter's Icons.<name>).",
+    "basketball": { "icon": "sports_basketball" },
+    "football": { "name": "Soccer", "icon": "sports_soccer" },
+    "american-football": { "name": "Football", "icon": "sports_football" },
+    "hockey": { "icon": "sports_hockey" },
+    "baseball": { "icon": "sports_baseball" },
+    "motor-sports": { "icon": "sports_motorsports" },
+    "fight": { "icon": "sports_mma" },
+    "tennis": { "icon": "sports_tennis" },
+    "rugby": { "icon": "sports_rugby" },
+    "afl": { "icon": "sports_rugby" },
+    "golf": { "icon": "sports_golf" },
+    "cricket": { "icon": "sports_cricket" },
+    "billiards": { "icon": "adjust" },
+    "darts": { "icon": "track_changes" }
+  },
+  "defaultSportIcon": "sports",
+
+  "sources": {
+    "_about": "Stream sources, best first: streams are grouped by source in this order, and sources not listed go last in the order the API gives them. Descriptions are the site's own wording from its watch pages (last checked 2026-09-20). Sources not served at the moment are kept; they have come and gone before.",
+    "order": [
+      { "id": "admin", "description": "Admin added streams" },
+      { "id": "golf", "description": "Very stable, good quality" },
+      { "id": "foxtrot", "description": "High quality, sometimes 4K" },
+      { "id": "hotel", "description": "Good backup, many motorsports events" },
+      { "id": "delta", "description": "Okayish backup" },
+      { "id": "alpha", "description": "Most reliable (720p 30fps)" },
+      { "id": "charlie", "description": "Good backup (poor quality occasionally)" },
+      { "id": "echo", "description": "Great quality overall" },
+      { "id": "intel", "description": "Large event coverage, iffy quality" }
+    ]
+  },
+
+  "palette": {
+    "_about": "Colours both apps draw with. `dark` is the dark theme (the Roku's only one); `light`, where given, is the phone/desktop light theme's version of the same colour.",
+    "bg": { "dark": "#22252A" },
+    "card": { "dark": "#2B2F36" },
+    "cardHigh": { "dark": "#32363E" },
+    "cardHighest": { "dark": "#3A3F48" },
+    "text": { "dark": "#E7E9EE" },
+    "textDim": { "dark": "#C2C7D0" },
+    "outline": { "dark": "#8C919B" },
+    "divider": { "dark": "#44484F" },
+    "primary": { "dark": "#AEB8FF" },
+    "live": { "dark": "#FF6B6B", "light": "#D32F2F" },
+    "popular": { "dark": "#FFA24D", "light": "#C0410A" },
+    "favorite": { "dark": "#FF7BAC", "light": "#C2185B" },
+    "hd": { "dark": "#7BD88F", "light": "#277A31" },
+    "sd": { "dark": "#E8B76B", "light": "#A15C00" },
+    "disc": { "dark": "#E6E8EE", "light": "#FFFFFF" }
+  }
+}

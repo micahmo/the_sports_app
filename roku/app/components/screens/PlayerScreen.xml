@@ -7,6 +7,7 @@
     <field id="params" type="assocarray" onChange="start" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
   <script type="text/brightscript" uri="pkg:/components/screens/PlayerScreen.brs" />
   <children>
     <Video id="video" width="1920" height="1080" />

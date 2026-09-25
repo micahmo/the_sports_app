@@ -8,6 +8,7 @@
     <field id="params" type="assocarray" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
   <script type="text/brightscript" uri="pkg:/components/screens/HomeScreen.brs" />
   <children>
     <Group id="page" />

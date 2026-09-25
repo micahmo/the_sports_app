@@ -7,6 +7,7 @@
     <field id="exitApp" type="boolean" alwaysNotify="true" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
   <script type="text/brightscript" uri="pkg:/components/MainScene.brs" />
   <children>
     <!-- Keeps what's showing current; see onFreshTimer. -->

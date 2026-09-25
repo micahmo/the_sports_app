@@ -147,8 +147,8 @@ Checked 2026-09-20 against live data, which does not always match `/docs`.
 - **The docs' source list is stale.** It names alpha, bravo, charlie, delta,
   echo, foxtrot, golf, hotel, intel and omits `admin`. Live data across 15
   sports / 99 matches only ever had **admin, delta, foxtrot, golf, hotel**.
-  Descriptions for the absent ones are kept in `sourceSubtitles` because sources
-  have come and gone before.
+  Descriptions for the absent ones are kept in `shared/app_data.json` because
+  sources have come and gone before.
 - **Source descriptions are not in the API at all** — they are scraped by hand
   from the watch pages, and they do change wording.
 - **The "popular" toggle means popular *and live*** by construction:
@@ -181,6 +181,48 @@ with the app forced to dark will see a light splash. This is why the colours in
 `values/colors.xml` are kept in sync with `theme.dart` by hand; the only real
 fix would be reading the pref in `MainActivity` natively, which still cannot
 change the very first frame.
+
+## Keeping the apps in sync
+
+There are two code bases, Flutter (phone and desktop) and BrightScript (Roku),
+so nothing can be shared as code. Two things keep them from drifting:
+
+**Shared data.** Anything both apps need to agree on lives once, in
+`shared/app_data.json`: sport display names (Soccer, Football) and icons, the
+stream sources in ranked order with their descriptions, and the colours. After
+editing it, run `python shared/generate.py`, which writes
+`lib/src/generated/app_data.dart` and `roku/app/source/generated/app_data.brs`,
+and commit all three. `roku/tools/make_assets.py` draws the Roku's sport icons
+from the same icon names, looking their codepoints up in Flutter's own
+`icons.dart`. The release workflow runs `generate.py --check` first and stops
+if the generated files are stale. (Before this, three of the nine source
+descriptions had quietly drifted apart.)
+
+It's generated code rather than each app reading the JSON because a Flutter
+release build strips unused icons from the icon font, which needs the icons to
+be constants.
+
+**The parity table.** When a user-visible change lands in one app, it lands in
+the others or is added here as a deliberate gap.
+
+| Feature | Android | Windows | Roku |
+| --- | --- | --- | --- |
+| Home: live counts, Most watched, all sports | yes | yes | yes |
+| Live, Popular and each sport's games | yes | yes | yes |
+| Favorite teams | yes | yes | no |
+| Search and filters (today, popular, sport chips) | yes | yes | no: no text entry worth using on a remote |
+| Games beside the chosen game's streams | no: games, then streams | yes (wide windows) | yes |
+| Quiet background refresh | on returning to the app | every minute idle, and on returning | every minute idle, and back from a stream |
+| Streams grouped by source, best first, described | yes | yes | yes |
+| Measured quality on played streams' rows | yes | yes | yes |
+| Title bar with the game and quality in the player | tap, or the menu | mouse movement, or the menu | OK |
+| Reconnecting by itself after a stall or outage | yes | yes | yes |
+| Picture-in-picture, now-playing notification | yes | no | no |
+| Fullscreen, keyboard shortcuts, remembered window | no | yes | no |
+| Light and dark themes | yes | yes | dark only |
+| Asks before exiting on Back | no | no | yes: TV convention |
+| Needs the Chrome stream server | no | no | yes (see Roku) |
+| `golf` streams | don't play | don't play | don't play |
 
 ## Windows
 
