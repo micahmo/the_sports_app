@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:window_manager/window_manager.dart';
 import '../api/models.dart';
@@ -327,6 +329,8 @@ const String _takeoverJs = r'''
   var OurHls = null;
   var lastTime = -1;
   var stalledFor = 0;
+  // When the video last played on (or was paused on purpose); see watch().
+  var lastProgressAt = Date.now();
   // Whether we have told the app to lift its spinner.
   var announced = false;
   var waitingFor = 0;
@@ -369,6 +373,10 @@ const String _takeoverJs = r'''
     var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === "Escape" || k === "m" || k === "f") { e.preventDefault(); post("key:" + k); }
   }, true);
+
+  // Back online after a dead zone: the app reloads straight away rather than
+  // waiting for its next retry.
+  window.addEventListener("online", function () { post("online"); });
 
   hidePage();
   // The page can replace its own <head>; keep the blanking in place until we
@@ -489,6 +497,7 @@ const String _takeoverJs = r'''
     });
     lastTime = -1;
     stalledFor = 0;
+    lastProgressAt = Date.now();
     play();
     window.__appPlayer.built = true;
   }
@@ -504,14 +513,31 @@ const String _takeoverJs = r'''
   function watch() {
     // The page script may still wipe the body; put our player back if so.
     if (!document.getElementById("appPlayer")) { build(window.__appPlayer.url); return; }
-    if (video.paused) return;
+    if (video.paused) { lastProgressAt = Date.now(); return; }
+    // Progress is the video playing on at normal speed: about half a second
+    // per check (more if timers run late). Our own seeks don't count, and
+    // since the jump to live below never jumps back with nothing ahead, a
+    // stream that has run dry can't replay its last seconds as "progress".
+    var moved = video.currentTime - lastTime;
+    if (lastTime >= 0 && moved > 0 && moved < 3) lastProgressAt = Date.now();
     if (video.currentTime === lastTime) {
       stalledFor += 1;
+      // Nothing for 20s, beyond what the retries and hops below fix: the
+      // stream link has likely expired, or the network is gone. The app loads
+      // the page again for a fresh link, once the network is back.
+      if (announced && Date.now() - lastProgressAt > 20000) {
+        lastProgressAt = Date.now();
+        post("stalled");
+      }
       // Stuck at a hole in the buffer with newer data past it: hop over it.
       var next = nextBufferedStart(video.currentTime);
       if (stalledFor >= 2 && next >= 0) { stalledFor = 0; video.currentTime = next + 0.1; return; }
-      // ~4s without progress: skip whatever we are stuck on and rejoin live.
-      if (stalledFor >= 8) { stalledFor = 0; toLiveEdge(); video.play().catch(function () {}); }
+      // ~4s without progress: skip whatever we are stuck on and rejoin live --
+      // if there is newer video to rejoin. With nothing buffered ahead (no
+      // network), jumping would only replay the last seconds over and over.
+      var b = video.buffered;
+      var ahead = b.length ? b.end(b.length - 1) - video.currentTime : 0;
+      if (stalledFor >= 8 && ahead > 1) { stalledFor = 0; toLiveEdge(); video.play().catch(function () {}); }
     } else {
       stalledFor = 0;
       lastTime = video.currentTime;
@@ -606,6 +632,19 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // just showing its red notice. Cover that with something presentable.
   bool _failed = false;
 
+  // Healing: once the stream has played, a stall or failure (a dead zone on
+  // mobile, an expired link) doesn't end it. While streamed.pk can't be
+  // reached the app waits, checking every 10s (and at once when the page sees
+  // the network return), then loads the page again for a fresh link, which
+  // starts at the live edge. With the network fine, three reloads that don't
+  // get it playing mean the stream itself is gone: say so, as for a stream
+  // that never started.
+  bool _everPlayed = false;
+  bool _healing = false;
+  bool _offline = false;
+  int _healTries = 0;
+  Timer? _healTimer;
+
   // Rotation/PiP resume heuristics
   DateTime? _lastPipExitAt;
   bool _wentBackground = false;
@@ -688,21 +727,79 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _onKey(message.substring(4));
       return;
     }
+    if (message == 'stalled') {
+      _heal();
+      return;
+    }
+    if (message == 'online') {
+      if (_healing) _healNow();
+      return;
+    }
     setState(() {
       // Anything other than success means we cannot do better than
       // showing the page itself, so stop covering it either way.
       if (message == 'playing' || message == 'passthrough') {
         _ready = true;
         _failed = false;
+        _everPlayed = true;
+        _healing = false;
+        _offline = false;
+        _healTries = 0;
+        _healTimer?.cancel();
       } else if (message == 'muted') {
         _muted = true;
       } else if (message == 'unmuted') {
         _muted = false;
+      } else if (_everPlayed) {
+        // Stopped after playing, or a healing reload that didn't get a stream
+        // (the next try is already scheduled).
+        if (!_healing) WidgetsBinding.instance.addPostFrameCallback((_) => _heal());
       } else {
         // no-stream / fatal / unsupported / hls-load-failed
         _failed = true;
       }
     });
+  }
+
+  void _heal() {
+    if (!mounted || _healing) return;
+    setState(() => _healing = true);
+    _healNow();
+  }
+
+  Future<void> _healNow() async {
+    _healTimer?.cancel();
+    final bool online = await _siteReachable();
+    if (!mounted || !_healing) return;
+    if (online && _healTries >= 3) {
+      setState(() {
+        _healing = false;
+        _offline = false;
+        _failed = true;
+      });
+      return;
+    }
+    setState(() => _offline = !online);
+    if (online) {
+      _healTries++;
+      _refresh();
+    }
+    // Offline: look again in 10s. Online: give the reload time to start,
+    // longer each time (20s, 40s, 60s).
+    final Duration wait = online ? Duration(seconds: 20 * _healTries) : const Duration(seconds: 10);
+    _healTimer = Timer(wait, () {
+      if (mounted && _healing) _healNow();
+    });
+  }
+
+  // Whether the stream site answers at all (any status will do).
+  Future<bool> _siteReachable() async {
+    try {
+      await http.head(Uri.parse('https://streamed.pk/')).timeout(const Duration(seconds: 6));
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   // Keyboard shortcuts, whether they reach Flutter or come from the page.
@@ -803,6 +900,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     // Disable auto-PiP when leaving this screen
     _pip.invokeMethod('setAutoPipOnUserLeave', <String, dynamic>{'enabled': false}).catchError((_) {});
     WidgetsBinding.instance.removeObserver(this);
+    _healTimer?.cancel();
     // Leaving the player gives the window back its title bar.
     if (_fullscreen) _leaveFullscreen().catchError((_) {});
     _web.dispose();
@@ -947,10 +1045,24 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                         ),
                       ),
                     )
-                  else if (!_ready)
-                    const ColoredBox(
+                  else if (!_ready || _healing)
+                    ColoredBox(
                       color: Colors.black,
-                      child: Center(child: CircularProgressIndicator(color: Colors.white)),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            const CircularProgressIndicator(color: Colors.white),
+                            if (_healing) ...<Widget>[
+                              const SizedBox(height: 16),
+                              Text(
+                                _offline ? 'Waiting for connection…' : 'Reconnecting…',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                 ],
               ),
