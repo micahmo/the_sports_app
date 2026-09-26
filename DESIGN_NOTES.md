@@ -217,6 +217,8 @@ the others or is added here as a deliberate gap.
 | Measured quality on played streams' rows | yes | yes | yes |
 | Title bar with the game and quality in the player | tap, or the menu | mouse movement, or the menu | OK |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
+| A source's server dropping the stream mid-game | reload after 20 s (a visible restart) | reload after 20 s (a visible restart) | fresh link in the background, usually unnoticed; see "Servers that drop a stream" |
+| First link doesn't answer | "unavailable" | "unavailable" | two more fresh sessions first |
 | Picture-in-picture, now-playing notification | yes | no | no |
 | Fullscreen, keyboard shortcuts, remembered window | no | yes | no |
 | Light and dark themes | yes | yes | dark only |
@@ -343,7 +345,7 @@ Two things to keep:
 Reconnects overlap: the old stream task can still be stuck in a slow fetch when
 the new one starts. So a task closes only its own browser session (never "the
 remembered one", except the first stream of an app run tidying up after a
-crash), a failed link refresh keeps the old link, and `quitRequested()` reads
+crash), a failed new link keeps the old one, and `quitRequested()` reads
 the `quit` field instead of draining the message port, which also carries the
 stream server's socket events. Getting any of these wrong crashed the app on
 2026-09-24 whenever a reconnect met a slow fetch. (With the debug console
@@ -365,6 +367,35 @@ player would buy a whole segment of cushion, at ~6 s more delay behind live.
 Things that were tried and didn't pan out: headers/HTTP-2 tricks for the
 playlist (it's the TLS fingerprint), and a server relay that re-serves the video
 (works, but unnecessary once the Roku can unwrap segments itself).
+
+### Servers that drop a stream
+
+The `lb*.strmd.st` sources (delta, foxtrot, hotel) can lose a stream on one
+server while others carry on: on 2026-09-25 delta's playlist on whichever
+server we had started answering 404 every 30 s to 6 min, and a new link often
+came back already dead. What we measured with a browser session:
+- Each fresh session gets a new token, often on another server (lb5, lb8, lb11,
+  lb16...). The token isn't tied to the session.
+- Reloading the page in the same session gets a new token but usually the same
+  server, cookies and storage or not (there are none). That's why the old
+  in-session refresh kept handing back the dead link.
+- Every server lists the same segments at the same media sequence, so the
+  player can switch links mid-stream without a gap.
+- The page gets its link from `embed.st/fetch`, decoded by the WASM lock, so a
+  new link means loading the page; we can't call that ourselves.
+
+So on the Roku, when the playlist stops answering, `MintTask` opens fresh
+sessions in the background (up to three, as the first link may be dead too)
+while the proxy keeps giving the player the last good playlist; the player
+plays on through its buffer and carries on from the new link. The full
+reconnect stays as the backstop. At start, a link that doesn't answer gets two
+more fresh sessions before the stream is called unavailable.
+
+Not on the phone or desktop yet (parked, 2026-09-25): they'd load the page in
+a hidden same-site iframe inside the player page (tested: its link can be read,
+~1 s) and switch hls.js over with a playlist loader that swaps the dead URL for
+the new one. The iframe tended to land on the same server as the page, so it
+would need retries too.
 
 ## Debugging recipe
 

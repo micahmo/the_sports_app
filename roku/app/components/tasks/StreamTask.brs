@@ -54,25 +54,32 @@ sub work()
         return
     end if
 
-    say("Starting a browser on the server...")
-    if not openSession() then
-        fail("Couldn't start a browser on " + m.driver + ".")
-        return
-    end if
-    say("Loading the stream...")
-    if not findPlaylist() then
-        if not m.quitting then fail("The stream page didn't provide a playlist. Try another stream.")
+    ' A link that doesn't answer may just be on one of the source's servers
+    ' that has dropped the stream; a fresh session usually gets another. Three
+    ' tries before calling the stream unavailable.
+    for try = 1 to 3
+        say("Starting a browser on the server...")
+        if not openSession() then
+            fail("Couldn't start a browser on " + m.driver + ".")
+            return
+        end if
+        say("Loading the stream...")
+        if not findPlaylist() then
+            if not m.quitting then fail("The stream page didn't provide a playlist. Try another stream.")
+            cleanup()
+            return
+        end if
+        if pickMedia() then exit for
         cleanup()
-        return
-    end if
-    ' A stream that isn't broadcasting still hands over a playlist URL, which
-    ' then answers "Not found" (with a 200). Say so, as the phone app does,
-    ' rather than let the player fail with "an unexpected problem".
-    if not pickMedia() then
-        if not m.quitting then fail("This stream is unavailable. Try another stream or source.")
-        cleanup()
-        return
-    end if
+        ' A stream that isn't broadcasting still hands over a playlist URL, which
+        ' then answers "Not found". Say so, as the phone app does, rather than
+        ' let the player fail with "an unexpected problem".
+        if try = 3 or quitRequested() then
+            if not m.quitting then fail("This stream is unavailable. Try another stream or source.")
+            return
+        end if
+        print "[stream] the link didn't answer: trying a fresh session"
+    end for
     serve()
     cleanup()
 end sub
