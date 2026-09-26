@@ -11,8 +11,8 @@
   <script type="text/brightscript" uri="pkg:/components/screens/PlayerScreen.brs" />
   <children>
     <Video id="video" width="1920" height="1080" />
-    <!-- Centred, or just below the middle while the video buffers (see
-         placeStatus), where the player draws its own spinner. -->
+    <!-- Under our spinner while starting or reconnecting, centred alone for a
+         final message (showWorking, showFinal). -->
     <Label id="status" translation="[160, 440]" width="1600" height="200" horizAlign="center" vertAlign="center" wrap="true" />
     <!-- Buffering this long means the stream has stalled: start it again. -->
     <Timer id="stall" duration="20" />

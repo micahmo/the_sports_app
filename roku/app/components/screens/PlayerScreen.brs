@@ -5,6 +5,9 @@ sub init()
     m.status.font = bodyFont(32)
     m.status.color = t.textDim
     m.video.observeField("state", "onVideoState")
+    ' Our spinner stands in for the player's own buffering indicators.
+    m.video.bufferingBarVisibilityAuto = false
+    m.video.retrievingBarVisibilityAuto = false
     m.stall = m.top.findNode("stall")
     m.stall.observeField("fire", "onStall")
     m.retry = m.top.findNode("retry")
@@ -16,16 +19,21 @@ sub init()
     m.barTimer = m.top.findNode("barTimer")
     m.barTimer.observeField("fire", "onBarTimer")
 
+    ' Ours whenever there's something to wait for: starting, reconnecting (with
+    ' the status under it) and buffering.
+    m.spinner = mkSpinner(m.top, 960, 520)
+    hideStatus()
+
     m.restarts = 0
 end sub
 
 sub start()
     driver = getDriver()
     if driver = "" then
-        m.status.text = "No stream server is set up yet." + Chr(10) + "Open Settings on the home screen to find one."
+        showFinal("No stream server is set up yet." + Chr(10) + "Open Settings on the home screen to find one.")
         return
     end if
-    m.status.text = "Starting..."
+    showWorking("Starting...")
     m.barTitle.text = m.top.params.title
     m.task = CreateObject("roSGNode", "StreamTask")
     m.task.embedUrl = m.top.params.embedUrl
@@ -38,22 +46,38 @@ sub start()
 end sub
 
 sub onStatus()
-    if m.video.state <> "playing" then m.status.text = m.task.status
-    placeStatus()
+    if m.spinner.visible then m.status.text = m.task.status
 end sub
 
-' The player draws a spinner in the middle while it buffers: move our text
-' just below it then, so the two don't overlap. Centred otherwise.
-sub placeStatus()
-    if m.video.state = "buffering" then m.status.translation = [160, 600] else m.status.translation = [160, 440]
+' Working on it: our spinner in the middle, what's happening just under it.
+sub showWorking(text as String)
+    m.status.text = text
+    m.status.translation = [160, 500]
+    m.status.visible = true
+    m.spinner.visible = true
+    m.spinner.control = "start"
+end sub
+
+' Nothing more to wait for: the message alone, centred.
+sub showFinal(text as String)
+    m.spinner.visible = false
+    m.spinner.control = "stop"
+    m.status.text = text
+    m.status.translation = [160, 440]
+    m.status.visible = true
+end sub
+
+sub hideStatus()
+    m.spinner.visible = false
+    m.spinner.control = "stop"
+    m.status.visible = false
 end sub
 
 sub onError()
-    m.status.visible = true
     if m.task.error = "offline" then
         ' No internet: wait, and look again in 10 seconds. Never counts as a try.
         m.task = invalid
-        m.status.text = "Waiting for connection..."
+        showWorking("Waiting for connection...")
         m.retry.duration = 10
         m.retry.control = "start"
         return
@@ -63,12 +87,12 @@ sub onError()
         reconnect(m.task.error)
         return
     end if
-    m.status.text = m.task.error + Chr(10) + "Press Back to pick another stream."
+    showFinal(m.task.error + Chr(10) + "Press Back to pick another stream.")
 end sub
 
 sub onRetry()
     start()
-    m.status.text = "Reconnecting..."
+    showWorking("Reconnecting...")
 end sub
 
 sub onStreamUrl()
@@ -81,8 +105,7 @@ sub onStreamUrl()
     ' once it's playing stalls the stream (see onQuality).
     content.title = ""
     m.video.content = content
-    ' The player shows its own buffering spinner from here on; don't sit on it.
-    m.status.visible = false
+    ' Our spinner and the last status stay up until it plays (onVideoState).
     m.video.control = "play"
 end sub
 
@@ -122,14 +145,18 @@ end sub
 sub onVideoState()
     st = m.video.state
     print "[player] "; st; " "; m.video.errorMsg
-    placeStatus()
     if st = "playing" then
-        m.status.visible = false
+        hideStatus()
         m.stall.control = "stop"
         m.restarts = 0
     else if st = "buffering" then
+        ' Mid-game, our spinner alone; while starting, the status is under it.
+        m.spinner.visible = true
+        m.spinner.control = "start"
         m.stall.control = "stop"
         m.stall.control = "start"
+    else if st = "paused" and not m.status.visible then
+        hideStatus()
     else if st = "error" then
         reconnect("Playback failed: " + m.video.errorMsg)
     end if
@@ -155,6 +182,9 @@ sub reconnect(reason as String)
     m.stall.control = "stop"
     m.retry.control = "stop"
     m.video.control = "stop"
+    ' And let go of it, so none of the player's own UI (its buffering spinner)
+    ' lingers under ours.
+    m.video.content = invalid
     if m.task <> invalid then
         m.task.unobserveField("status")
         m.task.unobserveField("error")
@@ -163,18 +193,17 @@ sub reconnect(reason as String)
         m.task.quit = true
         m.task = invalid
     end if
-    m.status.visible = true
     if m.restarts >= 3 then
         print "[player] giving up: "; reason
-        m.status.text = reason + Chr(10) + "Press Back to pick another stream."
+        showFinal(reason + Chr(10) + "Press Back to pick another stream.")
         return
     end if
     m.restarts = m.restarts + 1
     print "[player] reconnecting ("; m.restarts; "): "; reason
-    m.status.text = "Reconnecting..."
+    showWorking("Reconnecting...")
     if m.restarts = 1 then
         start()
-        m.status.text = "Reconnecting..."
+        showWorking("Reconnecting...")
     else
         m.retry.duration = 20 * (m.restarts - 1)
         m.retry.control = "start"
