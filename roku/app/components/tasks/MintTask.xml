@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- A fresh link for a stream whose link stopped working, found in a new
+     browser session while StreamTask keeps serving (see its playlist()). Set
+     embedUrl + driver, run; `result` is {sid, url}, or {} if there's none. The
+     session then belongs to StreamTask. Set `quit` to give up. -->
+<component name="MintTask" extends="Task">
+  <interface>
+    <field id="embedUrl" type="string" />
+    <field id="driver" type="string" />
+    <field id="quit" type="boolean" alwaysNotify="true" />
+    <field id="result" type="assocarray" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/webdriver.brs" />
+  <script type="text/brightscript" uri="pkg:/source/streamlink.brs" />
+  <script type="text/brightscript" uri="pkg:/components/tasks/MintTask.brs" />
+</component>

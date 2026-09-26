@@ -16,6 +16,7 @@
     <field id="quality" type="assocarray" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/webdriver.brs" />
+  <script type="text/brightscript" uri="pkg:/source/streamlink.brs" />
   <script type="text/brightscript" uri="pkg:/source/tsinfo.brs" />
   <script type="text/brightscript" uri="pkg:/components/tasks/StreamTask.brs" />
 </component>

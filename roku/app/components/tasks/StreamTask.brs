@@ -29,6 +29,10 @@ sub work()
     m.measured = 0
     m.height = 0
     m.fps = 0
+    ' The last good playlist, and a new link being found (see playlist()).
+    m.lastPlaylist = invalid
+    m.minter = invalid
+    m.mintTry = invalid
     m.port = CreateObject("roMessagePort")
     m.top.observeField("quit", m.port)
 
@@ -73,99 +77,6 @@ sub work()
     cleanup()
 end sub
 
-function openSession() as Boolean
-    q = Chr(34)
-    args = ["--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--mute-audio", "--window-size=1280,720"]
-    ' Built by hand: WebDriver needs "alwaysMatch" and "goog:chromeOptions" exactly.
-    caps = "{" + q + "capabilities" + q + ":{" + q + "alwaysMatch" + q + ":{" + q + "browserName" + q + ":" + q + "chrome" + q + "," + q + "goog:chromeOptions" + q + ":{" + q + "args" + q + ":" + FormatJson(args) + "}}}}"
-    session = wd(m.driver, "POST", "/session", caps)
-    if session = invalid or session.sessionId = invalid then return false
-    m.sid = session.sessionId
-    rememberSession(m.driver, m.sid)
-
-    ' Headless Chrome announces itself in its user agent; present as the same
-    ' Chrome version without the "Headless", whatever version the server runs.
-    ua = exec("return navigator.userAgent")
-    if isString(ua) and Instr(1, ua, "HeadlessChrome") > 0 then
-        ua = ua.Replace("HeadlessChrome", "Chrome")
-        cdp = "{" + q + "cmd" + q + ":" + q + "Network.setUserAgentOverride" + q + "," + q + "params" + q + ":{" + q + "userAgent" + q + ":" + FormatJson(ua) + "}}"
-        wd(m.driver, "POST", "/session/" + m.sid + "/goog/cdp/execute", cdp)
-    end if
-    return true
-end function
-
-' Loads the embed page and waits for it to request its playlist.
-function findPlaylist() as Boolean
-    wd(m.driver, "POST", "/session/" + m.sid + "/url", {url: m.top.embedUrl})
-    js = "var e=performance.getEntriesByType('resource');for(var i=e.length-1;i>=0;i--)if(e[i].name.indexOf('.m3u8')!==-1)return e[i].name;return null;"
-    ' The current link stays until there's a new one: a failed refresh must
-    ' not leave the proxy without one.
-    found = invalid
-    for i = 1 to 40
-        v = exec(js)
-        if isString(v) and v <> "" then
-            found = v
-            exit for
-        end if
-        ' Leaving the player while it loads: stop now rather than wait it out.
-        if quitRequested() then return false
-        sleep(500)
-    end for
-    if found = invalid then return false
-    m.playlistUrl = found
-    ' Only the page is needed now; its own player would keep decoding and
-    ' downloading the stream on the server for nothing.
-    exec("try{jwplayer().remove()}catch(e){}")
-    m.lastMint = CreateObject("roTimespan")
-    return true
-end function
-
-' If the page handed over a master playlist, serve its best rendition alone.
-' Given the choice (1080p at 8 Mbps and 540p), the Roku starts low and stalls
-' switching up through this proxy; one media playlist plays smoothly. False
-' when the stream isn't actually there.
-function pickMedia() as Boolean
-    text = fetchInPage(m.playlistUrl)
-    if text = invalid then return false
-    if Instr(1, text, "#EXT-X-STREAM-INF") = 0 then return true
-    best = ""
-    bestBw = -1
-    lines = text.Split(Chr(10))
-    for i = 0 to lines.Count() - 2
-        line = lines[i].Trim()
-        if Left(line, 18) = "#EXT-X-STREAM-INF:" then
-            bw = 0
-            at = Instr(1, line, "BANDWIDTH=")
-            if at > 0 then bw = Val(Mid(line, at + 10))
-            uri = lines[i + 1].Trim()
-            if uri <> "" and Left(uri, 1) <> "#" and bw > bestBw then
-                best = uri
-                bestBw = bw
-            end if
-        end if
-    end for
-    if best = "" then return false
-    m.playlistUrl = resolve(m.playlistUrl, best)
-    print "[stream] master playlist: using "; bestBw; " bps rendition"
-    return fetchInPage(m.playlistUrl) <> invalid
-end function
-
-' Reads the field rather than the message port: the port also carries the
-' stream server's socket events, and draining it mid-stream (a link refresh)
-' threw those away.
-function quitRequested() as Boolean
-    if m.top.quit = true then m.quitting = true
-    return m.quitting = true
-end function
-
-function exec(js as String) as Dynamic
-    return wd(m.driver, "POST", "/session/" + m.sid + "/execute/sync", {script: js, args: []})
-end function
-
-function isString(v as Dynamic) as Boolean
-    return type(v) = "String" or type(v) = "roString"
-end function
-
 function siteReachable() as Boolean
     x = CreateObject("roUrlTransfer")
     x.SetUrl("https://streamed.pk/")   ' apiBase() in common.brs, which tasks don't load
@@ -191,18 +102,20 @@ end sub
 ' ---- playlists --------------------------------------------------------------
 
 ' A playlist fetched by the page itself, with its entries pointed at this proxy.
-' If the signed URL has stopped working (token expired), load the page again
-' for a fresh one, at most every 30 seconds.
+' When the link stops working, a fresh one is found in the background
+' (startMint) and the player gets the last good playlist meanwhile: it plays on
+' through what it has, and carries on from the new link, which lists the same
+' segments, without noticing. (Some sources' servers drop a stream every few
+' minutes; reloading the page in the same session only gave the dead link back.)
 function playlist(url as String) as Dynamic
+    main = (url = m.playlistUrl)
     text = fetchInPage(url)
-    if text = invalid and url = m.playlistUrl and m.lastMint.TotalMilliseconds() > 30000 and not quitRequested() then
-        say("Refreshing the stream link...")
-        if findPlaylist() and pickMedia() then
-            url = m.playlistUrl
-            text = fetchInPage(url)
-        end if
+    if text = invalid then
+        if not main then return invalid
+        startMint()
+        if m.lastPlaylist <> invalid then print "[stream] serving the last playlist while a new link is found"
+        return m.lastPlaylist
     end if
-    if text = invalid then return invalid
     esc = CreateObject("roUrlTransfer")
     out = []
     ' Each segment's length (its #EXTINF), for measure().
@@ -225,54 +138,39 @@ function playlist(url as String) as Dynamic
         out.Push(line)
     end for
     prefetch(segs)
-    return out.Join(Chr(10)) + Chr(10)
+    result = out.Join(Chr(10)) + Chr(10)
+    if main then m.lastPlaylist = result
+    return result
 end function
 
-' One retry straight away: a single slow or failed round trip (seen once after
-' a 12s segment download) shouldn't cost the player its playlist.
-function fetchInPage(url as String) as Dynamic
-    text = fetchInPageOnce(url)
-    if text = invalid and not m.quitting then
-        print "[stream] retrying playlist fetch"
-        text = fetchInPageOnce(url)
-    end if
-    return text
-end function
+' A new link from a fresh browser session (MintTask), while this one keeps
+' serving. One at a time, and not more often than every 10 seconds.
+sub startMint()
+    if m.minter <> invalid or quitRequested() then return
+    if m.mintTry <> invalid and m.mintTry.TotalSeconds() < 10 then return
+    m.mintTry = CreateObject("roTimespan")
+    print "[stream] the link stopped working: finding a new one"
+    m.minter = CreateObject("roSGNode", "MintTask")
+    m.minter.driver = m.driver
+    m.minter.embedUrl = m.top.embedUrl
+    m.minter.observeField("result", m.port)
+    m.minter.control = "run"
+end sub
 
-function fetchInPageOnce(url as String) as Dynamic
-    js = "var done=arguments[arguments.length-1];fetch(arguments[0]).then(function(r){return r.text().then(function(t){done(r.status+'\n'+t)})}).catch(function(e){done('0\n'+e)});"
-    v = wd(m.driver, "POST", "/session/" + m.sid + "/execute/async", {script: js, args: [url]}, 20000)
-    if not isString(v) then
-        ' Log what the server said (e.g. the page navigated away, session gone).
-        if v = invalid then print "[stream] playlist fetch: no reply from the server" else print "[stream] playlist fetch: "; Left(FormatJson(v), 200)
-        return invalid
+' The new link, if there is one: use it and its session from here on.
+sub onMinted(r as Object)
+    m.minter = invalid
+    if r = invalid or r.sid = invalid then
+        print "[stream] couldn't find a new link"
+        return
     end if
-    nl = Instr(1, v, Chr(10))
-    body = Mid(v, nl + 1)
-    if nl = 0 or Left(v, nl - 1) <> "200" or Left(body, 7) <> "#EXTM3U" then
-        print "[stream] playlist fetch: "; Left(v, 60)
-        return invalid
-    end if
-    return body
-end function
-
-function resolve(base as String, ref as String) as String
-    if Left(ref, 4) = "http" then return ref
-    schemeEnd = Instr(1, base, "://")
-    if Left(ref, 1) = "/" then
-        hostEnd = Instr(schemeEnd + 3, base, "/")
-        return Left(base, hostEnd - 1) + ref
-    end if
-    q = Instr(1, base, "?")
-    if q > 0 then base = Left(base, q - 1)
-    slash = 0
-    i = Instr(1, base, "/")
-    while i > 0
-        slash = i
-        i = Instr(i + 1, base, "/")
-    end while
-    return Left(base, slash) + ref
-end function
+    old = m.sid
+    m.sid = r.sid
+    m.playlistUrl = r.url
+    rememberSession(m.driver, m.sid)
+    closeSession(m.driver, old)
+    print "[stream] switched to a new link after "; m.mintTry.TotalMilliseconds(); " ms: "; Left(m.playlistUrl, 40)
+end sub
 
 ' ---- segments ---------------------------------------------------------------
 
@@ -503,6 +401,8 @@ sub serve()
             tick()
         else if type(ev) = "roSGNodeEvent" and ev.getField() = "quit" then
             exit while
+        else if type(ev) = "roSGNodeEvent" and ev.getField() = "result" then
+            onMinted(ev.getData())
         else if type(ev) = "roUrlEvent" then
             onDownload(ev)
         else if type(ev) = "roSocketEvent" then
@@ -543,6 +443,12 @@ sub serve()
     end for
     cancelDownloads()
     srv.Close()
+    ' A new link still being found: stop it, or close its session if it's done.
+    if m.minter <> invalid then
+        m.minter.quit = true
+        r = m.minter.result
+        if r <> invalid and r.sid <> invalid then closeSession(m.driver, r.sid)
+    end if
 end sub
 
 ' True if the request was answered; a segment still downloading is answered
