@@ -255,8 +255,12 @@ class MatchRow extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          // Stretched to a taller neighbour's height (Home's Most watched row),
+          // the sport and time line keeps to the bottom, so it lines up across
+          // the row whatever the title's height. In a list it just follows.
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
               Row(
                 children: <Widget>[
@@ -272,9 +276,8 @@ class MatchRow extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
               Padding(
-                padding: const EdgeInsets.only(left: 36),
+                padding: const EdgeInsets.only(left: 36, top: 6),
                 child: Text(meta, style: TextStyle(fontSize: 12, letterSpacing: 0.8, color: cs.outline)),
               ),
             ],
