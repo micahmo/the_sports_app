@@ -34,6 +34,8 @@ bool isLiveNow(ApiMatch m) => DateTime.fromMillisecondsSinceEpoch(m.date, isUtc:
 
 /// "7:00 PM" today, otherwise "Oct 10 · 7:00 PM".
 String matchTimeLabel(ApiMatch m) {
+  // 24/7 channels have no start time (0), which would read as Dec 31, 1969.
+  if (m.date <= 0) return '24/7';
   final DateTime dt = DateTime.fromMillisecondsSinceEpoch(m.date, isUtc: true).toLocal();
   final DateTime now = DateTime.now();
   final bool today = dt.year == now.year && dt.month == now.month && dt.day == now.day;
@@ -271,11 +273,15 @@ class MatchRow extends StatelessWidget {
 /// One row of a rounded card, so long lists can still be built lazily: the
 /// first row rounds the top corners, the last the bottom, the rest get a divider.
 class CardSegment extends StatelessWidget {
-  const CardSegment({super.key, required this.first, required this.last, required this.child, this.horizontalMargin = 16});
+  const CardSegment({super.key, required this.first, required this.last, required this.child, this.horizontalMargin = 16, this.fill = false});
   final bool first;
   final bool last;
   final Widget child;
   final double horizontalMargin;
+
+  /// Stretch the child to the card's height, for cards made as tall as their
+  /// neighbours (so all of it highlights and taps).
+  final bool fill;
 
   @override
   Widget build(BuildContext context) {
@@ -291,7 +297,7 @@ class CardSegment extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             if (!first) Divider(height: 1, thickness: 1, color: cs.outlineVariant),
-            child,
+            if (fill) Expanded(child: child) else child,
           ],
         ),
       ),

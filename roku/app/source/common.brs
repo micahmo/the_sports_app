@@ -210,6 +210,8 @@ end function
 
 ' "7:00 PM" today, otherwise "OCT 10 · 7:00 PM".
 function matchTimeLabel(match as Object) as String
+    ' 24/7 channels have no start time (0), which would read as Dec 31, 1969.
+    if matchSeconds(match) <= 0 then return "24/7"
     dt = CreateObject("roDateTime")
     dt.FromSeconds(matchSeconds(match))
     dt.ToLocalTime()

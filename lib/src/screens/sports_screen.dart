@@ -186,6 +186,7 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                                     first: true,
                                     last: true,
                                     horizontalMargin: 0,
+                                    fill: true,
                                     child: MatchRow(
                                       match: d.top[i],
                                       categoryLabel: sportsNames[d.top[i].category] ?? d.top[i].category,
