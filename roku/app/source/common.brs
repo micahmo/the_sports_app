@@ -182,6 +182,55 @@ sub saveQuality(embedUrl as String, label as String)
     s.Flush()
 end sub
 
+' ---- streams ---------------------------------------------------------------
+
+' "Admin 1": a stream's source and number, as the player names streams.
+function streamName(s as Object) as String
+    src = s.source
+    if src = invalid then src = ""
+    if Len(src) > 0 then src = UCase(Left(src, 1)) + Mid(src, 2)
+    return src + " " + Int(s.streamNo).ToStr()
+end function
+
+' "Admin 1 (HD)"
+function streamLabel(s as Object) as String
+    tag = "SD"
+    if s.hd = true then tag = "HD"
+    return streamName(s) + " (" + tag + ")"
+end function
+
+' The player's wording (shared/app_data.json) with {stream} filled in.
+function playerText(key as String, stream = "" as String) as String
+    t = appPlayerText()[key]
+    if t = invalid then return ""
+    return t.Replace("{stream}", stream)
+end function
+
+' Games played recently and the stream each was watched on, newest first, for
+' the player's streams row (as lib/src/player/recents.dart). One per game. The
+' match is kept slim: the registry is small.
+function recentGames() as Object
+    s = CreateObject("roRegistrySection", "recents")
+    if not s.Exists("list") then return []
+    list = ParseJson(s.Read("list"))
+    if type(list) <> "roArray" then return []
+    return list
+end function
+
+sub recordRecent(match as Object, stream as Object)
+    keep = appPlayer().recentsKept
+    slim = {id: match.id, title: match.title, category: match.category, date: match.date, poster: match.poster, teams: match.teams, sources: match.sources}
+    entry = {match: slim, stream: {id: stream.id, streamNo: stream.streamNo, language: stream.language, hd: stream.hd, embedUrl: stream.embedUrl, source: stream.source}, at: nowSeconds()}
+    list = [entry]
+    for each r in recentGames()
+        if list.Count() >= keep then exit for
+        if r.match <> invalid and r.match.id <> match.id then list.Push(r)
+    end for
+    s = CreateObject("roRegistrySection", "recents")
+    s.Write("list", FormatJson(list))
+    s.Flush()
+end sub
+
 function formatViewers(n as Dynamic) as String
     if n = invalid then return ""
     n = Int(n)

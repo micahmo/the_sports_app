@@ -30,7 +30,9 @@ with open(os.path.join(ROOT, 'shared', 'app_data.json'), encoding='utf-8') as f:
 ICONS = {v['icon']: v['icon'] for k, v in SHARED['sports'].items() if not k.startswith('_')}
 ICONS[SHARED['defaultSportIcon']] = SHARED['defaultSportIcon']
 ICONS.update({'live_tv': 'live_tv', 'fire': 'local_fire_department', 'favorite': 'favorite',
-              'settings': 'settings', 'visibility': 'visibility', 'wifi_find': 'wifi_find'})
+              'settings': 'settings', 'visibility': 'visibility', 'wifi_find': 'wifi_find',
+              # The player's Streams pill (Down opens the row) and "Switched to" note.
+              'arrow_down': 'keyboard_arrow_down', 'swap': 'swap_horiz'})
 
 
 def icon(name, cp, size=96):

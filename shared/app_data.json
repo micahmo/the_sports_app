@@ -35,6 +35,26 @@
     ]
   },
 
+  "player": {
+    "_about": "Player numbers both apps follow. rowThisGame / rowRecent: how many cards each side of the streams row shows. recentsKept: how many recent games are remembered (finished ones are dropped when the row is shown). stuckDownloadMs: a segment download still running this long (and, on phone/desktop, receiving nothing) gets a second copy.",
+    "rowThisGame": 3,
+    "rowRecent": 3,
+    "recentsKept": 12,
+    "stuckDownloadMs": 4000,
+    "switchedNoteMs": 4000
+  },
+
+  "playerText": {
+    "_about": "The player's wording, the same on every app. {stream} is a stream's name and HD/SD, e.g. \"Delta 1 (HD)\".",
+    "streamsPill": "Streams",
+    "thisGame": "THIS GAME",
+    "recent": "RECENT",
+    "notPlayed": "Not played yet",
+    "stoppedWorking": "{stream} stopped working",
+    "trying": "Trying {stream}…",
+    "switchedTo": "Switched to {stream}"
+  },
+
   "palette": {
     "_about": "Colours both apps draw with. `dark` is the dark theme (the Roku's only one); `light`, where given, is the phone/desktop light theme's version of the same colour.",
     "bg": { "dark": "#22252A" },

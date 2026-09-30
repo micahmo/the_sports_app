@@ -17,6 +17,7 @@ class TeamInfo {
   final String? badge; // id used in images endpoint
   TeamInfo({required this.name, required this.badge});
   factory TeamInfo.fromJson(Map<String, dynamic> j) => TeamInfo(name: j['name'] as String, badge: j['badge'] as String?);
+  Map<String, dynamic> toJson() => <String, dynamic>{'name': name, 'badge': badge};
 }
 
 class MatchTeams {
@@ -24,6 +25,7 @@ class MatchTeams {
   final TeamInfo? away;
   MatchTeams({this.home, this.away});
   factory MatchTeams.fromJson(Map<String, dynamic> j) => MatchTeams(home: j['home'] != null ? TeamInfo.fromJson(j['home']) : null, away: j['away'] != null ? TeamInfo.fromJson(j['away']) : null);
+  Map<String, dynamic> toJson() => <String, dynamic>{'home': home?.toJson(), 'away': away?.toJson()};
 }
 
 class MatchSourceRef {
@@ -31,6 +33,7 @@ class MatchSourceRef {
   final String id; // source-specific match id
   MatchSourceRef({required this.source, required this.id});
   factory MatchSourceRef.fromJson(Map<String, dynamic> j) => MatchSourceRef(source: j['source'] as String, id: j['id'] as String);
+  Map<String, dynamic> toJson() => <String, dynamic>{'source': source, 'id': id};
 }
 
 class ApiMatch {
@@ -60,6 +63,18 @@ class ApiMatch {
     sources: ((j['sources'] as List<dynamic>).map((e) => MatchSourceRef.fromJson(e))).toList(),
     viewers: (j['viewers'] as num?)?.toInt(),
   );
+
+  /// For keeping a match (the player's recent games); what fromJson reads.
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'id': id,
+    'title': title,
+    'category': category,
+    'date': date,
+    'poster': poster,
+    'popular': popular,
+    'teams': teams?.toJson(),
+    'sources': <Map<String, dynamic>>[for (final MatchSourceRef s in sources) s.toJson()],
+  };
 
   ApiMatch withViewers(int? v) => ApiMatch(
     id: id,
@@ -96,7 +111,16 @@ class StreamInfo {
     source: j['source'] as String,
     viewers: (j['viewers'] as num?)?.toInt(),
   );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{'id': id, 'streamNo': streamNo, 'language': language, 'hd': hd, 'embedUrl': embedUrl, 'source': source};
+
+  /// "Admin 1": the source and stream number, as the player and its cards
+  /// name a stream.
+  String get name => '${sourceLabel(source)} $streamNo';
 }
+
+/// A source's name for display: "admin" -> "Admin".
+String sourceLabel(String source) => source.isEmpty ? source : source[0].toUpperCase() + source.substring(1);
 
 enum Mode { bySport, live, livePopular, liveFavorites }
 

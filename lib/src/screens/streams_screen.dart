@@ -12,7 +12,9 @@ import '../api/streamed_api.dart';
 import '../desktop/window_state.dart';
 import '../generated/app_data.dart';
 import '../player/player_webview.dart';
+import '../player/recents.dart';
 import '../player/stream_quality.dart';
+import '../player/streams_row.dart';
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
 import '../widgets/keep_fresh.dart';
@@ -74,7 +76,7 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     final List<int> order = List<int>.generate(widget.matchItem.sources.length, (int i) => i)
       ..sort((int a, int b) {
         final List<MatchSourceRef> src = widget.matchItem.sources;
-        final int byRank = _sourceRank(src[a].source).compareTo(_sourceRank(src[b].source));
+        final int byRank = sourceRank(src[a].source).compareTo(sourceRank(src[b].source));
         return byRank != 0 ? byRank : a.compareTo(b);
       });
     final List<MatchSourceRef> sources = <MatchSourceRef>[for (final int i in order) widget.matchItem.sources[i]];
@@ -87,12 +89,20 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     ];
   }
 
-  Future<void> _play(StreamInfo s) async {
+  Future<void> _play(StreamInfo s, List<_SourceGroup> groups) async {
     // Set before navigating so it shows even if user backs out
     setState(() => _lastPlayedUrl = s.embedUrl);
-    await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => StreamPlayerScreen(stream: s, title: widget.matchItem.title)));
-    // The player measured it; show that on its row.
+    final List<StreamInfo> all = <StreamInfo>[for (final _SourceGroup g in groups) ...g.streams];
+    await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => StreamPlayerScreen(stream: s, match: widget.matchItem, streams: all)));
+    // The player measured it; show that on its row. And if another of this
+    // game's streams was picked in the player (or fallen back to), that's the
+    // one last played now.
     _loadQualities();
+    for (final RecentGame r in await Recents.all()) {
+      if (r.match.id != widget.matchItem.id) continue;
+      if (mounted) setState(() => _lastPlayedUrl = r.stream.embedUrl);
+      break;
+    }
   }
 
   Future<void> _loadQualities() async {
@@ -137,7 +147,7 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
                     stream: g.streams[i],
                     lastPlayed: g.streams[i].embedUrl == _lastPlayedUrl,
                     quality: _qualities[g.streams[i].embedUrl],
-                    onTap: () => _play(g.streams[i]),
+                    onTap: () => _play(g.streams[i], groups),
                   ),
                 ),
             ],
@@ -458,6 +468,7 @@ const String _takeoverJs = r'''
       // connection, where a second copy would only split the same bandwidth
       // (and use more data on a phone).
       var lastBytes = -1;
+      var stuckMs = __STUCK_MS__;
       function check() {
         if (self.settled) return;
         var got = self.first.stats.loaded || 0;
@@ -473,7 +484,7 @@ const String _takeoverJs = r'''
       self.timer = setTimeout(function () {
         lastBytes = self.first.stats.loaded || 0;
         self.timer = setTimeout(check, 1000);
-      }, 3000);
+      }, stuckMs - 1000);
     };
     // Stop the timer and every copy but the winner.
     Hedged.prototype.settle = function (winner) {
@@ -528,14 +539,16 @@ const String _takeoverJs = r'''
 
   // The mouse moving over the video, or a tap on it: the app shows its title
   // bar for a moment. (The page, not the app, gets these over the video.)
+  // A mouse near the bottom also opens the app's streams row.
   var lastPointer = 0;
-  function pointer() {
+  function pointer(e) {
     var now = Date.now();
     if (now - lastPointer < 300) return;
     lastPointer = now;
-    post("pointer");
+    var bottom = e.pointerType === "mouse" && e.clientY > window.innerHeight - 110;
+    post(bottom ? "pointer:bottom" : "pointer");
   }
-  window.addEventListener("pointermove", function (e) { if (e.pointerType === "mouse") pointer(); }, true);
+  window.addEventListener("pointermove", function (e) { if (e.pointerType === "mouse") pointer(e); }, true);
   window.addEventListener("pointerdown", pointer, true);
 
   // On desktop the web view keeps keyboard focus once clicked, so the app
@@ -664,8 +677,12 @@ const String _takeoverJs = r'''
 
   function build(url) {
     stopPagePlayer();
+    // No tap highlight, selection or long-press menu: a tap (or the start of
+    // Android's back swipe) otherwise flashed a big blue box over the video.
     document.documentElement.innerHTML =
-      "<head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head><body></body>";
+      "<head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+      "<style>*{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;" +
+      "-webkit-touch-callout:none;outline:none}</style></head><body></body>";
     document.body.style.cssText = "margin:0;padding:0;background:#000;overflow:hidden";
 
     video = document.createElement("video");
@@ -703,7 +720,10 @@ const String _takeoverJs = r'''
     hls.on(OurHls.Events.FRAG_PARSING_DATA, function (_, d) {
       try {
         var secs = d.endDTS - d.startDTS;
-        if (d.type === "video" && d.nb > 0 && secs > 0) streamFps = d.nb / secs;
+        // Only a plausible rate: the first segment after a jump in the feed's
+        // timestamps can read 1 fps.
+        var f = d.nb / secs;
+        if (d.type === "video" && d.nb > 0 && secs > 0 && f >= 10 && f <= 125) streamFps = f;
       } catch (e) {}
     });
     hls.on(OurHls.Events.FRAG_LOADED, function (_, d) {
@@ -792,6 +812,8 @@ const String _takeoverJs = r'''
     frames0 = { n: n, t: t };
     var fps = streamFps > 0 ? streamFps : fpsMax;
     var best = Math.round(fps);
+    // Too low to be real (a stall's worth of frames): wait for a proper reading.
+    if (best < 10) return;
     var std = [24, 25, 30, 50, 60];
     for (var i = 0; i < std.length; i++) if (Math.abs(fps - std[i]) / std[i] < 0.1) best = std[i];
     var bytes = 0, secs = 0;
@@ -917,17 +939,46 @@ const MethodChannel _pip = MethodChannel('pip');
 const MethodChannel _window = MethodChannel('sports/window');
 
 class StreamPlayerScreen extends StatefulWidget {
-  const StreamPlayerScreen({super.key, required this.stream, required this.title});
+  const StreamPlayerScreen({super.key, required this.stream, required this.match, required this.streams});
   final StreamInfo stream;
-  final String title;
+  final ApiMatch match;
+
+  /// All of the match's streams, best sources first: the streams row's THIS
+  /// GAME, and where a failed stream falls back to.
+  final List<StreamInfo> streams;
 
   @override
   State<StreamPlayerScreen> createState() => _StreamPlayerScreenState();
 }
 
 class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBindingObserver {
-  late final Uri _allowedUri;
+  // What's playing. Switching (the streams row, or falling back) changes these
+  // in place: the same player and web view, a new page.
+  late StreamInfo _stream;
+  late ApiMatch _match;
+  late List<StreamInfo> _streams;
+  late Uri _allowedUri;
   late final PlayerWebView _web;
+  final StreamedApi _api = StreamedApi();
+
+  // The streams row (see streams_row.dart): open or not, and what it shows.
+  bool _rowOpen = false;
+  List<RecentGame> _recent = <RecentGame>[];
+  Map<String, StreamQuality> _qualities = <String, StreamQuality>{};
+  Set<String>? _currentIds;
+  DateTime? _currentIdsAt;
+
+  // Falling back: a stream that fails for good hands over to the next one like
+  // it (see _failedForGood). What's been tried since the last pick, what the
+  // spinner says meanwhile, and the note once one plays.
+  final Set<String> _tried = <String>{};
+  // Streams that failed for good while this player was open: not offered in
+  // the streams row again.
+  final Set<String> _failedUrls = <String>{};
+  String? _fallbackFrom;
+  String? _trying;
+  String? _switchedNote;
+  Timer? _noteTimer;
 
   bool _inPip = false;
   bool _muted = false;
@@ -1016,7 +1067,12 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         })
         .catchError((_) {});
 
-    _allowedUri = Uri.parse(widget.stream.embedUrl);
+    _stream = widget.stream;
+    _match = widget.match;
+    _streams = widget.streams;
+    _tried.add(_stream.embedUrl);
+    _allowedUri = Uri.parse(_stream.embedUrl);
+    _loadRecent();
 
     _web = PlayerWebView(
       url: _allowedUri,
@@ -1075,6 +1131,13 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _peekTitle();
       return;
     }
+    // The mouse near the bottom of the video: open the streams row as hovering
+    // its pill would.
+    if (message == 'pointer:bottom') {
+      _peekTitle();
+      _openRow();
+      return;
+    }
     if (message == 'stalled') {
       _heal();
       return;
@@ -1094,6 +1157,17 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         _offline = false;
         _healTries = 0;
         _healTimer?.cancel();
+        // Fell back to this one: say so briefly, then get out of the way.
+        if (_trying != null) {
+          _switchedNote = PlayerText.switchedTo.replaceAll('{stream}', _label(_stream));
+          _noteTimer?.cancel();
+          _noteTimer = Timer(const Duration(milliseconds: PlayerTuning.switchedNoteMs), () {
+            if (mounted) setState(() => _switchedNote = null);
+          });
+        }
+        _trying = null;
+        _fallbackFrom = null;
+        Recents.played(_match, _stream).then((_) => _loadRecent());
       } else if (message == 'muted') {
         _muted = true;
       } else if (message == 'unmuted') {
@@ -1103,10 +1177,134 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         // (the next try is already scheduled).
         if (!_healing) WidgetsBinding.instance.addPostFrameCallback((_) => _heal());
       } else {
-        // no-stream / fatal / unsupported / hls-load-failed
-        _failed = true;
+        // no-stream / fatal / unsupported / hls-load-failed / blocked
+        WidgetsBinding.instance.addPostFrameCallback((_) => _failedForGood());
       }
     });
+  }
+
+  // "Delta 1 (HD)"
+  String _label(StreamInfo s) => '${s.name} (${s.hd ? 'HD' : 'SD'})';
+
+  // The stream has failed for good (never started, or the reconnects gave up):
+  // move on to the next one like it, or say it's unavailable. HD for HD and SD
+  // for SD, best sources first, the same language if there is one, never one
+  // already tried. No limit: Back leaves any time.
+  void _failedForGood() {
+    if (!mounted) return;
+    _failedUrls.add(_stream.embedUrl);
+    final List<StreamInfo> left = _streams.where((StreamInfo s) => s.hd == _stream.hd && !_tried.contains(s.embedUrl)).toList();
+    if (left.isEmpty) {
+      setState(() {
+        _failed = true;
+        _trying = null;
+        _fallbackFrom = null;
+      });
+      return;
+    }
+    // The language itself, not the label around it: "English" and
+    // "English - NBC" are the same language.
+    String lang(StreamInfo s) => s.language.trim().split(RegExp(r'[\s\-–(,/]+')).first.toLowerCase();
+    final StreamInfo next = left.firstWhere((StreamInfo s) => lang(s) == lang(_stream), orElse: () => left.first);
+    final String from = PlayerText.stoppedWorking.replaceAll('{stream}', _label(_stream));
+    _switchTo(next, fallback: true);
+    setState(() {
+      _fallbackFrom = from;
+      _trying = PlayerText.trying.replaceAll('{stream}', _label(next));
+    });
+  }
+
+  // Play [s] in place of what's playing. A pick from the streams row starts a
+  // fresh round of falling back; a fallback carries on the current one.
+  void _switchTo(StreamInfo s, {bool fallback = false}) {
+    _saveQuality();
+    _healTimer?.cancel();
+    setState(() {
+      if (!fallback) {
+        _tried.clear();
+        _trying = null;
+        _fallbackFrom = null;
+      }
+      _tried.add(s.embedUrl);
+      _stream = s;
+      _quality = null;
+      _bestHeight = 0;
+      _bestFps = 0;
+      _mbpsSum = 0;
+      _mbpsCount = 0;
+      _savedAt = null;
+      _ready = false;
+      _failed = false;
+      _everPlayed = false;
+      _healing = false;
+      _offline = false;
+      _healTries = 0;
+      _rowOpen = false;
+      _switchedNote = null;
+    });
+    _allowedUri = Uri.parse(s.embedUrl);
+    _web.load(_allowedUri).catchError((_) {});
+  }
+
+  // A recent game's stream: that game becomes the one playing, and its other
+  // streams load for the row and for falling back.
+  Future<void> _playRecent(RecentGame r) async {
+    setState(() {
+      _match = r.match;
+      _streams = <StreamInfo>[r.stream];
+    });
+    _switchTo(r.stream);
+    try {
+      await _nowPlaying.invokeMethod('show', <String, dynamic>{'title': r.match.title});
+    } catch (_) {}
+    final List<StreamInfo> all = await _api.fetchMatchStreams(r.match).catchError((Object _) => <StreamInfo>[]);
+    if (mounted && _match.id == r.match.id && all.isNotEmpty) setState(() => _streams = all);
+  }
+
+  // Recent games other than this one, for the pill and the row.
+  Future<void> _loadRecent() async {
+    final List<RecentGame> all = await Recents.all();
+    if (mounted) setState(() => _recent = all.where((RecentGame r) => r.match.id != _match.id).toList());
+  }
+
+  // This game's other streams for the row: the same HD/SD as what's playing
+  // first, then the rest, best sources first within each.
+  List<StreamInfo> get _rowStreams {
+    final List<StreamInfo> others = _streams.where((StreamInfo s) => s.embedUrl != _stream.embedUrl && !_failedUrls.contains(s.embedUrl)).toList();
+    return <StreamInfo>[...others.where((StreamInfo s) => s.hd == _stream.hd), ...others.where((StreamInfo s) => s.hd != _stream.hd)].take(PlayerTuning.rowThisGame).toList();
+  }
+
+  bool get _hasRow => _rowStreams.isNotEmpty || _recent.isNotEmpty;
+
+  Future<void> _openRow() async {
+    if (_rowOpen || !_hasRow || _inPip) return;
+    // The menu button makes way for the row (it would sit on its last card),
+    // so an open menu closes with it rather than holding the title bar up.
+    setState(() {
+      _rowOpen = true;
+      _menuOpen = false;
+    });
+    _peekTitle();
+    final Map<String, StreamQuality> q = await StreamQuality.all();
+    if (mounted) setState(() => _qualities = q);
+    // Finished games drop out: keep those still on the site's list (which
+    // has 24/7 channels too, unlike the live list) and already started.
+    // Checked at most once a minute.
+    if (_currentIds == null || DateTime.now().difference(_currentIdsAt!) > const Duration(minutes: 1)) {
+      try {
+        final List<ApiMatch> current = await _api.fetchAllMatches();
+        _currentIds = <String>{for (final ApiMatch m in current) m.id};
+        _currentIdsAt = DateTime.now();
+      } catch (_) {}
+    }
+    await _loadRecent();
+  }
+
+  // The row's RECENT: still on, started, newest first.
+  List<RecentGame> get _rowRecent {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final Set<String>? ids = _currentIds;
+    return _recent.where((RecentGame r) => (ids == null || ids.contains(r.match.id)) && r.match.date <= now).take(PlayerTuning.rowRecent).toList();
   }
 
   // The list keeps the best resolution and frame rate this viewing reached (an
@@ -1133,15 +1331,21 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   void _saveQuality() {
     if (_mbpsCount == 0) return;
     _savedAt = DateTime.now();
-    StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10).save(widget.stream.embedUrl);
+    StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10).save(_stream.embedUrl);
   }
 
   void _peekTitle() {
     if (!mounted) return;
     if (!_peek) setState(() => _peek = true);
     _peekTimer?.cancel();
-    _peekTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _peek = false);
+    // Longer with the streams row open, to read the cards; the row goes with
+    // the title bar.
+    _peekTimer = Timer(Duration(seconds: _rowOpen ? 6 : 3), () {
+      if (!mounted) return;
+      setState(() {
+        _peek = false;
+        _rowOpen = false;
+      });
     });
   }
 
@@ -1159,8 +1363,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       setState(() {
         _healing = false;
         _offline = false;
-        _failed = true;
       });
+      _failedForGood();
       return;
     }
     setState(() => _offline = !online);
@@ -1229,7 +1433,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   }
 
   void _inject() {
-    _web.runJavaScript(_takeoverJs).catchError((_) {});
+    _web.runJavaScript(_takeoverJs.replaceAll('__STUCK_MS__', '${PlayerTuning.stuckDownloadMs}')).catchError((_) {});
   }
 
   void _cover() {
@@ -1285,6 +1489,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     WidgetsBinding.instance.removeObserver(this);
     _healTimer?.cancel();
     _peekTimer?.cancel();
+    _noteTimer?.cancel();
     _saveQuality();
     // Leaving the player gives the window back its title bar.
     if (_fullscreen) _leaveFullscreen().catchError((_) {});
@@ -1352,7 +1557,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     }
 
     // The title bar and the menu: up together, or hidden together.
-    final bool chrome = _holdTitle || _menuOpen || _peek;
+    final bool chrome = _holdTitle || _menuOpen || _peek || _rowOpen;
 
     // Desktop has no system back button: Esc leaves the player, M mutes and F
     // goes fullscreen. (The page forwards these too, for when the web view has
@@ -1417,7 +1622,20 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                           clipBehavior: Clip.none,
                           children: <Widget>[
                             const CircularProgressIndicator(color: Colors.white),
-                            if (_healing)
+                            // Falling back: what stopped, and what's next.
+                            if (_trying != null)
+                              Transform.translate(
+                                offset: const Offset(0, 56),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Text(_fallbackFrom ?? '', style: const TextStyle(color: Colors.white)),
+                                    const SizedBox(height: 2),
+                                    Text(_trying!, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                  ],
+                                ),
+                              )
+                            else if (_healing)
                               Transform.translate(
                                 offset: const Offset(0, 44),
                                 child: Text(
@@ -1466,12 +1684,73 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: <Widget>[
-                                  Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: condensed(19, FontWeight.w600, color: Colors.white)),
-                                  if (_quality != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: Text(_quality!.label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                                  Text(_match.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: condensed(19, FontWeight.w600, color: Colors.white)),
+                                  // What you glance for first: quality, then which stream.
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(
+                                      <String>[if (_quality != null) _quality!.label, sourceLabel(_stream.source), 'Stream ${_stream.streamNo}'].join(' · '),
+                                      style: const TextStyle(fontSize: 12, color: Colors.white70),
                                     ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  // The Streams pill, with the title bar; it opens the row. It
+                  // steps aside while the "Switched to" note has its spot.
+                  if (!_inPip && _hasRow && !_rowOpen && _switchedNote == null)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 16 + MediaQuery.paddingOf(context).bottom,
+                      child: IgnorePointer(
+                        ignoring: !chrome,
+                        child: AnimatedOpacity(
+                          opacity: chrome ? 1 : 0,
+                          duration: const Duration(milliseconds: 150),
+                          child: Center(child: StreamsPill(onOpen: _openRow)),
+                        ),
+                      ),
+                    ),
+                  // The streams row: this game's other streams, recent games.
+                  if (!_inPip && _rowOpen)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: StreamsRow(
+                        thisGame: _rowStreams,
+                        recent: _rowRecent,
+                        qualities: _qualities,
+                        onStream: _switchTo,
+                        onRecent: _playRecent,
+                        onActivity: _peekTitle,
+                      ),
+                    ),
+                  // After falling back: which stream took over, briefly.
+                  if (!_inPip)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 24 + MediaQuery.paddingOf(context).bottom,
+                      child: IgnorePointer(
+                        child: AnimatedOpacity(
+                          opacity: _switchedNote != null && !_rowOpen ? 1 : 0,
+                          duration: const Duration(milliseconds: 250),
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.78), borderRadius: BorderRadius.circular(8)),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  const Icon(Icons.swap_horiz, color: Colors.white, size: 16),
+                                  const SizedBox(width: 8),
+                                  Text(_switchedNote ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
                                 ],
                               ),
                             ),
@@ -1484,8 +1763,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
             ),
             // The menu comes and goes with the title bar (a tap or the mouse
             // brings both back), fullscreen included, so nothing sits on the
-            // picture meanwhile. None in PiP.
-            floatingActionButton: _inPip
+            // picture meanwhile. None in PiP, or while the streams row is open
+            // (it would sit on the row's last card).
+            floatingActionButton: _inPip || _rowOpen
                 ? null
                 : IgnorePointer(
                     ignoring: !chrome,
@@ -1559,13 +1839,4 @@ class _WebViewHolder extends StatelessWidget {
     final _StreamPlayerScreenState? s = context.findAncestorStateOfType<_StreamPlayerScreenState>();
     return s == null ? const SizedBox.shrink() : s._web.build(context);
   }
-}
-
-// streamed.pk orders sources best-first rather than however the API returns
-// them, and demotes the weaker ones. Mirror that order (sourceOrder, from
-// shared/app_data.json; we show them all, since scrolling is cheaper than
-// hiding). Anything unknown sorts to the end, keeping its relative order.
-int _sourceRank(String source) {
-  final int i = sourceOrder.indexOf(source.toLowerCase());
-  return i == -1 ? sourceOrder.length : i;
 }

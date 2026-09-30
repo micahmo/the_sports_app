@@ -31,7 +31,9 @@ def load():
     sports = {k: v for k, v in data['sports'].items() if not k.startswith('_')}
     sources = data['sources']['order']
     palette = {k: v for k, v in data['palette'].items() if not k.startswith('_')}
-    return sports, data['defaultSportIcon'], sources, palette
+    player = {k: v for k, v in data['player'].items() if not k.startswith('_')}
+    player_text = {k: v for k, v in data['playerText'].items() if not k.startswith('_')}
+    return sports, data['defaultSportIcon'], sources, palette, player, player_text
 
 
 def q(s):
@@ -46,7 +48,7 @@ def dq(s):
     return "'" + s + "'"
 
 
-def dart(sports, default_icon, sources, palette):
+def dart(sports, default_icon, sources, palette, player, player_text):
     out = [
         f'// {HEADER}',
         '// ignore_for_file: constant_identifier_names',
@@ -69,11 +71,15 @@ def dart(sports, default_icon, sources, palette):
         out.append(f'  static const Color {name} = Color(0xFF{v["dark"][1:].upper()});')
         if 'light' in v:
             out.append(f'  static const Color {name}Light = Color(0xFF{v["light"][1:].upper()});')
+    out += ['}', '', '/// Player numbers both apps follow (see the JSON for what each is).', 'abstract final class PlayerTuning {']
+    out += [f'  static const int {k} = {int(v)};' for k, v in player.items()]
+    out += ['}', '', '/// The player\'s wording, the same on every app; {stream} is filled in.', 'abstract final class PlayerText {']
+    out += [f'  static const String {k} = {dq(v)};' for k, v in player_text.items()]
     out += ['}', '']
     return '\n'.join(out)
 
 
-def brs(sports, default_icon, sources, palette):
+def brs(sports, default_icon, sources, palette, player, player_text):
     def aa(pairs):
         return '{' + ', '.join(f'{q(k)}: {q(v)}' for k, v in pairs) + '}'
     out = [f"' {HEADER}", '']
@@ -99,13 +105,24 @@ def brs(sports, default_icon, sources, palette):
             "' The dark theme's colours (the Roku's only theme).",
             'function appPalette() as Object',
             '    return ' + aa((k, '0x' + v['dark'][1:].upper() + 'FF') for k, v in palette.items()),
+            'end function', '',
+            "' Player numbers both apps follow (see the JSON for what each is).",
+            'function appPlayer() as Object',
+            '    return {' + ', '.join(f'{k}: {int(v)}' for k, v in player.items()) + '}',
+            'end function', '',
+            "' The player's wording, the same on every app; {stream} is filled in.",
+            'function appPlayerText() as Object',
+            '    return ' + aa(player_text.items()),
             'end function', '']
     return '\n'.join(out)
 
 
 def main():
-    sports, default_icon, sources, palette = load()
-    wanted = {DART: dart(sports, default_icon, sources, palette), BRS: brs(sports, default_icon, sources, palette)}
+    sports, default_icon, sources, palette, player, player_text = load()
+    wanted = {
+        DART: dart(sports, default_icon, sources, palette, player, player_text),
+        BRS: brs(sports, default_icon, sources, palette, player, player_text),
+    }
     check = '--check' in sys.argv
     stale = []
     for path, text in wanted.items():

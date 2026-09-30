@@ -63,9 +63,20 @@ end sub
 ' Back from the player after a while.
 sub onVisible()
     if not m.top.visible then return
-    ' The stream just played has measured itself: show it on its row.
+    ' The stream just played has measured itself: show it on its row. And if
+    ' another of this game's streams was picked in the player (or fallen back
+    ' to), that's the last played now.
+    if m.shown <> invalid then
+        for each r in recentGames()
+            if r.match <> invalid and r.match.id = m.shown.id then
+                m.lastPlayed = r.stream.embedUrl
+                exit for
+            end if
+        end for
+    end if
     for each c in m.streamItems
         c.quality = qualityLabel(c.stream.embedUrl)
+        c.lastPlayed = (c.stream.embedUrl = m.lastPlayed)
     end for
     if m.loadedAt <> invalid and m.loadedAt.TotalSeconds() > 60 then fetch(true)
 end sub
@@ -486,7 +497,12 @@ sub onStreamSelected()
     for each c in m.streamItems
         c.lastPlayed = (c.stream.embedUrl = m.lastPlayed)
     end for
-    m.top.navigate = {screen: "player", embedUrl: s.embedUrl, title: m.shown.title}
+    ' The whole list too: the player's streams row and falling back use it.
+    all = []
+    for each c in m.streamItems
+        all.Push(c.stream)
+    end for
+    m.top.navigate = {screen: "player", embedUrl: s.embedUrl, title: m.shown.title, stream: s, match: m.shown, streams: all}
 end sub
 
 ' Both teams large with their badges, then LIVE, sport, time and viewers.

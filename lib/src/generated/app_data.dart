@@ -78,3 +78,23 @@ abstract final class AppPalette {
   static const Color disc = Color(0xFFE6E8EE);
   static const Color discLight = Color(0xFFFFFFFF);
 }
+
+/// Player numbers both apps follow (see the JSON for what each is).
+abstract final class PlayerTuning {
+  static const int rowThisGame = 3;
+  static const int rowRecent = 3;
+  static const int recentsKept = 12;
+  static const int stuckDownloadMs = 4000;
+  static const int switchedNoteMs = 4000;
+}
+
+/// The player's wording, the same on every app; {stream} is filled in.
+abstract final class PlayerText {
+  static const String streamsPill = 'Streams';
+  static const String thisGame = 'THIS GAME';
+  static const String recent = 'RECENT';
+  static const String notPlayed = 'Not played yet';
+  static const String stoppedWorking = '{stream} stopped working';
+  static const String trying = 'Trying {stream}…';
+  static const String switchedTo = 'Switched to {stream}';
+}

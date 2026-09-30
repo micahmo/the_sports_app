@@ -230,6 +230,8 @@ the others or is added here as a deliberate gap.
 | A stuck segment download | second copy after 4 s if nothing is arriving | same | second copy after 4 s |
 | Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
+| Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it | Streams pill; hover it or the bottom of the video | Streams pill with the title bar; Down, then Left/Right, OK |
+| A stream that fails for good | tries the next like it (HD for HD, SD for SD), then "unavailable" | same | same |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
 | A source's server dropping the stream mid-game | reload after 20 s (a visible restart) | reload after 20 s (a visible restart) | fresh link in the background, usually unnoticed; see "Servers that drop a stream" |
 | First link doesn't answer | "unavailable" | "unavailable" | two more fresh sessions first |
@@ -267,6 +269,18 @@ Things that differ from Android and were each found the hard way:
     fetched, so desktop played whatever the page's player chose. It now takes
     the first, the master, and picks the best feed itself (see below).
 
+- **Autoplay with sound is refused** unless the page itself was clicked, and the
+  click lands on Flutter. The WebView2 environment is created with
+  `--autoplay-policy=no-user-gesture-required`.
+- **Keyboard focus.** Once the video is clicked, WebView2 holds keyboard focus
+  and Flutter never sees keys, so the page forwards Esc/M/F as `key:<name>`
+  messages.
+- **Navigation can't be vetoed** from `webview_windows`; off-site navigations are
+  undone by reloading the embed URL (as `onUrlChange` does on Android), and
+  popups are denied outright.
+
+### Playlists and segment downloads (phone and desktop)
+
 **One quality, never switched (all apps).** A master playlist lists a
 source's qualities, but on these sources they are **separate feeds**, not
 renditions of one stream. Seen on admin streams (2026-09-30): "1080p" in 5 s
@@ -292,15 +306,37 @@ doesn't split the bandwidth or spend more data. Tested (desktop, NFL Network)
 by holding every third segment request for 12 s through the DevTools protocol:
 each was noticed at 4.0 s, the second copy won within 0.2 s, and playback never
 paused.
-- **Autoplay with sound is refused** unless the page itself was clicked, and the
-  click lands on Flutter. The WebView2 environment is created with
-  `--autoplay-policy=no-user-gesture-required`.
-- **Keyboard focus.** Once the video is clicked, WebView2 holds keyboard focus
-  and Flutter never sees keys, so the page forwards Esc/M/F as `key:<name>`
-  messages.
-- **Navigation can't be vetoed** from `webview_windows`; off-site navigations are
-  undone by reloading the embed URL (as `onUrlChange` does on Android), and
-  popups are denied outright.
+
+### Streams row and falling back (all apps)
+
+Agreed with the user from mockups (2026-09-30). A tap, mouse movement or OK
+shows the title bar, the menu (phone/desktop) and a small **Streams** pill at
+bottom centre. The row opens only on a deliberate step: tapping the pill,
+hovering it or the bottom strip of the video (the page reports the mouse there
+as `pointer:bottom`), or Down on the Roku. It goes when the title bar does
+(a little longer while it's open), and the menu button makes way for it.
+
+- **THIS GAME** (left): the match's other streams, the same HD/SD as what's
+  playing first, best sources first, none that failed this viewing.
+  **RECENT** (right): other games played lately (`Recents`, one per game),
+  kept while `/api/matches/all` still lists them (unlike the live list it has
+  24/7 channels) and they've started. On the Roku, Down lands on the divider,
+  one step from either side.
+- Cards are all one size with the same three slots (top row, name, details);
+  details lead with quality ("720p60 · Admin 1"). The title bar's second line
+  too: "1080p30 · 6.2 Mbps · Admin · Stream 1".
+- Picking switches in place (the same player; `PlayerWebView.load` on
+  phone/desktop, a fresh StreamTask on the Roku). Back still returns to the
+  list, which then marks whichever of the game's streams played last.
+- **Falling back:** a stream that fails for good (never starts, or the
+  reconnects give up) hands over to the next one like it: HD for HD, SD for
+  SD, best sources first, the same language (compared as the language itself:
+  "English" matches "English - NBC"), never one already tried. The spinner
+  says "Golf 1 (HD) stopped working / Trying Admin 1 (HD)…", then a short
+  "Switched to Admin 1 (HD)" note takes the pill's place. When nothing like it
+  is left: "unavailable", as before.
+- The numbers (cards per side, recents kept, the note's time) and the wording
+  are in `shared/app_data.json` (`player`, `playerText`).
 
 ### Buffer gaps
 

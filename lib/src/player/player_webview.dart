@@ -34,12 +34,16 @@ abstract class PlayerWebView {
 
   Future<void> reload();
 
+  /// Play another page in the same view (switching streams in place).
+  Future<void> load(Uri url);
+
   void dispose();
 }
 
 class _Callbacks {
   _Callbacks(this.url, this.isAllowed, this.onMessage, this.onPageStarted, this.onPageFinished);
-  final Uri url;
+  // The page being shown: where an off-site navigation is sent back to.
+  Uri url;
   final bool Function(Uri) isAllowed;
   final void Function(String) onMessage;
   final VoidCallback onPageStarted;
@@ -86,6 +90,12 @@ class _FlutterPlayerWebView implements PlayerWebView {
 
   @override
   Future<void> reload() => _controller.reload();
+
+  @override
+  Future<void> load(Uri url) {
+    _cb.url = url;
+    return _controller.loadRequest(url);
+  }
 
   @override
   void dispose() {}
@@ -167,6 +177,12 @@ window.AppPlayer = { postMessage: function (m) { try { window.chrome.webview.pos
   @override
   Future<void> reload() async {
     if (_initialized.value) await _controller.reload();
+  }
+
+  @override
+  Future<void> load(Uri url) async {
+    _cb.url = url;
+    if (_initialized.value) await _controller.loadUrl(url.toString());
   }
 
   @override

@@ -28,3 +28,13 @@ end function
 function appPalette() as Object
     return {"bg": "0x22252AFF", "card": "0x2B2F36FF", "cardHigh": "0x32363EFF", "cardHighest": "0x3A3F48FF", "text": "0xE7E9EEFF", "textDim": "0xC2C7D0FF", "outline": "0x8C919BFF", "divider": "0x44484FFF", "primary": "0xAEB8FFFF", "live": "0xFF6B6BFF", "popular": "0xFFA24DFF", "favorite": "0xFF7BACFF", "hd": "0x7BD88FFF", "sd": "0xE8B76BFF", "disc": "0xE6E8EEFF"}
 end function
+
+' Player numbers both apps follow (see the JSON for what each is).
+function appPlayer() as Object
+    return {rowThisGame: 3, rowRecent: 3, recentsKept: 12, stuckDownloadMs: 4000, switchedNoteMs: 4000}
+end function
+
+' The player's wording, the same on every app; {stream} is filled in.
+function appPlayerText() as Object
+    return {"streamsPill": "Streams", "thisGame": "THIS GAME", "recent": "RECENT", "notPlayed": "Not played yet", "stoppedWorking": "{stream} stopped working", "trying": "Trying {stream}…", "switchedTo": "Switched to {stream}"}
+end function

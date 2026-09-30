@@ -25,6 +25,9 @@ sub work()
     m.xferOf = {}
     m.served = {}
     m.fileSeq = 0
+    ' A download still running this long gets a second copy (shared with the
+    ' phone and desktop apps, shared/app_data.json).
+    m.stuckMs = appPlayer().stuckDownloadMs
     m.bitrates = []
     m.measured = 0
     m.height = 0
@@ -328,7 +331,7 @@ sub tick()
     stale = []
     for each u in m.dl
         d = m.dl[u]
-        if not d.done and not d.hedged and d.started.TotalMilliseconds() > 4000 then
+        if not d.done and not d.hedged and d.started.TotalMilliseconds() > m.stuckMs then
             d.hedged = true
             print "[stream] segment slow after "; d.started.TotalMilliseconds(); " ms: starting a second copy"
             addTransfer(d)

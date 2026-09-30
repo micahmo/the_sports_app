@@ -1,6 +1,16 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../generated/app_data.dart' show sourceOrder;
 import 'models.dart';
+
+// streamed.pk orders sources best-first rather than however the API returns
+// them, and demotes the weaker ones. Mirror that order (sourceOrder, from
+// shared/app_data.json; we show them all, since scrolling is cheaper than
+// hiding). Anything unknown sorts to the end, keeping its relative order.
+int sourceRank(String source) {
+  final int i = sourceOrder.indexOf(source.toLowerCase());
+  return i == -1 ? sourceOrder.length : i;
+}
 
 class StreamedApi {
   static const String base = 'https://streamed.pk';
@@ -58,6 +68,23 @@ class StreamedApi {
     _ensureOk(r);
     final List<dynamic> arr = jsonDecode(r.body) as List<dynamic>;
     return arr.map((e) => StreamInfo.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// All of a match's streams, best sources first (see [sourceRank]). Sources
+  /// that fail or have nothing right now are left out.
+  Future<List<StreamInfo>> fetchMatchStreams(ApiMatch m) async {
+    final List<MatchSourceRef> sources = List<MatchSourceRef>.of(m.sources);
+    final List<int> order = List<int>.generate(sources.length, (int i) => i)
+      ..sort((int a, int b) {
+        final int byRank = sourceRank(sources[a].source).compareTo(sourceRank(sources[b].source));
+        return byRank != 0 ? byRank : a.compareTo(b);
+      });
+    final List<List<StreamInfo>> results = await Future.wait(
+      <Future<List<StreamInfo>>>[
+        for (final int i in order) fetchStreams(sources[i].source, sources[i].id).catchError((Object _) => <StreamInfo>[]),
+      ],
+    );
+    return <StreamInfo>[for (final List<StreamInfo> r in results) ...r];
   }
 
   static void _ensureOk(http.Response r) {
