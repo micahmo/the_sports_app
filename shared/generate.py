@@ -33,7 +33,8 @@ def load():
     palette = {k: v for k, v in data['palette'].items() if not k.startswith('_')}
     player = {k: v for k, v in data['player'].items() if not k.startswith('_')}
     player_text = {k: v for k, v in data['playerText'].items() if not k.startswith('_')}
-    return sports, data['defaultSportIcon'], sources, palette, player, player_text
+    player_icons = {k: v for k, v in data['playerIcons'].items() if not k.startswith('_')}
+    return sports, data['defaultSportIcon'], sources, palette, player, player_text, player_icons
 
 
 def q(s):
@@ -48,7 +49,7 @@ def dq(s):
     return "'" + s + "'"
 
 
-def dart(sports, default_icon, sources, palette, player, player_text):
+def dart(sports, default_icon, sources, palette, player, player_text, player_icons):
     out = [
         f'// {HEADER}',
         '// ignore_for_file: constant_identifier_names',
@@ -75,11 +76,13 @@ def dart(sports, default_icon, sources, palette, player, player_text):
     out += [f'  static const int {k} = {int(v)};' for k, v in player.items()]
     out += ['}', '', '/// The player\'s wording, the same on every app; {stream} is filled in.', 'abstract final class PlayerText {']
     out += [f'  static const String {k} = {dq(v)};' for k, v in player_text.items()]
+    out += ['}', '', '/// The player\'s icons, the same on every app.', 'abstract final class PlayerIcons {']
+    out += [f'  static const IconData {k} = Icons.{v};' for k, v in player_icons.items()]
     out += ['}', '']
     return '\n'.join(out)
 
 
-def brs(sports, default_icon, sources, palette, player, player_text):
+def brs(sports, default_icon, sources, palette, player, player_text, player_icons):
     def aa(pairs):
         return '{' + ', '.join(f'{q(k)}: {q(v)}' for k, v in pairs) + '}'
     out = [f"' {HEADER}", '']
@@ -113,15 +116,19 @@ def brs(sports, default_icon, sources, palette, player, player_text):
             "' The player's wording, the same on every app; {stream} is filled in.",
             'function appPlayerText() as Object',
             '    return ' + aa(player_text.items()),
+            'end function', '',
+            "' The player's icons (Material icon names; images/icons/<name>.png).",
+            'function appPlayerIcons() as Object',
+            '    return ' + aa(player_icons.items()),
             'end function', '']
     return '\n'.join(out)
 
 
 def main():
-    sports, default_icon, sources, palette, player, player_text = load()
+    sports, default_icon, sources, palette, player, player_text, player_icons = load()
     wanted = {
-        DART: dart(sports, default_icon, sources, palette, player, player_text),
-        BRS: brs(sports, default_icon, sources, palette, player, player_text),
+        DART: dart(sports, default_icon, sources, palette, player, player_text, player_icons),
+        BRS: brs(sports, default_icon, sources, palette, player, player_text, player_icons),
     }
     check = '--check' in sys.argv
     stale = []

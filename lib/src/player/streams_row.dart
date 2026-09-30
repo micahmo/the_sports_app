@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
-import '../generated/app_data.dart' show AppPalette, PlayerText;
+import '../generated/app_data.dart' show AppPalette, PlayerIcons, PlayerText;
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
 import 'recents.dart';
@@ -33,8 +33,8 @@ class StreamsPill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(Icons.keyboard_arrow_up, color: Colors.white, size: 18),
-              SizedBox(width: 4),
+              Icon(PlayerIcons.streamsPill, color: Colors.white, size: 17),
+              SizedBox(width: 6),
               Text(PlayerText.streamsPill, style: TextStyle(color: Colors.white, fontSize: 13)),
             ],
           ),

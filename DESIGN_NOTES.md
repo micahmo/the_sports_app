@@ -231,7 +231,7 @@ the others or is added here as a deliberate gap.
 | Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
-| A stream that fails for good | tries the next like it (HD for HD, SD for SD), then "unavailable" | same | same |
+| A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
 | A source's server dropping the stream mid-game | reload after 20 s (a visible restart) | reload after 20 s (a visible restart) | fresh link in the background, usually unnoticed; see "Servers that drop a stream" |
 | First link doesn't answer | "unavailable" | "unavailable" | two more fresh sessions first |
@@ -324,8 +324,9 @@ so another stream can be picked without waiting out a fallback.
   playing first, best sources first, none that failed this viewing.
   **RECENT** (right): other games played lately (`Recents`, one per game),
   kept while `/api/matches/all` still lists them (unlike the live list it has
-  24/7 channels) and they've started. On the Roku, Down lands on the divider,
-  one step from either side.
+  24/7 channels) and they've started. On the Roku, Down lands on the first recent
+  game, else the first of this game's streams (a start on the divider read as a
+  stop you could never get back to).
 - Cards are all one size with the same three slots (top row, name, details);
   details lead with quality ("720p60 · Admin 1"). The title bar's second line
   too: "1080p30 · 6.2 Mbps · Admin · Stream 1".
@@ -338,7 +339,8 @@ so another stream can be picked without waiting out a fallback.
   "English" matches "English - NBC"), never one already tried. The spinner
   says "Golf 1 (HD) stopped working / Trying Admin 1 (HD)…", then a short
   "Switched to Admin 1 (HD)" note takes the pill's place. When nothing like it
-  is left: "unavailable", as before.
+  is left, the other kind (an SD stream beats nothing when every HD one is down;
+  user, 2026-09-30), and only then "unavailable".
 - The numbers (cards per side, recents kept, the note's time) and the wording
   are in `shared/app_data.json` (`player`, `playerText`).
 

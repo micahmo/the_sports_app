@@ -98,3 +98,9 @@ abstract final class PlayerText {
   static const String trying = 'Trying {stream}…';
   static const String switchedTo = 'Switched to {stream}';
 }
+
+/// The player's icons, the same on every app.
+abstract final class PlayerIcons {
+  static const IconData streamsPill = Icons.view_carousel;
+  static const IconData switched = Icons.swap_horiz;
+}

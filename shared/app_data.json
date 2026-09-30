@@ -44,6 +44,12 @@
     "switchedNoteMs": 4000
   },
 
+  "playerIcons": {
+    "_about": "The player's icons, the same on every app (Material icon names, as for sports). streamsPill: a row of cards, what the pill opens, rather than an arrow for which way (a press on the Roku, a tap elsewhere). switched: the note after falling back.",
+    "streamsPill": "view_carousel",
+    "switched": "swap_horiz"
+  },
+
   "playerText": {
     "_about": "The player's wording, the same on every app. {stream} is a stream's name and HD/SD, e.g. \"Delta 1 (HD)\".",
     "streamsPill": "Streams",

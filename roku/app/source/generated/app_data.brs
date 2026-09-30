@@ -38,3 +38,8 @@ end function
 function appPlayerText() as Object
     return {"streamsPill": "Streams", "thisGame": "THIS GAME", "recent": "RECENT", "notPlayed": "Not played yet", "stoppedWorking": "{stream} stopped working", "trying": "Trying {stream}…", "switchedTo": "Switched to {stream}"}
 end function
+
+' The player's icons (Material icon names; images/icons/<name>.png).
+function appPlayerIcons() as Object
+    return {"streamsPill": "view_carousel", "switched": "swap_horiz"}
+end function

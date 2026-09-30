@@ -1187,12 +1187,16 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   // The stream has failed for good (never started, or the reconnects gave up):
   // move on to the next one like it, or say it's unavailable. HD for HD and SD
-  // for SD, best sources first, the same language if there is one, never one
-  // already tried. No limit: Back leaves any time.
+  // for SD, then the other kind, best sources first, the same language if there
+  // is one, never one already tried. No limit: Back leaves any time.
   void _failedForGood() {
     if (!mounted) return;
     _failedUrls.add(_stream.embedUrl);
-    final List<StreamInfo> left = _streams.where((StreamInfo s) => s.hd == _stream.hd && !_tried.contains(s.embedUrl)).toList();
+    // The same kind first; when none of those are left, the other kind (an SD
+    // stream beats nothing when every HD one is down).
+    final List<StreamInfo> untried = _streams.where((StreamInfo s) => !_tried.contains(s.embedUrl)).toList();
+    List<StreamInfo> left = untried.where((StreamInfo s) => s.hd == _stream.hd).toList();
+    if (left.isEmpty) left = untried;
     if (left.isEmpty) {
       setState(() {
         _failed = true;
@@ -1336,6 +1340,12 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   void _peekTitle() {
     if (!mounted) return;
     if (!_peek) setState(() => _peek = true);
+    // Any tap or mouse movement: the "Switched to" note has done its job, and
+    // would sit where the pill and row go.
+    if (_switchedNote != null) {
+      _noteTimer?.cancel();
+      setState(() => _switchedNote = null);
+    }
     _peekTimer?.cancel();
     // Longer with the streams row open, to read the cards; the row goes with
     // the title bar.
@@ -1782,7 +1792,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: <Widget>[
-                                    const Icon(Icons.swap_horiz, color: Colors.white, size: 16),
+                                    const Icon(PlayerIcons.switched, color: Colors.white, size: 16),
                                     const SizedBox(width: 8),
                                     Text(_switchedNote ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
                                   ],

@@ -154,14 +154,22 @@ end sub
 
 ' The stream has failed for good (never started, or the reconnects gave up):
 ' move on to the next one like it, or say it's unavailable. HD for HD and SD for
-' SD, best sources first, the same language if there is one, never one already
-' tried. No limit: Back leaves any time. (As the phone app.)
+' SD, then the other kind, best sources first, the same language if there is
+' one, never one already tried. No limit: Back leaves any time. (As the phone
+' app.)
 sub failedForGood(reason as String)
     m.failed[m.stream.embedUrl] = true
+    ' The same kind first; when none of those are left, the other kind (an SD
+    ' stream beats nothing when every HD one is down).
     left = []
+    untried = []
     for each s in m.streams
-        if s.hd = m.stream.hd and not m.tried.DoesExist(s.embedUrl) then left.Push(s)
+        if not m.tried.DoesExist(s.embedUrl) then
+            untried.Push(s)
+            if s.hd = m.stream.hd then left.Push(s)
+        end if
     end for
+    if left.Count() = 0 then left = untried
     if left.Count() = 0 then
         m.trying = ""
         m.fallbackFrom = ""
@@ -403,8 +411,8 @@ sub closeRow()
 end sub
 
 ' Cards along the bottom: THIS GAME, a divider, RECENT. All the same size, the
-' same three slots in each (top row, name, details). Focus starts on the divider,
-' one step from either side.
+' same three slots in each (top row, name, details). Focus starts on the first
+' recent game, else the first of this game's streams.
 sub renderRow()
     t = theme()
     m.row.removeChildrenIndex(m.row.getChildCount(), 0)
@@ -444,17 +452,17 @@ sub renderRow()
             x = x + cw + 20
         end for
     end if
-    ' Nothing on one side: start on the other.
-    if m.rowFocus = -1 and m.divider = invalid then
-        m.rowFocus = 0
+    ' Opening: the first recent game, else the first of this game's streams.
+    ' (Starting on the divider, one step from either side, read as a stop you
+    ' could never get back to.)
+    if m.rowFocus = -1 then
+        if m.rowSplit < m.rowCards.Count() then m.rowFocus = m.rowSplit else m.rowFocus = 0
     end if
     if m.rowFocus >= m.rowCards.Count() then m.rowFocus = m.rowCards.Count() - 1
     for i = 0 to m.rowCards.Count() - 1
         drawCard(m.rowCards[i], top, cw, ch, i = m.rowFocus)
     end for
-    if m.divider <> invalid then
-        if m.rowFocus = -1 then m.divider.color = t.primary else m.divider.color = t.divider
-    end if
+    if m.divider <> invalid then m.divider.color = t.divider
 end sub
 
 sub drawCard(c as Object, top as Integer, w as Integer, h as Integer, focused as Boolean)
@@ -482,8 +490,9 @@ sub drawCard(c as Object, top as Integer, w as Integer, h as Integer, focused as
         q = qualityLabel(s.embedUrl)
         if q = "" then q = playerText("notPlayed")
         if s.language <> invalid and s.language <> "" then q = q + " · " + s.language
-        ' The name is one line here, so the details can have two.
-        d = mkLabel(g, q, bodyFont(22), t.textDim, pad, 118, w - 2 * pad, 60)
+        ' The name is one line here, so the details can have two. (Two lines of
+        ' Roboto 22 need ~62px: at 60 only one fit, and it was cut off.)
+        d = mkLabel(g, q, bodyFont(22), t.textDim, pad, 116, w - 2 * pad, 70)
         d.wrap = true
         d.maxLines = 2
         d.vertAlign = "top"
@@ -565,7 +574,7 @@ sub showNote(text as String)
     w = lw + 36 + 12 + 48
     x = (1920 - w) / 2
     mkCard(m.note, x, 972, w, 56, "0x000000D0", "chip")
-    mkPoster(m.note, "pkg:/images/icons/swap.png", x + 24, 972 + 10, 36, 36, t.text)
+    mkPoster(m.note, "pkg:/images/icons/" + appPlayerIcons().switched + ".png", x + 24, 972 + 10, 36, 36, t.text)
     l.translation = [x + 24 + 36 + 12, 972]
     m.note.appendChild(l)
     m.note.visible = true
@@ -589,7 +598,7 @@ sub renderPill()
     w = lw + 36 + 8 + 56
     x = (1920 - w) / 2
     mkCard(m.pill, x, 972, w, 56, "0x000000D0", "chip")
-    mkPoster(m.pill, "pkg:/images/icons/arrow_down.png", x + 22, 972 + 10, 36, 36, t.text)
+    mkPoster(m.pill, "pkg:/images/icons/" + appPlayerIcons().streamsPill + ".png", x + 22, 972 + 10, 36, 36, t.text)
     l.translation = [x + 22 + 36 + 8, 972]
     m.pill.appendChild(l)
 end sub
@@ -649,28 +658,26 @@ end sub
 ' This screen keeps the remote rather than the Video node, so OK brings up our
 ' bar instead of the player's own (which never said when it hid again): OK, or
 ' any button but Back (which leaves), shows it for a few seconds, with the
-' Streams pill. Down opens the streams row; there Left/Right move (starting from
-' the divider), OK plays, Up or Back closes it. Play/Pause still pauses.
+' Streams pill. Down opens the streams row; there Left/Right move (starting on
+' the first recent game), OK plays, Up or Back closes it. Play/Pause still pauses.
 function onKeyEvent(key as String, press as Boolean) as Boolean
     if not press then return false
+    ' Any press: the "Switched to" note has done its job, and would sit where
+    ' the pill and row go.
+    if m.note.visible then
+        m.note.visible = false
+        m.noteTimer.control = "stop"
+    end if
     if m.rowOpen then
         if key = "back" or key = "up" then
             closeRow()
             showBar()
         else if key = "left" then
-            if m.rowFocus = -1 then
-                m.rowFocus = m.rowSplit - 1
-            else if m.rowFocus > 0 then
-                m.rowFocus = m.rowFocus - 1
-            end if
+            if m.rowFocus > 0 then m.rowFocus = m.rowFocus - 1
             renderRow()
             showBar()
         else if key = "right" then
-            if m.rowFocus = -1 then
-                m.rowFocus = m.rowSplit
-            else if m.rowFocus < m.rowCards.Count() - 1 then
-                m.rowFocus = m.rowFocus + 1
-            end if
+            if m.rowFocus < m.rowCards.Count() - 1 then m.rowFocus = m.rowFocus + 1
             renderRow()
             showBar()
         else if key = "OK" then
