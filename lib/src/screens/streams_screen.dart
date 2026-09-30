@@ -447,11 +447,13 @@ const String _takeoverJs = r'''
   setInterval(function () { if (!window.__appPlayer.built && !window.__appPlayer.revealed) hidePage(); }, 100);
 
   // The page requests the playlist itself; we read it back off the resource
-  // timeline, which works however late we are injected.
+  // timeline, which works however late we are injected. The first one: where
+  // the page's own player runs (WebView2), it goes on to fetch the quality it
+  // picked, and taking that last one pinned us to its choice (see build()).
   function findUrl() {
     try {
       var e = performance.getEntriesByType("resource");
-      for (var i = e.length - 1; i >= 0; i--) {
+      for (var i = 0; i < e.length; i++) {
         if (e[i].name.indexOf(".m3u8") !== -1) return e[i].name;
       }
     } catch (err) {}
@@ -575,7 +577,17 @@ const String _takeoverJs = r'''
     if (hls) { try { hls.destroy(); } catch (e) {} }
     // Not low-latency HLS, and these feeds carry ad discontinuities, so keep a
     // real buffer rather than hugging the edge.
-    hls = new OurHls({ liveSyncDurationCount: 3, backBufferLength: 30 });
+    // Where a source offers several qualities, start at the best and only step
+    // down if the connection can't keep up. hls.js otherwise starts from a
+    // cautious 0.5 Mbps guess (the lowest quality), and the playlists overstate
+    // their bitrates (a "1080p, 8 Mbps" that is really 720p at ~4), so it
+    // rarely climbed back: judge by what segments really weigh instead.
+    hls = new OurHls({
+      liveSyncDurationCount: 3,
+      backBufferLength: 30,
+      abrEwmaDefaultEstimate: 20e6,
+      abrMaxWithRealBitrate: true,
+    });
     hls.loadSource(url);
     hls.attachMedia(video);
     hls.on(OurHls.Events.MANIFEST_PARSED, function () { toLiveEdge(); play(); });
