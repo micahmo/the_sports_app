@@ -6,6 +6,7 @@ import 'package:window_manager/window_manager.dart';
 import 'src/desktop/updater.dart';
 import 'src/desktop/window_state.dart';
 import 'src/screens/sports_screen.dart';
+import 'src/widgets/keep_fresh.dart';
 import 'src/theme.dart';
 
 Future<void> main() async {
@@ -43,6 +44,7 @@ class SportsApp extends StatelessWidget {
           themeMode: mode,
           home: const SportsScreen(),
           navigatorKey: _navigatorKey,
+          navigatorObservers: <NavigatorObserver>[keepFreshRoutes],
           // Esc goes back from any screen, for desktop. Screens that need Esc
           // for something else first (the player's fullscreen) handle it
           // themselves before it gets here.

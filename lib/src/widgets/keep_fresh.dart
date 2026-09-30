@@ -6,13 +6,19 @@ import 'package:flutter/widgets.dart';
 
 import 'match_widgets.dart' show isDesktop;
 
+/// Tells KeepFresh screens when they're showing again (the MaterialApp's
+/// navigatorObservers).
+final RouteObserver<ModalRoute<void>> keepFreshRoutes = RouteObserver<ModalRoute<void>>();
+
 /// Keeps a screen's data current without the user asking:
 ///
 /// - when the app comes back to the foreground (onShow: back from another app,
 ///   the screen turning on, a restored window; not onResume, which also fires
-///   when the notification shade is pulled down), and
-/// - on desktop, every minute while the mouse and keyboard are idle, since a
-///   window left open never "comes back".
+///   when the notification shade is pulled down),
+/// - on desktop, when the window gets focus again, and every minute while the
+///   mouse and keyboard are idle, since a window left open never "comes back",
+/// - when the user comes back to it (Back from the screen above), if its data
+///   is more than a few seconds old.
 ///
 /// Only the screen that's showing refreshes; screens underneath (including
 /// everything under the player) catch up when they're next shown.
@@ -25,8 +31,14 @@ mixin KeepFresh<T extends StatefulWidget> on State<T> {
   /// Input this recent means someone is using the window; wait for the next tick.
   static const Duration _idleBefore = Duration(seconds: 10);
 
+  /// Coming back sooner than this after the last load doesn't reload again.
+  static const Duration _freshFor = Duration(seconds: 30);
+
   late final AppLifecycleListener _lifecycle;
   Timer? _timer;
+  DateTime _loadedAt = DateTime.now();
+  ModalRoute<void>? _route;
+  late final _RouteWatch _routeWatch = _RouteWatch(_refreshIfStale);
 
   /// Reload this screen's data quietly.
   void refreshInBackground();
@@ -34,7 +46,7 @@ mixin KeepFresh<T extends StatefulWidget> on State<T> {
   @override
   void initState() {
     super.initState();
-    _lifecycle = AppLifecycleListener(onShow: _refreshIfShowing);
+    _lifecycle = AppLifecycleListener(onShow: _refreshIfShowing, onResume: isDesktop ? _refreshIfStale : null);
     if (isDesktop) {
       _UserActivity.ensureListening();
       _timer = Timer.periodic(_interval, (_) => _tick());
@@ -50,15 +62,43 @@ mixin KeepFresh<T extends StatefulWidget> on State<T> {
   }
 
   void _refreshIfShowing() {
-    if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) refreshInBackground();
+    if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
+      _loadedAt = DateTime.now();
+      refreshInBackground();
+    }
+  }
+
+  void _refreshIfStale() {
+    if (DateTime.now().difference(_loadedAt) >= _freshFor) _refreshIfShowing();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ModalRoute<void>? route = ModalRoute.of(context);
+    if (route != _route) {
+      keepFreshRoutes.unsubscribe(_routeWatch);
+      _route = route;
+      if (route != null) keepFreshRoutes.subscribe(_routeWatch, route);
+    }
   }
 
   @override
   void dispose() {
+    keepFreshRoutes.unsubscribe(_routeWatch);
     _timer?.cancel();
     _lifecycle.dispose();
     super.dispose();
   }
+}
+
+/// Back on this screen after the one above it closed.
+class _RouteWatch extends RouteAware {
+  _RouteWatch(this.onShowingAgain);
+  final VoidCallback onShowingAgain;
+
+  @override
+  void didPopNext() => onShowingAgain();
 }
 
 /// When the user last moved the mouse, scrolled, clicked or pressed a key.
