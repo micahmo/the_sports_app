@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app_version.dart';
 import '../desktop/updater.dart';
 import '../theme.dart';
+import '../widgets/match_widgets.dart' show ScreenSpinner;
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -79,7 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         top: false,
         bottom: false,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const ScreenSpinner()
             : ListView(
                 padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
                 children: <Widget>[

@@ -1272,17 +1272,21 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                     ColoredBox(
                       color: Colors.black,
                       child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                        // The spinner in the true centre whether or not there's
+                        // text; the text goes under it without moving it.
+                        child: Stack(
+                          alignment: Alignment.center,
+                          clipBehavior: Clip.none,
                           children: <Widget>[
                             const CircularProgressIndicator(color: Colors.white),
-                            if (_healing) ...<Widget>[
-                              const SizedBox(height: 16),
-                              Text(
-                                _offline ? 'Waiting for connection…' : 'Reconnecting…',
-                                style: const TextStyle(color: Colors.white70),
+                            if (_healing)
+                              Transform.translate(
+                                offset: const Offset(0, 44),
+                                child: Text(
+                                  _offline ? 'Waiting for connection…' : 'Reconnecting…',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
                               ),
-                            ],
                           ],
                         ),
                       ),

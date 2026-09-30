@@ -114,7 +114,7 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
           future: _future,
           builder: (BuildContext ctx, AsyncSnapshot<_HomeData> snap) {
             if (snap.connectionState == ConnectionState.waiting && !(_quiet && snap.hasData)) {
-              return const Center(child: CircularProgressIndicator());
+              return const ScreenSpinner();
             }
             if (snap.hasError) {
               return Center(

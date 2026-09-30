@@ -171,6 +171,17 @@ trusting the constants:
 adb exec-out screencap > frame.bin   # raw RGBA, easy to sample in a script
 ```
 
+### Spinners
+
+A loading spinner that has the screen to itself sits in the screen's true
+centre, on every app; titles, headers and status text fall around it, and never
+move it. (Centred in the space under a title it looks low; centred together
+with the text under it, it looks high when the text is there and jumps when it
+isn't.) Phone and desktop use `ScreenSpinner`, which makes up for the app bar;
+the Roku puts it at 960×540. On phone the Home spinner lands where the splash
+icon was, so the hand-off doesn't jump. Spinners inside a panel (the Roku's
+streams beside the list) centre in the panel.
+
 ### The splash screen cannot follow the in-app theme
 
 `android/app/src/main/res/values{,-night}/` already give the launch screen a

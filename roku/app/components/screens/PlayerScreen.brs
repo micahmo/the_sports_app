@@ -24,7 +24,8 @@ sub init()
 
     ' Ours whenever there's something to wait for: starting, reconnecting (with
     ' the status under it) and buffering.
-    m.spinner = mkSpinner(m.top, 960, 520)
+    ' In the true centre whether or not there's text; the text goes under it.
+    m.spinner = mkSpinner(m.top, 960, 540)
     hideStatus()
 
     m.restarts = 0
@@ -54,9 +55,11 @@ sub onStatus()
 end sub
 
 ' Working on it: our spinner in the middle, what's happening just under it.
+' (The label centres its text in its 200px height: one line lands ~25px below
+' the spinner's bottom edge.)
 sub showWorking(text as String)
     m.status.text = text
-    m.status.translation = [160, 500]
+    m.status.translation = [160, 520]
     m.status.visible = true
     m.spinner.visible = true
     m.spinner.control = "start"

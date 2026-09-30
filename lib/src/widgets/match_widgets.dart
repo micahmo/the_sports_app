@@ -90,6 +90,21 @@ class SectionLabel extends StatelessWidget {
   }
 }
 
+/// A loading spinner with the screen to itself: in the middle of the whole
+/// screen, not of the space under the app bar (centred there it looks low).
+/// Other things fall around it. (The Roku follows the same rule.)
+class ScreenSpinner extends StatelessWidget {
+  const ScreenSpinner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final double bar = Scaffold.maybeOf(context)?.appBarMaxHeight ?? 0;
+    return Center(
+      child: Transform.translate(offset: Offset(0, -bar / 2), child: const CircularProgressIndicator()),
+    );
+  }
+}
+
 /// Red dot and "LIVE".
 class LiveTag extends StatelessWidget {
   const LiveTag({super.key, this.size = 14});

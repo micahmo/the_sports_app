@@ -436,13 +436,12 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
       // Keep pull-to-refresh usable while loading, but dismiss immediately:
       return RefreshIndicator(
         onRefresh: _refreshMatchesQuiet,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
+        // The spinner in the middle of the screen, the header above it.
+        child: Stack(
+          fit: StackFit.expand,
           children: <Widget>[
-            header,
-            const SizedBox(height: 240),
-            const Center(child: CircularProgressIndicator()),
-            const SizedBox(height: 240),
+            ListView(physics: const AlwaysScrollableScrollPhysics(), children: <Widget>[header]),
+            const ScreenSpinner(),
           ],
         ),
       );
