@@ -14,32 +14,29 @@ import 'stream_quality.dart';
 const double _cardWidth = 150;
 const double _cardHeight = 96;
 
-/// The small pill that opens the row: tapped on a phone, hovered or clicked
-/// with a mouse.
+/// The small pill that opens the row: tapped or clicked (never just hovered,
+/// which opened a big bar by accident; the Roku takes a press too).
 class StreamsPill extends StatelessWidget {
   const StreamsPill({super.key, required this.onOpen});
   final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => onOpen(),
-      child: Material(
-        color: Colors.black.withValues(alpha: 0.78),
-        shape: const StadiumBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onOpen,
-          child: const Padding(
-            padding: EdgeInsets.fromLTRB(12, 7, 16, 7),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Icon(Icons.keyboard_arrow_up, color: Colors.white, size: 18),
-                SizedBox(width: 4),
-                Text(PlayerText.streamsPill, style: TextStyle(color: Colors.white, fontSize: 13)),
-              ],
-            ),
+    return Material(
+      color: Colors.black.withValues(alpha: 0.78),
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        child: const Padding(
+          padding: EdgeInsets.fromLTRB(12, 7, 16, 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.keyboard_arrow_up, color: Colors.white, size: 18),
+              SizedBox(width: 4),
+              Text(PlayerText.streamsPill, style: TextStyle(color: Colors.white, fontSize: 13)),
+            ],
           ),
         ),
       ),

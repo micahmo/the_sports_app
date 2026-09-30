@@ -539,17 +539,17 @@ const String _takeoverJs = r'''
 
   // The mouse moving over the video, or a tap on it: the app shows its title
   // bar for a moment. (The page, not the app, gets these over the video.)
-  // A mouse near the bottom also opens the app's streams row.
+  // A tap or click is told apart from the mouse just moving: it also closes the
+  // app's streams row.
   var lastPointer = 0;
-  function pointer(e) {
+  function pointer() {
     var now = Date.now();
     if (now - lastPointer < 300) return;
     lastPointer = now;
-    var bottom = e.pointerType === "mouse" && e.clientY > window.innerHeight - 110;
-    post(bottom ? "pointer:bottom" : "pointer");
+    post("pointer");
   }
-  window.addEventListener("pointermove", function (e) { if (e.pointerType === "mouse") pointer(e); }, true);
-  window.addEventListener("pointerdown", pointer, true);
+  window.addEventListener("pointermove", function (e) { if (e.pointerType === "mouse") pointer(); }, true);
+  window.addEventListener("pointerdown", function () { post("pointer:down"); }, true);
 
   // On desktop the web view keeps keyboard focus once clicked, so the app
   // never sees its shortcuts; pass them on.
@@ -1131,11 +1131,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _peekTitle();
       return;
     }
-    // The mouse near the bottom of the video: open the streams row as hovering
-    // its pill would.
-    if (message == 'pointer:bottom') {
-      _peekTitle();
-      _openRow();
+    // A tap or click on the video: shows the title bar, or closes the streams
+    // row if it's open (tapping away from it, as with any sheet).
+    if (message == 'pointer:down') {
+      _tapVideo();
       return;
     }
     if (message == 'stalled') {
@@ -1349,6 +1348,19 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     });
   }
 
+  // A tap or click on the video, or on the loading / unavailable screen over it.
+  void _tapVideo() {
+    if (_rowOpen) _closeRow();
+    _peekTitle();
+  }
+
+  void _closeRow() {
+    if (!mounted || !_rowOpen) return;
+    setState(() => _rowOpen = false);
+    // The title bar stays a moment, with the pill to open the row again.
+    _peekTitle();
+  }
+
   void _heal() {
     if (!mounted || _healing) return;
     setState(() => _healing = true);
@@ -1402,9 +1414,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     }
   }
 
-  // Esc leaves fullscreen first, then the player.
+  // Esc closes the streams row first, then leaves fullscreen, then the player.
   void _escape() {
-    if (_fullscreen) {
+    if (_rowOpen) {
+      _closeRow();
+    } else if (_fullscreen) {
       _setFullscreen(false);
     } else {
       Navigator.maybePop(context);
@@ -1562,265 +1576,286 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     // Desktop has no system back button: Esc leaves the player, M mutes and F
     // goes fullscreen. (The page forwards these too, for when the web view has
     // keyboard focus.)
-    return CallbackShortcuts(
-      bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.escape): _escape,
-        const SingleActivator(LogicalKeyboardKey.keyM): _toggleMute,
-        const SingleActivator(LogicalKeyboardKey.keyF): () => _setFullscreen(!_fullscreen),
+    // Back (the phone's gesture or button) closes the streams row first, as
+    // Back does on the Roku.
+    return PopScope(
+      canPop: !_rowOpen,
+      onPopInvokedWithResult: (bool didPop, Object? _) {
+        if (!didPop) _closeRow();
       },
-      child: Focus(
-        autofocus: true,
-        child: AnnotatedRegion<SystemUiOverlayStyle>(
-          value: const SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.light,
-            statusBarBrightness: Brightness.dark,
-            systemNavigationBarColor: Colors.black,
-            systemNavigationBarIconBrightness: Brightness.light,
-          ),
-          child: Scaffold(
-            backgroundColor: Colors.black,
-            body: SafeArea(
-              top: false,
-              bottom: false,
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  const SizedBox.expand(child: _WebViewHolder()),
-                  if (_failed)
-                    ColoredBox(
-                      color: Colors.black,
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            const Icon(Icons.videocam_off, color: Colors.white54, size: 40),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'This stream is unavailable.',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Try another stream or source.',
-                              style: TextStyle(color: Colors.white54, fontSize: 12),
-                            ),
-                            const SizedBox(height: 16),
-                            TextButton(onPressed: _refresh, child: const Text('Retry')),
-                          ],
+      child: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.escape): _escape,
+          const SingleActivator(LogicalKeyboardKey.keyM): _toggleMute,
+          const SingleActivator(LogicalKeyboardKey.keyF): () => _setFullscreen(!_fullscreen),
+        },
+        child: Focus(
+          autofocus: true,
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+              systemNavigationBarColor: Colors.black,
+              systemNavigationBarIconBrightness: Brightness.light,
+            ),
+            child: Scaffold(
+              backgroundColor: Colors.black,
+              body: SafeArea(
+                top: false,
+                bottom: false,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    const SizedBox.expand(child: _WebViewHolder()),
+                    if (_failed)
+                      ColoredBox(
+                        color: Colors.black,
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              const Icon(Icons.videocam_off, color: Colors.white54, size: 40),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'This stream is unavailable.',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Try another stream or source.',
+                                style: TextStyle(color: Colors.white54, fontSize: 12),
+                              ),
+                              const SizedBox(height: 16),
+                              TextButton(onPressed: _refresh, child: const Text('Retry')),
+                            ],
+                          ),
+                        ),
+                      )
+                    else if (!_ready || _healing)
+                      ColoredBox(
+                        color: Colors.black,
+                        child: Center(
+                          // The spinner in the true centre whether or not there's
+                          // text; the text goes under it without moving it.
+                          child: Stack(
+                            alignment: Alignment.center,
+                            clipBehavior: Clip.none,
+                            children: <Widget>[
+                              const CircularProgressIndicator(color: Colors.white),
+                              // Falling back: what stopped, and what's next.
+                              if (_trying != null)
+                                Transform.translate(
+                                  offset: const Offset(0, 56),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Text(_fallbackFrom ?? '', style: const TextStyle(color: Colors.white)),
+                                      const SizedBox(height: 2),
+                                      Text(_trying!, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                    ],
+                                  ),
+                                )
+                              else if (_healing)
+                                Transform.translate(
+                                  offset: const Offset(0, 44),
+                                  child: Text(
+                                    _offline ? 'Waiting for connection…' : 'Reconnecting…',
+                                    style: const TextStyle(color: Colors.white70),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
-                    )
-                  else if (!_ready || _healing)
-                    ColoredBox(
-                      color: Colors.black,
-                      child: Center(
-                        // The spinner in the true centre whether or not there's
-                        // text; the text goes under it without moving it.
-                        child: Stack(
-                          alignment: Alignment.center,
-                          clipBehavior: Clip.none,
-                          children: <Widget>[
-                            const CircularProgressIndicator(color: Colors.white),
-                            // Falling back: what stopped, and what's next.
-                            if (_trying != null)
-                              Transform.translate(
-                                offset: const Offset(0, 56),
+                    // Over the loading / unavailable screens the page can't see
+                    // taps or the mouse, so the app listens: the title bar (what's
+                    // being tried) and the Streams pill come up as over video, so
+                    // another stream can be picked without waiting out a fallback.
+                    // Translucent: Retry still gets its tap.
+                    if (_failed || !_ready || _healing)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onTap: _tapVideo,
+                          child: MouseRegion(onHover: (_) => _peekTitle()),
+                        ),
+                      ),
+                    // Desktop fullscreen: the pointer hides with the title bar, so
+                    // it isn't left sitting on the picture. Over the page it's the
+                    // page's cursor, and webview_windows shows any it doesn't know
+                    // (CSS cursor: none included) as the arrow, so a layer of our
+                    // own covers the video meanwhile; moving the mouse over it
+                    // brings everything back.
+                    if (_fullscreen && !chrome)
+                      Positioned.fill(
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.none,
+                          onHover: (_) => _peekTitle(),
+                        ),
+                      ),
+                    // The game and what's playing, while the menu is open or for a
+                    // moment after the mouse moves or the video is tapped. In
+                    // fullscreen too, where it's the only way to see them.
+                    if (!_inPip)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: IgnorePointer(
+                          ignoring: !chrome,
+                          child: AnimatedOpacity(
+                            opacity: chrome ? 1 : 0,
+                            duration: const Duration(milliseconds: 150),
+                            // The page can't see the mouse over the bar itself, so resting on
+                            // it keeps it up.
+                            child: MouseRegion(
+                              onHover: (_) => _peekTitle(),
+                              child: Container(
+                                color: Colors.black.withValues(alpha: 0.7),
+                                padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 16, 10),
                                 child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: <Widget>[
-                                    Text(_fallbackFrom ?? '', style: const TextStyle(color: Colors.white)),
-                                    const SizedBox(height: 2),
-                                    Text(_trying!, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                    Text(_match.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: condensed(19, FontWeight.w600, color: Colors.white)),
+                                    // What you glance for first: quality, then which stream.
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        <String>[if (_quality != null) _quality!.label, sourceLabel(_stream.source), 'Stream ${_stream.streamNo}'].join(' · '),
+                                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                                      ),
+                                    ),
                                   ],
                                 ),
-                              )
-                            else if (_healing)
-                              Transform.translate(
-                                offset: const Offset(0, 44),
-                                child: Text(
-                                  _offline ? 'Waiting for connection…' : 'Reconnecting…',
-                                  style: const TextStyle(color: Colors.white70),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    // The Streams pill, with the title bar; it opens the row. It
+                    // steps aside while the "Switched to" note has its spot.
+                    if (!_inPip && _hasRow && !_rowOpen && _switchedNote == null)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 16 + MediaQuery.paddingOf(context).bottom,
+                        child: IgnorePointer(
+                          ignoring: !chrome,
+                          child: AnimatedOpacity(
+                            opacity: chrome ? 1 : 0,
+                            duration: const Duration(milliseconds: 150),
+                            child: Center(child: StreamsPill(onOpen: _openRow)),
+                          ),
+                        ),
+                      ),
+                    // The streams row: this game's other streams, recent games.
+                    if (!_inPip && _rowOpen)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: StreamsRow(
+                          thisGame: _rowStreams,
+                          recent: _rowRecent,
+                          qualities: _qualities,
+                          onStream: _switchTo,
+                          onRecent: _playRecent,
+                          onActivity: _peekTitle,
+                        ),
+                      ),
+                    // After falling back: which stream took over, briefly.
+                    if (!_inPip)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 24 + MediaQuery.paddingOf(context).bottom,
+                        child: IgnorePointer(
+                          child: AnimatedOpacity(
+                            opacity: _switchedNote != null && !_rowOpen ? 1 : 0,
+                            duration: const Duration(milliseconds: 250),
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.78), borderRadius: BorderRadius.circular(8)),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    const Icon(Icons.swap_horiz, color: Colors.white, size: 16),
+                                    const SizedBox(width: 8),
+                                    Text(_switchedNote ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                                  ],
                                 ),
                               ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  // Desktop fullscreen: the pointer hides with the title bar, so
-                  // it isn't left sitting on the picture. Over the page it's the
-                  // page's cursor, and webview_windows shows any it doesn't know
-                  // (CSS cursor: none included) as the arrow, so a layer of our
-                  // own covers the video meanwhile; moving the mouse over it
-                  // brings everything back.
-                  if (_fullscreen && !chrome)
-                    Positioned.fill(
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.none,
-                        onHover: (_) => _peekTitle(),
-                      ),
-                    ),
-                  // The game and what's playing, while the menu is open or for a
-                  // moment after the mouse moves or the video is tapped. In
-                  // fullscreen too, where it's the only way to see them.
-                  if (!_inPip)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: IgnorePointer(
-                        ignoring: !chrome,
-                        child: AnimatedOpacity(
-                          opacity: chrome ? 1 : 0,
-                          duration: const Duration(milliseconds: 150),
-                          // The page can't see the mouse over the bar itself, so resting on
-                          // it keeps it up.
-                          child: MouseRegion(
-                            onHover: (_) => _peekTitle(),
-                            child: Container(
-                              color: Colors.black.withValues(alpha: 0.7),
-                              padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 16, 10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: <Widget>[
-                                  Text(_match.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: condensed(19, FontWeight.w600, color: Colors.white)),
-                                  // What you glance for first: quality, then which stream.
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      <String>[if (_quality != null) _quality!.label, sourceLabel(_stream.source), 'Stream ${_stream.streamNo}'].join(' · '),
-                                      style: const TextStyle(fontSize: 12, color: Colors.white70),
-                                    ),
-                                  ),
-                                ],
-                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  // The Streams pill, with the title bar; it opens the row. It
-                  // steps aside while the "Switched to" note has its spot.
-                  if (!_inPip && _hasRow && !_rowOpen && _switchedNote == null)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 16 + MediaQuery.paddingOf(context).bottom,
-                      child: IgnorePointer(
-                        ignoring: !chrome,
-                        child: AnimatedOpacity(
-                          opacity: chrome ? 1 : 0,
-                          duration: const Duration(milliseconds: 150),
-                          child: Center(child: StreamsPill(onOpen: _openRow)),
-                        ),
-                      ),
-                    ),
-                  // The streams row: this game's other streams, recent games.
-                  if (!_inPip && _rowOpen)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: StreamsRow(
-                        thisGame: _rowStreams,
-                        recent: _rowRecent,
-                        qualities: _qualities,
-                        onStream: _switchTo,
-                        onRecent: _playRecent,
-                        onActivity: _peekTitle,
-                      ),
-                    ),
-                  // After falling back: which stream took over, briefly.
-                  if (!_inPip)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 24 + MediaQuery.paddingOf(context).bottom,
-                      child: IgnorePointer(
-                        child: AnimatedOpacity(
-                          opacity: _switchedNote != null && !_rowOpen ? 1 : 0,
-                          duration: const Duration(milliseconds: 250),
-                          child: Center(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.78), borderRadius: BorderRadius.circular(8)),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: <Widget>[
-                                  const Icon(Icons.swap_horiz, color: Colors.white, size: 16),
-                                  const SizedBox(width: 8),
-                                  Text(_switchedNote ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            // The menu comes and goes with the title bar (a tap or the mouse
-            // brings both back), fullscreen included, so nothing sits on the
-            // picture meanwhile. None in PiP, or while the streams row is open
-            // (it would sit on the row's last card).
-            floatingActionButton: _inPip || _rowOpen
-                ? null
-                : IgnorePointer(
-                    ignoring: !chrome,
-                    child: AnimatedOpacity(
-                      opacity: chrome ? 1 : 0,
-                      duration: const Duration(milliseconds: 150),
-                      // The page can't see the mouse over the button, so resting
-                      // on it keeps it up.
-                      child: MouseRegion(
-                        onHover: (_) => _peekTitle(),
-                        child: SpeedDial(
-                          icon: Icons.menu,
-                          foregroundColor: Colors.white,
-                          backgroundColor: Colors.black,
-                          overlayOpacity: 0.0,
-                          onOpen: () => setState(() => _menuOpen = true),
-                          onClose: () {
-                            setState(() => _menuOpen = false);
-                            // Linger a moment rather than vanish as it closes.
-                            _peekTitle();
-                          },
-                          buttonSize: const Size(40, 40),
-                          childrenButtonSize: const Size(40, 40),
-                          childPadding: const EdgeInsets.all(0),
-                          spaceBetweenChildren: 5,
-                          children: [
-                            SpeedDialChild(
-                              shape: const CircleBorder(),
-                              child: Center(
-                                child: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white, size: 18),
-                              ),
-                              backgroundColor: Colors.black,
-                              onTap: _toggleMute,
-                            ),
-                            // Picture-in-picture is Android's; a desktop window can just be resized.
-                            if (Platform.isAndroid)
+              // The menu comes and goes with the title bar (a tap or the mouse
+              // brings both back), fullscreen included, so nothing sits on the
+              // picture meanwhile. None in PiP, or while the streams row is open
+              // (it would sit on the row's last card).
+              floatingActionButton: _inPip || _rowOpen
+                  ? null
+                  : IgnorePointer(
+                      ignoring: !chrome,
+                      child: AnimatedOpacity(
+                        opacity: chrome ? 1 : 0,
+                        duration: const Duration(milliseconds: 150),
+                        // The page can't see the mouse over the button, so resting
+                        // on it keeps it up.
+                        child: MouseRegion(
+                          onHover: (_) => _peekTitle(),
+                          child: SpeedDial(
+                            icon: Icons.menu,
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.black,
+                            overlayOpacity: 0.0,
+                            onOpen: () => setState(() => _menuOpen = true),
+                            onClose: () {
+                              setState(() => _menuOpen = false);
+                              // Linger a moment rather than vanish as it closes.
+                              _peekTitle();
+                            },
+                            buttonSize: const Size(40, 40),
+                            childrenButtonSize: const Size(40, 40),
+                            childPadding: const EdgeInsets.all(0),
+                            spaceBetweenChildren: 5,
+                            children: [
                               SpeedDialChild(
                                 shape: const CircleBorder(),
-                                child: const Center(child: Icon(Icons.picture_in_picture, color: Colors.white, size: 15)),
+                                child: Center(
+                                  child: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white, size: 18),
+                                ),
                                 backgroundColor: Colors.black,
-                                onTap: _enterPip,
+                                onTap: _toggleMute,
                               ),
-                            SpeedDialChild(
-                              shape: const CircleBorder(),
-                              child: const Center(child: Icon(Icons.refresh, color: Colors.white, size: 18)),
-                              backgroundColor: Colors.black,
-                              onTap: () async {
-                                await _refresh();
-                              },
-                            ),
-                          ],
+                              // Picture-in-picture is Android's; a desktop window can just be resized.
+                              if (Platform.isAndroid)
+                                SpeedDialChild(
+                                  shape: const CircleBorder(),
+                                  child: const Center(child: Icon(Icons.picture_in_picture, color: Colors.white, size: 15)),
+                                  backgroundColor: Colors.black,
+                                  onTap: _enterPip,
+                                ),
+                              SpeedDialChild(
+                                shape: const CircleBorder(),
+                                child: const Center(child: Icon(Icons.refresh, color: Colors.white, size: 18)),
+                                backgroundColor: Colors.black,
+                                onTap: () async {
+                                  await _refresh();
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
+            ),
           ),
         ),
       ),
