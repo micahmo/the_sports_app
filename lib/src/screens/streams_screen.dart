@@ -1117,6 +1117,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       },
       onPageFinished: _inject,
     );
+    _openPage(_stream, initial: true);
 
     // Always light status bar (icons) over black
     SystemChrome.setSystemUIOverlayStyle(
@@ -1291,8 +1292,23 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _rowOpen = false;
       _switchedNote = null;
     });
-    _allowedUri = Uri.parse(s.embedUrl);
-    _web.load(_allowedUri).catchError((_) {});
+    _openPage(s);
+  }
+
+  // Load the page that plays [s]: its embed page, or for a nested source
+  // (golf) the real player page inside it (StreamedApi.innerPlayerUrl), which
+  // the takeover can reach. `initial`: the web view is already loading the
+  // embed page, so only a nested source needs anything done.
+  Future<void> _openPage(StreamInfo s, {bool initial = false}) async {
+    Uri page = Uri.parse(s.embedUrl);
+    if (nestedSources.contains(s.source.toLowerCase())) {
+      page = Uri.parse(await _api.innerPlayerUrl(s.embedUrl));
+      if (!mounted || _stream.embedUrl != s.embedUrl) return;
+      if (page.toString() != s.embedUrl) debugPrint('[player] nested source: playing $page');
+    }
+    if (initial && page.toString() == s.embedUrl) return;
+    _allowedUri = page;
+    _web.load(page).catchError((_) {});
   }
 
   // A recent game's stream: that game becomes the one playing, and its other

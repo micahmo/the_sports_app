@@ -3,6 +3,91 @@
 ' playlist fetches made by that page (only a Chrome handshake gets them). Both
 ' tasks have the fields these use: driver, embedUrl, quit.
 
+' The page to load: the embed page, or for a nested source (golf) the real
+' player page inside it (playerPageUrl). Worked out once per task.
+function pageUrl() as String
+    if m.pageUrl = invalid then m.pageUrl = playerPageUrl(m.top.embedUrl)
+    return m.pageUrl
+end function
+
+' A nested source's real player page (the same steps as the phone app's
+' StreamedApi.innerPlayerUrl): its embed page frames another site's page,
+' which frames an ordinary embed.st player page, its address in base64
+' (atob("...")). Opened directly, that page plays like any other source's. The
+' embed URL itself for other sources, or if anything along the way doesn't
+' match.
+function playerPageUrl(embedUrl as String) as String
+    at = Instr(1, embedUrl, "/embed/")
+    if at = 0 then return embedUrl
+    rest = Mid(embedUrl, at + 7)
+    slash = Instr(1, rest, "/")
+    source = rest
+    if slash > 0 then source = Left(rest, slash - 1)
+    if not appNestedSources().DoesExist(LCase(source)) then return embedUrl
+    host = hostOf(embedUrl)
+    middle = foreignFrame(pageText(embedUrl, ""), host)
+    if middle = "" then return embedUrl
+    html = pageText(middle, embedUrl)
+    k = Instr(1, html, "atob(")
+    if k = 0 then return embedUrl
+    quote = Mid(html, k + 5, 1)
+    e = Instr(k + 6, html, quote)
+    if e = 0 then return embedUrl
+    ba = CreateObject("roByteArray")
+    ba.FromBase64String(Mid(html, k + 6, e - k - 6))
+    inner = ba.ToAsciiString()
+    prefix = "https://" + host + "/embed/"
+    if Left(inner, Len(prefix)) <> prefix then return embedUrl
+    print "[stream] nested source: playing "; inner
+    return inner
+end function
+
+' "embed.st" from "https://embed.st/embed/...".
+function hostOf(url as String) as String
+    at = Instr(1, url, "://")
+    if at = 0 then return ""
+    rest = Mid(url, at + 3)
+    slash = Instr(1, rest, "/")
+    if slash > 0 then return Left(rest, slash - 1)
+    return rest
+end function
+
+' The first frame on a page that comes from another site (the page's own
+' /ad.html and the like don't count).
+function foreignFrame(html as String, host as String) as String
+    q = Chr(34)
+    k = 1
+    while true
+        k = Instr(k, html, "<iframe")
+        if k = 0 then return ""
+        s = Instr(k, html, "src=" + q)
+        if s = 0 then return ""
+        e = Instr(s + 5, html, q)
+        if e = 0 then return ""
+        url = Mid(html, s + 5, e - s - 5)
+        if Left(url, 4) = "http" and hostOf(url) <> host then return url
+        k = e
+    end while
+    return ""
+end function
+
+' A page as a browser would ask for it (the sites answer a browser), or "".
+function pageText(url as String, referer as String) as String
+    x = CreateObject("roUrlTransfer")
+    port = CreateObject("roMessagePort")
+    x.SetMessagePort(port)
+    x.SetUrl(url)
+    x.SetCertificatesFile("common:/certs/ca-bundle.crt")
+    x.InitClientCertificates()
+    x.AddHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36")
+    if referer <> "" then x.AddHeader("Referer", referer)
+    if not x.AsyncGetToString() then return ""
+    msg = wait(8000, port)
+    if type(msg) = "roUrlEvent" and msg.GetResponseCode() = 200 then return msg.GetString()
+    x.AsyncCancel()
+    return ""
+end function
+
 function openSession() as Boolean
     q = Chr(34)
     args = ["--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--mute-audio", "--window-size=1280,720"]
@@ -24,10 +109,13 @@ function openSession() as Boolean
     return true
 end function
 
-' Loads the embed page and waits for it to request its playlist.
+' Loads the embed page and waits for it to request its playlist. The FIRST one
+' it requests: the page's own player goes on to fetch the quality it picked,
+' and taking the last pinned us to that pick instead of the master (which
+' pickMedia reads for the best). The phone app had the same drift.
 function findPlaylist() as Boolean
-    wd(m.driver, "POST", "/session/" + m.sid + "/url", {url: m.top.embedUrl})
-    js = "var e=performance.getEntriesByType('resource');for(var i=e.length-1;i>=0;i--)if(e[i].name.indexOf('.m3u8')!==-1)return e[i].name;return null;"
+    wd(m.driver, "POST", "/session/" + m.sid + "/url", {url: pageUrl()})
+    js = "var e=performance.getEntriesByType('resource');for(var i=0;i<e.length;i++)if(e[i].name.indexOf('.m3u8')!==-1)return e[i].name;return null;"
     found = invalid
     for i = 1 to 40
         v = exec(js)

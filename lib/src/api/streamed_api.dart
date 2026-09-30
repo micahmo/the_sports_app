@@ -87,6 +87,47 @@ class StreamedApi {
     return <StreamInfo>[for (final List<StreamInfo> r in results) ...r];
   }
 
+  /// The page to play for a stream of a nested source (golf; see
+  /// `nestedSources`): its embed page frames another site's page, which frames
+  /// an ordinary embed.st player page, its address in base64 (`atob("…")`).
+  /// Opened directly, that page plays like any other source's. The embed URL
+  /// itself if anything along the way doesn't match. (The Roku does the same:
+  /// playerPageUrl in roku/app/source/streamlink.brs.)
+  Future<String> innerPlayerUrl(String embedUrl) async {
+    try {
+      final Uri embed = Uri.parse(embedUrl);
+      final Uri? middle = _foreignFrame(await _pageText(embed, null), embed);
+      if (middle == null) return embedUrl;
+      final String html = await _pageText(middle, embedUrl);
+      final RegExpMatch? b64 = RegExp(r'''atob\(\s*["']([A-Za-z0-9+/=]+)["']''').firstMatch(html);
+      final String inner = b64 == null ? '' : utf8.decode(base64.decode(b64.group(1)!));
+      return inner.startsWith('https://${embed.host}/embed/') ? inner : embedUrl;
+    } catch (_) {
+      return embedUrl;
+    }
+  }
+
+  // Pages as a browser would ask for them (the sites answer a browser).
+  Future<String> _pageText(Uri url, String? referer) async {
+    final http.Response r = await _client
+        .get(url, headers: <String, String>{'User-Agent': _browserAgent, if (referer != null) 'Referer': referer})
+        .timeout(const Duration(seconds: 8));
+    _ensureOk(r);
+    return r.body;
+  }
+
+  static const String _browserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36';
+
+  // The first frame on a page that comes from another site (the page's own
+  // /ad.html and the like don't count).
+  static Uri? _foreignFrame(String html, Uri page) {
+    for (final RegExpMatch m in RegExp(r'''<iframe[^>]*\bsrc=["']([^"']+)["']''').allMatches(html)) {
+      final Uri? u = Uri.tryParse(m.group(1)!);
+      if (u != null && u.hasScheme && u.host != page.host) return u;
+    }
+    return null;
+  }
+
   static void _ensureOk(http.Response r) {
     if (r.statusCode < 200 || r.statusCode >= 300) {
       throw Exception('HTTP ${r.statusCode}: ${r.body}');

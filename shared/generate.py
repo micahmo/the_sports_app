@@ -67,6 +67,8 @@ def dart(sports, default_icon, sources, palette, player, player_text, player_ico
     out += [f'  {dq(s["id"])},' for s in sources]
     out += ['];', '', '/// The site\'s description of each source.', 'const Map<String, String> sourceDescriptions = <String, String>{']
     out += [f'  {dq(s["id"])}: {dq(s["description"])},' for s in sources]
+    out += ['};', '', '/// Sources whose real player page is nested two frames deep (played directly).', 'const Set<String> nestedSources = <String>{']
+    out += [f'  {dq(s["id"])},' for s in sources if s.get('nested')]
     out += ['};', '', '/// Colours both apps use: the dark theme, and the light theme\'s version where there is one.', 'abstract final class AppPalette {']
     for name, v in palette.items():
         out.append(f'  static const Color {name} = Color(0xFF{v["dark"][1:].upper()});')
@@ -104,6 +106,10 @@ def brs(sports, default_icon, sources, palette, player, player_text, player_icon
             "' The site's description of each source.",
             'function appSourceDescriptions() as Object',
             '    return ' + aa((s['id'], s['description']) for s in sources),
+            'end function', '',
+            "' Sources whose real player page is nested two frames deep (played directly).",
+            'function appNestedSources() as Object',
+            '    return {' + ', '.join(f'{q(s["id"])}: true' for s in sources if s.get('nested')) + '}',
             'end function', '',
             "' The dark theme's colours (the Roku's only theme).",
             'function appPalette() as Object',

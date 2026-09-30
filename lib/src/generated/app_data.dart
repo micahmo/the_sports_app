@@ -54,6 +54,11 @@ const Map<String, String> sourceDescriptions = <String, String>{
   'intel': 'Large event coverage, iffy quality',
 };
 
+/// Sources whose real player page is nested two frames deep (played directly).
+const Set<String> nestedSources = <String>{
+  'golf',
+};
+
 /// Colours both apps use: the dark theme, and the light theme's version where there is one.
 abstract final class AppPalette {
   static const Color bg = Color(0xFF22252A);

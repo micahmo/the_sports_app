@@ -24,6 +24,11 @@ function appSourceDescriptions() as Object
     return {"admin": "Admin added streams", "golf": "Very stable, good quality", "foxtrot": "High quality, sometimes 4K", "hotel": "Good backup, many motorsports events", "delta": "Okayish backup", "alpha": "Most reliable (720p 30fps)", "charlie": "Good backup (poor quality occasionally)", "echo": "Great quality overall", "intel": "Large event coverage, iffy quality"}
 end function
 
+' Sources whose real player page is nested two frames deep (played directly).
+function appNestedSources() as Object
+    return {"golf": true}
+end function
+
 ' The dark theme's colours (the Roku's only theme).
 function appPalette() as Object
     return {"bg": "0x22252AFF", "card": "0x2B2F36FF", "cardHigh": "0x32363EFF", "cardHighest": "0x3A3F48FF", "text": "0xE7E9EEFF", "textDim": "0xC2C7D0FF", "outline": "0x8C919BFF", "divider": "0x44484FFF", "primary": "0xAEB8FFFF", "live": "0xFF6B6BFF", "popular": "0xFFA24DFF", "favorite": "0xFF7BACFF", "hd": "0x7BD88FFF", "sd": "0xE8B76BFF", "disc": "0xE6E8EEFF"}

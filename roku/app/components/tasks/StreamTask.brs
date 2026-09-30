@@ -162,7 +162,9 @@ sub startMint()
     print "[stream] the link stopped working: finding a new one"
     m.minter = CreateObject("roSGNode", "MintTask")
     m.minter.driver = m.driver
-    m.minter.embedUrl = m.top.embedUrl
+    ' The page this session plays (for a nested source, the inner one already
+    ' found), so the minter doesn't look it up again.
+    m.minter.embedUrl = pageUrl()
     m.minter.observeField("result", m.port)
     m.minter.control = "run"
 end sub

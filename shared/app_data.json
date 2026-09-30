@@ -21,10 +21,10 @@
   "defaultSportIcon": "sports",
 
   "sources": {
-    "_about": "Stream sources, best first: streams are grouped by source in this order, and sources not listed go last in the order the API gives them. Descriptions are the site's own wording from its watch pages (last checked 2026-09-20). Sources not served at the moment are kept; they have come and gone before.",
+    "_about": "Stream sources, best first: streams are grouped by source in this order, and sources not listed go last in the order the API gives them. `nested`: the embed page frames another site's page, which frames the real embed.st player page; the apps find that page and play it directly (see DESIGN_NOTES, Nested-iframe sources). Descriptions are the site's own wording from its watch pages (last checked 2026-09-20). Sources not served at the moment are kept; they have come and gone before.",
     "order": [
       { "id": "admin", "description": "Admin added streams" },
-      { "id": "golf", "description": "Very stable, good quality" },
+      { "id": "golf", "description": "Very stable, good quality", "nested": true },
       { "id": "foxtrot", "description": "High quality, sometimes 4K" },
       { "id": "hotel", "description": "Good backup, many motorsports events" },
       { "id": "delta", "description": "Okayish backup" },

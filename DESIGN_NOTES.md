@@ -103,16 +103,22 @@ takeover script cannot see that playlist. Note the red notice you see for `golf`
 is rendered *inside* the inner frame, not the top document — checking
 `document.body` for it there will tell you nothing.
 
-So when no playlist turns up but the page has a large cross-origin iframe, the
-takeover script reports `blocked` and we show our own "stream unavailable"
-message with the page still blanked. We cannot read or hide the inner frame, and
-for this site those inner pages are gated too and render the same notice — so
-revealing the page just shows the user the notice. If a nested source ever does
-work, `hasForeignPlayer()` in `_takeoverJs` is the branch to relax.
+**Golf plays (2026-09-30), on all three apps.** The inner page is an ordinary
+embed.st player page, and opened directly (not framed) it requests its playlist
+like any other source's; the notice only appears because it's framed. So for a
+source marked `nested` in `shared/app_data.json`, the apps fetch the embed page,
+follow its first cross-site `<iframe>` (the middle page, fetched with the embed
+page as Referer), decode the inner address from its `atob("…")`, and play that
+page instead: `StreamedApi.innerPlayerUrl` on phone/desktop (the player loads
+it in place, `_openPage`), `playerPageUrl` in `streamlink.brs` on the Roku (the
+server's Chrome opens it; the background link-refresher reuses it). The stream
+keeps its golf embed URL everywhere else (quality, recents, fallback). If the
+chain doesn't match, they fall back to the embed page, and `hasForeignPlayer()`
+still reports `blocked` as before.
 
-Supporting `golf` properly would mean detecting the inner player and navigating
-the WebView to it directly (two hops), which also needs the navigation
-allow-list in `_isAllowedDestination` relaxed.
+The earlier notes here said the inner pages were "gated too" and parked golf as
+hard; that was a guess from the notice showing inside the frames, never tried.
+Worth remembering: test the assumption before parking something as hard.
 
 ### Gotcha: innerText vs textContent
 
@@ -242,7 +248,7 @@ the others or is added here as a deliberate gap.
 | Updates | through Obtainium | checks at every start, installs itself and restarts | checks at start and hourly, says one is available; installing is up to the user |
 | Asks before exiting on Back | no | no | yes: TV convention |
 | Needs the Chrome stream server | no | no | yes (see Roku) |
-| `golf` streams | don't play | don't play | don't play |
+| `golf` streams | play (inner page opened directly) | play | play |
 
 ## Windows
 
