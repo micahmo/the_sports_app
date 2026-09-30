@@ -392,9 +392,118 @@ const String _takeoverJs = r'''
     try { AppPlayer.postMessage(msg); } catch (e) {}
   }
 
-  // What the player does about trouble, for the app's log (adb logcat).
+  // What the player does about trouble, for the app's log (adb logcat), and
+  // the page's console (desktop has no log to read; see DESIGN_NOTES Debugging).
   function log(msg) {
     post("log:" + msg);
+    try { console.log("[player] " + msg); } catch (e) {}
+  }
+
+  // hls.js's own segment downloader, plus a second copy of any download that
+  // has gone quiet (still running after 4 s, nothing new for a second);
+  // whichever finishes first is used, as on the Roku. These
+  // sources' servers sometimes sit on a request (seen: ~11 s for a 6 s
+  // segment) while a fresh one comes straight back, and hls.js fetches one
+  // segment at a time, so one stuck request was enough to pause playback.
+  // Everything else (retries, timeouts, quality) stays hls.js's.
+  function hedgedLoader(Base) {
+    function Hedged(config) {
+      this.config = config;
+      this.first = new Base(config);
+      this.second = null;
+      this.stats = this.first.stats;
+      this.context = null;
+      this.callbacks = null;
+      this.settled = false;
+      this.timer = null;
+    }
+    Hedged.prototype.load = function (context, loaderConfig, callbacks) {
+      var self = this;
+      var running = 0;
+      self.context = context;
+      self.callbacks = callbacks;
+      function start(loader) {
+        running++;
+        var cb = {
+          onSuccess: function (response, stats, ctx, details) {
+            if (self.settled) return;
+            self.settle(loader);
+            // The winner's timings, so the quality logic sees the real speed.
+            if (stats !== self.stats) for (var k in stats) self.stats[k] = stats[k];
+            if (loader === self.second) log("segment: the second copy won");
+            callbacks.onSuccess(response, self.stats, ctx, details);
+          },
+          // A copy failing only counts once the other has too.
+          onError: function (error, ctx, details) {
+            if (self.settled || --running > 0) return;
+            self.settle(null);
+            callbacks.onError(error, ctx, details, self.stats);
+          },
+          onTimeout: function (stats, ctx, details) {
+            if (self.settled || --running > 0) return;
+            self.settle(null);
+            callbacks.onTimeout(self.stats, ctx, details);
+          },
+        };
+        if (callbacks.onProgress) {
+          cb.onProgress = function (stats, ctx, data, details) {
+            if (!self.settled && loader === self.first) callbacks.onProgress(self.stats, ctx, data, details);
+          };
+        }
+        loader.load(context, loaderConfig, cb);
+      }
+      start(self.first);
+      // Only a download that has gone quiet (nothing new in the last second)
+      // gets a second copy. One that's slow but still arriving is just a slow
+      // connection, where a second copy would only split the same bandwidth
+      // (and use more data on a phone).
+      var lastBytes = -1;
+      function check() {
+        if (self.settled) return;
+        var got = self.first.stats.loaded || 0;
+        if (got === lastBytes) {
+          log("segment stuck after " + ((performance.now() - self.first.stats.loading.start) / 1000).toFixed(1) + "s: starting a second copy");
+          self.second = new Base(self.config);
+          start(self.second);
+          return;
+        }
+        lastBytes = got;
+        self.timer = setTimeout(check, 1000);
+      }
+      self.timer = setTimeout(function () {
+        lastBytes = self.first.stats.loaded || 0;
+        self.timer = setTimeout(check, 1000);
+      }, 3000);
+    };
+    // Stop the timer and every copy but the winner.
+    Hedged.prototype.settle = function (winner) {
+      this.settled = true;
+      clearTimeout(this.timer);
+      var all = [this.first, this.second];
+      for (var i = 0; i < all.length; i++) {
+        if (all[i] && all[i] !== winner) { try { all[i].abort(); } catch (e) {} }
+      }
+    };
+    Hedged.prototype.abort = function () {
+      if (this.settled) return;
+      this.settle(null);
+      this.stats.aborted = true;
+      var cb = this.callbacks;
+      if (cb && cb.onAbort) cb.onAbort(this.stats, this.context, null);
+    };
+    Hedged.prototype.destroy = function () {
+      this.settle(null);
+      this.callbacks = null;
+      try { this.first.destroy(); } catch (e) {}
+      if (this.second) { try { this.second.destroy(); } catch (e) {} }
+    };
+    Hedged.prototype.getCacheAge = function () {
+      return this.first.getCacheAge ? this.first.getCacheAge() : null;
+    };
+    Hedged.prototype.getResponseHeader = function (name) {
+      return this.first.getResponseHeader ? this.first.getResponseHeader(name) : null;
+    };
+    return Hedged;
   }
 
   // The Flutter-side cover is composited over a platform view, which lets the
@@ -577,19 +686,15 @@ const String _takeoverJs = r'''
     if (hls) { try { hls.destroy(); } catch (e) {} }
     // Not low-latency HLS, and these feeds carry ad discontinuities, so keep a
     // real buffer rather than hugging the edge.
-    // Where a source offers several qualities, hls.js picks with its own logic.
-    // abrMaxWithRealBitrate: judge a quality by what its segments really weigh,
-    // not what the playlist declares. These overstate ("1080p, 8 Mbps" that is
-    // really 720p at ~3.8), and without it the phone dropped to 540p on
-    // connections that play the top quality fine, and never came back.
-    hls = new OurHls({ liveSyncDurationCount: 3, backBufferLength: 30, abrMaxWithRealBitrate: true });
+    hls = new OurHls({
+      liveSyncDurationCount: 3,
+      backBufferLength: 30,
+      // Segments only (playlists are small and refetched anyway).
+      fLoader: hedgedLoader(OurHls.DefaultConfig.loader),
+    });
     hls.loadSource(url);
     hls.attachMedia(video);
-    hls.on(OurHls.Events.MANIFEST_PARSED, function () { toLiveEdge(); play(); });
-    hls.on(OurHls.Events.LEVEL_SWITCHED, function (_, d) {
-      try { log("quality now " + hls.levels[d.level].height + "p"); } catch (e) {}
-    });
-    fragStats = [];
+    hls.on(OurHls.Events.MANIFEST_PARSED, function () { toLiveEdge(); play(); });    fragStats = [];
     frames0 = null;
     fpsMax = 0;
     streamFps = 0;
@@ -636,11 +741,36 @@ const String _takeoverJs = r'''
     window.__appPlayer.built = true;
   }
 
+  // A master playlist lists a source's qualities, but on these sources they
+  // are separate feeds (seen: "1080p" in 5 s segments numbered from 83,350 on
+  // one host, "540p" in 3 s segments from 2,367 on another). Players assume a
+  // source's qualities line up, so switching between these landed on the
+  // wrong stretch and replayed it over and over. Play the best one's own
+  // playlist and never switch, as the Roku does (pickMedia).
+  function bestFeed(url) {
+    return fetch(url).then(function (r) { return r.text(); }).then(function (text) {
+      if (text.indexOf("#EXT-X-STREAM-INF") === -1) return url;
+      var lines = text.split("\n");
+      var best = null;
+      var bestBw = -1;
+      for (var i = 0; i < lines.length - 1; i++) {
+        var line = lines[i].trim();
+        if (line.indexOf("#EXT-X-STREAM-INF:") !== 0) continue;
+        var m = /BANDWIDTH=(\d+)/.exec(line);
+        var bw = m ? parseInt(m[1], 10) : 0;
+        var uri = lines[i + 1].trim();
+        if (uri && uri.charAt(0) !== "#" && bw > bestBw) { best = uri; bestBw = bw; }
+      }
+      return best ? new URL(best, url).href : url;
+    }, function () { return url; });
+  }
+
   function takeOver(url) {
     window.__appPlayer.url = url;
-    loadHls().then(function () {
+    Promise.all([loadHls(), bestFeed(url)]).then(function (r) {
       if (!OurHls || !OurHls.isSupported()) return post("unsupported");
-      build(url);
+      window.__appPlayer.url = r[1];
+      build(r[1]);
     }, function () { post("hls-load-failed"); });
   }
 
@@ -668,9 +798,7 @@ const String _takeoverJs = r'''
     for (var j = 0; j < fragStats.length; j++) { bytes += fragStats[j][0]; secs += fragStats[j][1]; }
     if (!secs) return;
     // Every window, changed or not: the app averages the bitrate over them.
-    // Adaptive: the source offers several qualities and hls.js moves between them.
-    var adaptive = !!(hls && hls.levels && hls.levels.length > 1);
-    post("quality:" + JSON.stringify({ h: video.videoHeight, fps: best, mbps: Math.round(bytes * 8 / secs / 1e5) / 10, a: adaptive }));
+    post("quality:" + JSON.stringify({ h: video.videoHeight, fps: best, mbps: Math.round(bytes * 8 / secs / 1e5) / 10 }));
   }
 
   function watch() {
@@ -931,7 +1059,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     if (message.startsWith('quality:')) {
       try {
         final Map<String, dynamic> j = jsonDecode(message.substring(8)) as Map<String, dynamic>;
-        final StreamQuality q = StreamQuality(height: j['h'] as int, fps: j['fps'] as int, mbps: (j['mbps'] as num).toDouble(), adaptive: j['a'] == true);
+        final StreamQuality q = StreamQuality(height: j['h'] as int, fps: j['fps'] as int, mbps: (j['mbps'] as num).toDouble());
         if (q != _quality) setState(() => _quality = q);
         // The title bar has stayed up since the start; now it has what's
         // playing to show, let it go after the usual few seconds.
@@ -1005,7 +1133,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   void _saveQuality() {
     if (_mbpsCount == 0) return;
     _savedAt = DateTime.now();
-    StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10, adaptive: _quality?.adaptive ?? false).save(widget.stream.embedUrl);
+    StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10).save(widget.stream.embedUrl);
   }
 
   void _peekTitle() {

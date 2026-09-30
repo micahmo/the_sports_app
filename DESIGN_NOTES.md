@@ -225,7 +225,9 @@ the others or is added here as a deliberate gap.
 | Games beside the chosen game's streams | no: games, then streams | yes (wide windows) | yes |
 | Quiet background refresh | on returning to the app | every minute idle, and on returning | every minute idle, and back from a stream |
 | Streams grouped by source, best first, described | yes | yes | yes |
-| Measured quality on played streams' rows | yes, and "adaptive" when the source offers several qualities | yes, and "adaptive" | yes; never adaptive: the Roku plays a source's best quality only (see Roku) |
+| Measured quality on played streams' rows | yes | yes | yes |
+| Which of a source's qualities plays | the best, never switched (they're separate feeds) | the best, never switched | the best, never switched |
+| A stuck segment download | second copy after 4 s if nothing is arriving | same | second copy after 4 s |
 | Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
@@ -262,21 +264,34 @@ Things that differ from Android and were each found the hard way:
     `<video>`, doubling bandwidth. `jwplayer().remove()` stops it.
   - It also fetches the quality it picked (`high/mono.m3u8`) after the master
     playlist, and the takeover used to take the *last* playlist the page
-    fetched, so desktop played whatever the page's player chose, with no way to
-    step down. It now takes the first, the master.
+    fetched, so desktop played whatever the page's player chose. It now takes
+    the first, the master, and picks the best feed itself (see below).
 
-**Quality selection (phone and desktop).** Where a source offers several
-qualities, hls.js's own adaptive logic picks, not anything of ours: it's tried
-and tuned, and a switcher of our own (briefly written, 2026-09-30) would only be
-rediscovering its edge cases. It starts at the first quality the master
-playlist lists, which on these sources is the best. The one setting that
-matters is `abrMaxWithRealBitrate`: these playlists overstate their bitrates
-(seen: "1080p, 8 Mbps" that is really 720p at ~3.8), and without it the phone
-measured less than the declared 8 Mbps, dropped to 540p, and needed over ~11
-Mbps to climb back, so it stayed there on connections that play 720p fine. With
-it, the emulator stays on the top quality. Quality switches are logged
-(`[player] quality now ...`). The Roku always plays the best and can't step
-down.
+**One quality, never switched (all apps).** A master playlist lists a
+source's qualities, but on these sources they are **separate feeds**, not
+renditions of one stream. Seen on admin streams (2026-09-30): "1080p" in 5 s
+segments numbered from 83,350 on tiktokcdn with program-date-time tags, "540p"
+in 3 s segments numbered from 2,367 on the site's own host, without them. Every
+player assumes a source's qualities line up, so switching between these lands
+on the wrong stretch: hls.js replayed the same few seconds over and over. That
+was the phone's loop on a 1080p60 source, and 1.0.88 (which handed desktop the
+master too) made desktop do it on every admin stream. So the takeover reads the
+master itself and plays the best feed's own playlist (`bestFeed()`), as the Roku
+always has (`pickMedia`). The cost is no stepping down on a weak connection;
+the upside is that playback works. Don't hand hls.js a master playlist from
+these sources again, and when checking playback, check that `currentTime`
+keeps advancing, not just the quality label.
+
+**Racing stuck downloads (phone and desktop).** hls.js fetches one segment at
+a time, so one request the server sits on (seen: ~11 s for a 6 s segment) pauses
+playback. The takeover wraps hls.js's own segment loader (`hedgedLoader`): a
+download still running after 4 s that has received nothing new for a second
+gets a second copy, and the first to finish is used, as on the Roku. A download
+that is slow but still arriving is left alone, so on a slow phone connection it
+doesn't split the bandwidth or spend more data. Tested (desktop, NFL Network)
+by holding every third segment request for 12 s through the DevTools protocol:
+each was noticed at 4.0 s, the second copy won within 0.2 s, and playback never
+paused.
 - **Autoplay with sound is refused** unless the page itself was clicked, and the
   click lands on Flutter. The WebView2 environment is created with
   `--autoplay-policy=no-user-gesture-required`.
