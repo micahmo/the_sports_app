@@ -133,16 +133,25 @@ sub renameSports(sports as Dynamic)
 end sub
 
 ' "1080p60 · 8.5 Mbps" from {height, fps, mbps}; "" if there's nothing yet.
-' Frame rates snap to the usual ones (a count over a segment is approximate).
+' Frame rates snap to the nearest usual one within 10% (the timestamps they're
+' read from jitter); near none, the label leaves the frame rate out rather than
+' show a wrong one. The same rule as the phone app's snapFps.
 function qualityText(q as Dynamic) as String
     if q = invalid or q.mbps = invalid or q.mbps <= 0 then return ""
     tenths = Int(q.mbps * 10 + 0.5)
     rate = (tenths \ 10).ToStr() + "." + (tenths mod 10).ToStr() + " Mbps"
     if q.height = invalid or q.height <= 0 then return rate
-    fps = Int(q.fps + 0.5)
-    for each s in [24, 25, 30, 50, 60]
-        if Abs(q.fps - s) / s < 0.1 then fps = s
-    end for
+    fps = 0
+    off = 0.1
+    if q.fps <> invalid and q.fps > 0 then
+        for each s in [24, 25, 30, 50, 60]
+            d = Abs(q.fps - s) / s
+            if d < off then
+                off = d
+                fps = s
+            end if
+        end for
+    end if
     res = q.height.ToStr() + "p"
     if fps > 0 then res = res + fps.ToStr()
     return res + " · " + rate

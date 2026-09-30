@@ -129,7 +129,7 @@ class StreamsRow extends StatelessWidget {
             ),
       title: r.match.title,
       // Quality first (what you glance for), then which stream.
-      detail: q == null ? r.stream.name : '${q.height}p${q.fps} · ${r.stream.name}',
+      detail: q == null ? r.stream.name : '${q.resolution} · ${r.stream.name}',
     );
   }
 }

@@ -110,12 +110,14 @@ function barLine(quality as String) as String
     return parts.Join(" · ")
 end function
 
-' Working on it: our spinner in the middle, what's happening just under it.
-' (The label centres its text in its 200px height: one line lands ~25px below
-' the spinner's bottom edge.)
+' Working on it: our spinner in the middle, what's happening just under it
+' (~25px below the spinner's bottom edge, however many lines).
 sub showWorking(text as String)
     m.status.text = text
-    m.status.translation = [160, 520]
+    ' Top-aligned just under the spinner, so a second line (falling back) grows
+    ' downwards instead of up into it.
+    m.status.vertAlign = "top"
+    m.status.translation = [160, 600]
     m.status.visible = true
     m.spinner.visible = true
     m.spinner.control = "start"
@@ -126,6 +128,7 @@ sub showFinal(text as String)
     m.spinner.visible = false
     m.spinner.control = "stop"
     m.status.text = text
+    m.status.vertAlign = "center"
     m.status.translation = [160, 440]
     m.status.visible = true
 end sub
@@ -160,6 +163,14 @@ end sub
 ' app.)
 sub failedForGood(reason as String)
     m.failed[m.stream.embedUrl] = true
+    m.pendingReason = reason
+    ' Only what the site lists for the game now (see refreshStreams): the list
+    ' from when the player opened sent fallbacks after streams that were gone.
+    showWorking(playerText("stoppedWorking", streamLabel(m.stream)))
+    refreshStreams("fallback")
+end sub
+
+sub pickFallback(reason as String)
     ' The same kind first; when none of those are left, the other kind (an SD
     ' stream beats nothing when every HD one is down).
     left = []
@@ -301,6 +312,14 @@ sub onVideoState()
         if not m.recorded then
             m.recorded = true
             if m.match.id <> "" then recordRecent(m.match, m.stream)
+            ' The bar waits for the first quality reading; if none comes, let it
+            ' go 10 s into playback anyway (as the phone app).
+            if m.holdBar then
+                m.holdTimer = m.top.createChild("Timer")
+                m.holdTimer.duration = 10
+                m.holdTimer.observeField("fire", "onHoldTimer")
+                m.holdTimer.control = "start"
+            end if
         end if
         ' Fell back to this one: say so briefly, then get out of the way.
         if m.trying <> "" then
@@ -319,6 +338,12 @@ sub onVideoState()
     else if st = "error" then
         reconnect("Playback failed: " + m.video.errorMsg)
     end if
+end sub
+
+sub onHoldTimer()
+    if not m.holdBar then return
+    m.holdBar = false
+    showBar()
 end sub
 
 ' The bar goes after a few seconds, and the pill and row with it.
@@ -384,7 +409,9 @@ sub openRow()
     m.row.visible = true
     m.pill.visible = false
     showBar()
-    checkCurrent()
+    ' This game's streams as they are now (pulled ones aren't offered), and the
+    ' site's list of games for RECENT.
+    refreshStreams("row")
 end sub
 
 ' Finished games drop out of RECENT: check the site's list (which has 24/7
@@ -431,10 +458,10 @@ sub renderRow()
     bg.height = 310
     bg.color = "0x000000C0"
     m.rowCards = []
-    cw = 260
+    cw = 272
     ch = 190
     top = 836
-    x = 96
+    x = 80
     streams = rowStreams()
     recent = rowRecent()
     m.rowSplit = streams.Count()
@@ -442,7 +469,7 @@ sub renderRow()
         mkLabel(m.row, playerText("thisGame"), bodyFont(22), t.textDim, x, 790, 600, 34)
         for each s in streams
             m.rowCards.Push({kind: "stream", stream: s, x: x})
-            x = x + cw + 20
+            x = x + cw + 16
         end for
     end if
     m.divider = invalid
@@ -458,7 +485,7 @@ sub renderRow()
         mkLabel(m.row, playerText("recent"), bodyFont(22), t.textDim, x, 790, 600, 34)
         for each r in recent
             m.rowCards.Push({kind: "recent", recent: r, x: x})
-            x = x + cw + 20
+            x = x + cw + 16
         end for
     end if
     ' Opening: the first recent game, else the first of this game's streams.
@@ -476,6 +503,23 @@ sub renderRow()
     end for
     if m.divider <> invalid then m.divider.color = t.divider
 end sub
+
+' A label that wraps to up to `lines` lines from the top of its box. Wrapping
+' is set before the text, so the first layout already wraps.
+function mkWrapped(parent as Object, text as String, font as Object, color as String, x as Float, y as Float, w as Float, h as Float, lines as Integer) as Object
+    l = parent.createChild("Label")
+    l.wrap = true
+    l.maxLines = lines
+    l.width = w
+    l.height = h
+    l.vertAlign = "top"
+    l.horizAlign = "left"
+    l.font = font
+    l.color = color
+    l.translation = [x, y]
+    l.text = text
+    return l
+end function
 
 function cardKey(c as Object) as String
     if c.kind = "stream" then return c.stream.embedUrl
@@ -509,10 +553,7 @@ sub drawCard(c as Object, top as Integer, w as Integer, h as Integer, focused as
         if s.language <> invalid and s.language <> "" then q = q + " · " + s.language
         ' The name is one line here, so the details can have two. (Two lines of
         ' Roboto 22 need ~62px: at 60 only one fit, and it was cut off.)
-        d = mkLabel(g, q, bodyFont(22), t.textDim, pad, 116, w - 2 * pad, 70)
-        d.wrap = true
-        d.maxLines = 2
-        d.vertAlign = "top"
+        mkWrapped(g, q, bodyFont(22), t.textDim, pad, 116, w - 2 * pad, 70, 2)
     else
         r = c.recent
         teams = orderedTeams(r.match)
@@ -533,10 +574,9 @@ sub drawCard(c as Object, top as Integer, w as Integer, h as Integer, focused as
             b.cover = posterUrl(r.match)
             b.size = 44
         end if
-        title = mkLabel(g, r.match.title, condensed("SemiBold", 32), t.text, pad, 66, w - 2 * pad, 80)
-        title.wrap = true
-        title.maxLines = 2
-        title.vertAlign = "top"
+        ' Sized like the phone's cards for their width, so a matchup breaks
+        ' between the teams and both lines fit.
+        mkWrapped(g, r.match.title, condensed("SemiBold", 29), t.text, pad, 66, w - 2 * pad, 76, 2)
         ' Quality first (what you glance for), then which stream.
         q = qualityLabel(r.stream.embedUrl)
         detail = streamName(r.stream)
@@ -545,39 +585,107 @@ sub drawCard(c as Object, top as Integer, w as Integer, h as Integer, focused as
     end if
 end sub
 
-' A recent game's stream: that game becomes the one playing, and its other
-' streams load for the row and for falling back.
+' A recent game's stream: that game becomes the one playing, and its streams
+' load (as the site lists them now) for the row and for falling back.
 sub playRecent(r as Object)
     m.match = r.match
     m.streams = [r.stream]
     switchTo(r.stream, false)
+    refreshStreams("recent")
+end sub
+
+' This game's streams as the site lists them now: its sources change (a game
+' winding down loses them one by one), and the ones remembered with a recent
+' game may be long gone (the old links still answer, then fail). Two steps:
+' the game's current entry from /api/matches/all, then its sources' streams.
+' Then `after`: "fallback" picks the next stream, "recent" moves on at once if
+' the stream being tried isn't listed any more, "row" redraws the row. If the
+' site can't be reached or no longer lists the game, the streams stay as they
+' were. One at a time; a later request's `after` wins if it matters more.
+sub refreshStreams(after as String)
+    rank = {row: 1, recent: 2, fallback: 3}
+    if m.refreshing = true then
+        if m.refreshAfter = "" or rank[after] > rank[m.refreshAfter] then m.refreshAfter = after
+        return
+    end if
+    m.refreshing = true
+    m.refreshAfter = after
+    m.refreshFor = m.match.id
+    m.refreshApi = CreateObject("roSGNode", "ApiTask")
+    m.refreshApi.requests = {all: apiBase() + "/api/matches/all"}
+    m.refreshApi.observeField("results", "onRefreshAll")
+    m.refreshApi.control = "run"
+end sub
+
+sub onRefreshAll()
+    list = ParseJson(m.refreshApi.results.all)
+    found = invalid
+    if type(list) = "roArray" then
+        ids = {}
+        for each mt in list
+            if mt.id <> invalid then
+                ids[mt.id] = true
+                if mt.id = m.refreshFor then found = mt
+            end if
+        end for
+        m.currentIds = ids
+        m.currentAt = CreateObject("roTimespan")
+    end if
+    if found = invalid or m.refreshFor <> m.match.id then
+        afterRefresh()
+        return
+    end if
+    m.refreshMatch = found
     requests = {}
-    for i = 0 to r.match.sources.Count() - 1
-        s = r.match.sources[i]
+    for i = 0 to found.sources.Count() - 1
+        s = found.sources[i]
         requests["s" + i.ToStr()] = apiBase() + "/api/stream/" + s.source + "/" + s.id
     end for
-    m.streamsFor = r.match
+    if requests.Count() = 0 then
+        m.streams = []
+        afterRefresh()
+        return
+    end if
     m.streamsApi = CreateObject("roSGNode", "ApiTask")
     m.streamsApi.requests = requests
-    m.streamsApi.observeField("results", "onMatchStreams")
+    m.streamsApi.observeField("results", "onRefreshStreams")
     m.streamsApi.control = "run"
 end sub
 
-sub onMatchStreams()
-    mt = m.streamsFor
-    if mt = invalid or mt.id <> m.match.id then return
-    groups = []
-    for i = 0 to mt.sources.Count() - 1
-        list = ParseJson(m.streamsApi.results["s" + i.ToStr()])
-        if type(list) = "roArray" and list.Count() > 0 then groups.Push({rank: sourceRank(mt.sources[i].source), index: i, streams: list})
-    end for
-    groups.SortBy("index")
-    groups.SortBy("rank")
-    all = []
-    for each g in groups
-        all.Append(g.streams)
-    end for
-    if all.Count() > 0 then m.streams = all
+sub onRefreshStreams()
+    mt = m.refreshMatch
+    if mt.id = m.match.id then
+        groups = []
+        for i = 0 to mt.sources.Count() - 1
+            list = ParseJson(m.streamsApi.results["s" + i.ToStr()])
+            if type(list) = "roArray" and list.Count() > 0 then groups.Push({rank: sourceRank(mt.sources[i].source), index: i, streams: list})
+        end for
+        groups.SortBy("index")
+        groups.SortBy("rank")
+        all = []
+        for each g in groups
+            all.Append(g.streams)
+        end for
+        m.streams = all
+    end if
+    afterRefresh()
+end sub
+
+sub afterRefresh()
+    after = m.refreshAfter
+    m.refreshing = false
+    m.refreshAfter = ""
+    if after = "fallback" then
+        pickFallback(m.pendingReason)
+    else if after = "recent" then
+        listed = false
+        for each s in m.streams
+            if s.embedUrl = m.stream.embedUrl then listed = true
+        end for
+        if m.streams.Count() > 0 and not listed then failedForGood("This stream isn't listed any more")
+    else if after = "row" then
+        if m.rowOpen then renderRow()
+    end if
 end sub
 
 ' After falling back: which stream took over, briefly, where the pill sits.

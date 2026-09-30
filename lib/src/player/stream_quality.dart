@@ -12,10 +12,17 @@ class StreamQuality {
   final int fps;
   final double mbps;
 
-  /// "1080p60 · 8.5 Mbps"
-  String get label => '${height}p$fps · ${mbps.toStringAsFixed(1)} Mbps';
+  /// "1080p60 · 8.5 Mbps"; "1080p · 8.5 Mbps" while the frame rate is unknown.
+  String get label => '$resolution · ${mbps.toStringAsFixed(1)} Mbps';
+
+  /// "1080p60", or "1080p" while the frame rate is unknown (0).
+  String get resolution => '${height}p${fps > 0 ? fps : ''}';
 
   static const String _key = 'streamQuality';
+
+  // Frame rates saved before they came from the stream itself (2026-09-30)
+  // could be the device's decoding speed ("1080p2", "70"): drop those.
+  static int _standard(int fps) => const <int>{24, 25, 30, 48, 50, 60}.contains(fps) ? fps : 0;
 
   // Streams belong to one match, so a measurement is only useful for a day or two.
   static const Duration _keep = Duration(days: 2);
@@ -25,7 +32,7 @@ class StreamQuality {
     final Map<String, dynamic> raw = await _read();
     return <String, StreamQuality>{
       for (final MapEntry<String, dynamic> e in raw.entries)
-        e.key: StreamQuality(height: e.value['h'] as int, fps: e.value['fps'] as int, mbps: (e.value['mbps'] as num).toDouble()),
+        e.key: StreamQuality(height: e.value['h'] as int, fps: _standard(e.value['fps'] as int), mbps: (e.value['mbps'] as num).toDouble()),
     };
   }
 

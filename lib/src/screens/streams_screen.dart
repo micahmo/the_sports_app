@@ -375,12 +375,12 @@ const String _takeoverJs = r'''
   var stalledFor = 0;
   // When the video last played on (or was paused on purpose); see watch().
   var lastProgressAt = Date.now();
-  // For measure(): the last few segments' sizes and lengths, and the frame
-  // count at the start of the current window.
+  // For measure(): the last few segments' sizes and lengths, and when it last
+  // reported.
   var fragStats = [];
-  var frames0 = null;
-  var fpsMax = 0;
-  // The stream's own frame rate, from the frames in each segment (see build()).
+  var lastMeasure = 0;
+  // The stream's own frame rate, from the frames in each segment (see build());
+  // 0 until one reads as a standard rate.
   var streamFps = 0;
   // Whether we have told the app to lift its spinner.
   var announced = false;
@@ -441,6 +441,13 @@ const String _takeoverJs = r'''
             // The winner's timings, so the quality logic sees the real speed.
             if (stats !== self.stats) for (var k in stats) self.stats[k] = stats[k];
             if (loader === self.second) log("segment: the second copy won");
+            // The stream's own frame rate (see tsFps), until one reads as a
+            // standard rate. Here, while the segment is still ours: hls.js hands
+            // it to its worker before it reports it loaded.
+            if (!(streamFps > 0) && response && response.data) {
+              streamFps = tsFps(new Uint8Array(response.data));
+              if (streamFps > 0) log("frame rate " + streamFps);
+            }
             callbacks.onSuccess(response, self.stats, ctx, details);
           },
           // A copy failing only counts once the other has too.
@@ -711,21 +718,10 @@ const String _takeoverJs = r'''
     });
     hls.loadSource(url);
     hls.attachMedia(video);
-    hls.on(OurHls.Events.MANIFEST_PARSED, function () { toLiveEdge(); play(); });    fragStats = [];
-    frames0 = null;
-    fpsMax = 0;
+    hls.on(OurHls.Events.MANIFEST_PARSED, function () { toLiveEdge(); play(); });
+    fragStats = [];
+    lastMeasure = 0;
     streamFps = 0;
-    // Frames in a segment over its length: the stream's real frame rate, however
-    // fast this device decodes (a slow one drops frames and would read low).
-    hls.on(OurHls.Events.FRAG_PARSING_DATA, function (_, d) {
-      try {
-        var secs = d.endDTS - d.startDTS;
-        // Only a plausible rate: the first segment after a jump in the feed's
-        // timestamps can read 1 fps.
-        var f = d.nb / secs;
-        if (d.type === "video" && d.nb > 0 && secs > 0 && f >= 10 && f <= 125) streamFps = f;
-      } catch (e) {}
-    });
     hls.on(OurHls.Events.FRAG_LOADED, function (_, d) {
       try {
         var bytes = (d.payload && d.payload.byteLength) || (d.frag.stats && d.frag.stats.loaded) || 0;
@@ -794,33 +790,69 @@ const String _takeoverJs = r'''
     }, function () { post("hls-load-failed"); });
   }
 
-  // What's actually playing, for the app to show and remember: resolution from
-  // the video, frame rate from the stream's segments (or, failing that, the
-  // frames it decodes over ~4s of playback), bitrate from the recent segments'
-  // sizes over their lengths. Nothing extra is downloaded.
+  // An MPEG-TS segment's frame rate from its video's own timestamps, as the
+  // Roku reads it (roku/app/source/tsinfo.brs): each video frame's PES header
+  // is stamped in 90 kHz ticks, and the smallest step between the first few is
+  // one frame. Never what this device manages to decode, which measures the
+  // device (a slow one read "1080p2"; a burst of catching up after a seek, 70).
+  // 0 if it isn't a standard rate. Stops as soon as it has six stamps.
+  function tsFps(b) {
+    // These segments can start with a fake image header: find the packets.
+    var i = 0;
+    while (i + 376 < b.length && !(b[i] === 0x47 && b[i + 188] === 0x47 && b[i + 376] === 0x47)) i++;
+    var vpid = -1, stamps = [];
+    for (var n = 0; i + 188 <= b.length && n < 3000 && stamps.length < 6; i += 188, n++) {
+      if (b[i] !== 0x47 || !(b[i + 1] & 0x40)) continue;   // a PES starts here
+      var pid = ((b[i + 1] & 0x1f) << 8) | b[i + 2];
+      var p = i + 4;
+      if (b[i + 3] & 0x20) p += 1 + b[i + 4];              // past the adaptation field
+      if (p + 18 >= i + 188 || b[p] !== 0 || b[p + 1] !== 0 || b[p + 2] !== 1) continue;
+      // The first PES with a video stream id (0xE0-0xEF) names the video PID.
+      if (vpid < 0 && b[p + 3] >= 0xe0 && b[p + 3] <= 0xef) vpid = pid;
+      if (pid !== vpid) continue;
+      var flags = b[p + 7] >> 6;
+      if (flags < 2) continue;
+      // DTS if there is one (it steps by one frame even with B-frames), else PTS.
+      var at = flags === 3 ? p + 14 : p + 9;
+      stamps.push(((b[at] >> 1) & 7) * 1073741824 + b[at + 1] * 4194304 + (b[at + 2] >> 1) * 32768 + b[at + 3] * 128 + (b[at + 4] >> 1));
+    }
+    var step = 0;
+    for (var k = 1; k < stamps.length; k++) {
+      var s = stamps[k] - stamps[k - 1];
+      if (s > 0 && (step === 0 || s < step)) step = s;
+    }
+    return step > 0 ? snapFps(90000 / step) : 0;
+  }
+
+  // A measured frame rate as the standard one it's nearest, within 10% (the
+  // timestamps jitter: a 60 fps feed steps 1530, 1440, 1530 ticks, and the
+  // smallest step reads 62.5), or 0 if it's near none: better no frame rate on
+  // the label than a wrong one. The same rule as the Roku's qualityText.
+  function snapFps(f) {
+    var std = [24, 25, 30, 50, 60], best = 0, off = 0.1;
+    for (var i = 0; i < std.length; i++) {
+      var d = Math.abs(f - std[i]) / std[i];
+      if (d < off) { off = d; best = std[i]; }
+    }
+    return best;
+  }
+
+  // What's actually playing, for the app to show and remember, every ~4 s of
+  // playback: resolution from the video, frame rate from the stream itself (see
+  // FRAG_PARSING_DATA; 0 if unknown), bitrate from the recent segments' sizes
+  // over their lengths. Nothing extra is downloaded.
   function measure() {
-    if (!video || video.paused || !video.videoHeight || !video.getVideoPlaybackQuality) return;
-    // Only while it's actually playing on; a stall would read as a low frame rate.
-    if (Date.now() - lastProgressAt > 1500) { frames0 = null; return; }
-    var n = video.getVideoPlaybackQuality().totalVideoFrames;
+    if (!video || video.paused || !video.videoHeight) return;
+    // Only while it's actually playing on.
+    if (Date.now() - lastProgressAt > 1500) return;
     var t = performance.now();
-    if (!frames0 || n < frames0.n) { frames0 = { n: n, t: t }; return; }
-    if (t - frames0.t < 4000) return;
-    // A slow decoder drops frames, so a window can read low but never high:
-    // the stream's frame rate is the highest seen.
-    fpsMax = Math.max(fpsMax, (n - frames0.n) * 1000 / (t - frames0.t));
-    frames0 = { n: n, t: t };
-    var fps = streamFps > 0 ? streamFps : fpsMax;
-    var best = Math.round(fps);
-    // Too low to be real (a stall's worth of frames): wait for a proper reading.
-    if (best < 10) return;
-    var std = [24, 25, 30, 50, 60];
-    for (var i = 0; i < std.length; i++) if (Math.abs(fps - std[i]) / std[i] < 0.1) best = std[i];
+    if (t - lastMeasure < 4000) return;
+    lastMeasure = t;
     var bytes = 0, secs = 0;
     for (var j = 0; j < fragStats.length; j++) { bytes += fragStats[j][0]; secs += fragStats[j][1]; }
     if (!secs) return;
     // Every window, changed or not: the app averages the bitrate over them.
-    post("quality:" + JSON.stringify({ h: video.videoHeight, fps: best, mbps: Math.round(bytes * 8 / secs / 1e5) / 10 }));
+    post("quality:" + JSON.stringify({ h: video.videoHeight, fps: streamFps, mbps: Math.round(bytes * 8 / secs / 1e5) / 10 }));
   }
 
   function watch() {
@@ -1168,6 +1200,14 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         _trying = null;
         _fallbackFrom = null;
         Recents.played(_match, _stream).then((_) => _loadRecent());
+        // The title bar waits for the first quality reading, but a slow decoder
+        // may never give a believable one: let it go 10 s into playback anyway.
+        Timer(const Duration(seconds: 10), () {
+          if (mounted && _holdTitle) {
+            _holdTitle = false;
+            _peekTitle();
+          }
+        });
       } else if (message == 'muted') {
         _muted = true;
       } else if (message == 'unmuted') {
@@ -1190,9 +1230,14 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // move on to the next one like it, or say it's unavailable. HD for HD and SD
   // for SD, then the other kind, best sources first, the same language if there
   // is one, never one already tried. No limit: Back leaves any time.
-  void _failedForGood() {
+  Future<void> _failedForGood() async {
     if (!mounted) return;
     _failedUrls.add(_stream.embedUrl);
+    // Only what the site lists for the game now: streams get pulled (a game
+    // winding down), and the list from when the player opened sent fallbacks
+    // after streams that were gone.
+    await _refreshStreams().timeout(const Duration(seconds: 10), onTimeout: () {});
+    if (!mounted) return;
     // The same kind first; when none of those are left, the other kind (an SD
     // stream beats nothing when every HD one is down).
     final List<StreamInfo> untried = _streams.where((StreamInfo s) => !_tried.contains(s.embedUrl)).toList();
@@ -1261,8 +1306,12 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     try {
       await _nowPlaying.invokeMethod('show', <String, dynamic>{'title': r.match.title});
     } catch (_) {}
-    final List<StreamInfo> all = await _api.fetchMatchStreams(r.match).catchError((Object _) => <StreamInfo>[]);
-    if (mounted && _match.id == r.match.id && all.isNotEmpty) setState(() => _streams = all);
+    // Its streams as the site lists them now: the ones remembered with it may
+    // be long gone (a stream played hours ago, since pulled). If the one we're
+    // trying isn't listed any more, move on now rather than wait for it to fail.
+    await _refreshStreams();
+    if (!mounted || _match.id != r.match.id || _stream.embedUrl != r.stream.embedUrl) return;
+    if (_streams.isNotEmpty && !_streams.any((StreamInfo s) => s.embedUrl == r.stream.embedUrl)) _failedForGood();
   }
 
   // Recent games other than this one, for the pill and the row.
@@ -1293,6 +1342,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     if (mounted) setState(() => _qualities = q);
     await _checkCurrent();
     await _loadRecent();
+    // And this game's streams as they are now, so pulled ones aren't offered.
+    await _refreshStreams();
   }
 
   // Finished games drop out of RECENT: keep those still on the site's list
@@ -1306,6 +1357,22 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _currentIds = <String>{for (final ApiMatch m in current) m.id};
       _currentIdsAt = DateTime.now();
       if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  // This game's streams as the site lists them now (its sources change too:
+  // a game winding down loses them one by one). Left as they were if the site
+  // can't be reached or no longer lists the game.
+  Future<void> _refreshStreams() async {
+    try {
+      final List<ApiMatch> current = await _api.fetchAllMatches();
+      _currentIds = <String>{for (final ApiMatch m in current) m.id};
+      _currentIdsAt = DateTime.now();
+      final String id = _match.id;
+      final ApiMatch? now = current.where((ApiMatch m) => m.id == id).firstOrNull;
+      if (now == null) return;
+      final List<StreamInfo> fresh = await _api.fetchMatchStreams(now);
+      if (mounted && _match.id == id) setState(() => _streams = fresh);
     } catch (_) {}
   }
 

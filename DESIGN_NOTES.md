@@ -307,6 +307,18 @@ by holding every third segment request for 12 s through the DevTools protocol:
 each was noticed at 4.0 s, the second copy won within 0.2 s, and playback never
 paused.
 
+**Frame rate (phone and desktop, as the Roku).** Read from the video's own
+PES timestamps in the first segment (`tsFps`, the same method as the Roku's
+`tsinfo.brs`): the smallest step between frames, snapped to the nearest of 24,
+25, 30, 50 and 60 within 10% (timestamps jitter: a 60 fps feed steps 1530,
+1440, 1530 ticks of 90 kHz), and left off the label when near none. It's read
+in `hedgedLoader`'s success callback because hls.js hands the segment to its
+worker before `FRAG_LOADED`. Until 2026-09-30 the phone listened for
+`FRAG_PARSING_DATA`, which hls.js 1.5 never sends, so every frame rate it
+showed was the device's decoding speed ("1080p2" on a slow decoder, "70" after
+a catch-up burst). Lesson: when two apps compute the same thing, use one
+method, and check each actually produces values.
+
 ### Streams row and falling back (all apps)
 
 Agreed with the user from mockups (2026-09-30). A tap, mouse movement or OK
