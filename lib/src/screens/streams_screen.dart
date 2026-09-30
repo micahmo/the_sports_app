@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
-import 'package:window_manager/window_manager.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../desktop/window_state.dart';
@@ -776,6 +775,8 @@ const String _takeoverJs = r'''
 ''';
 // Native channel for Android PiP
 const MethodChannel _pip = MethodChannel('pip');
+// The Windows runner's fullscreen (windows/runner/flutter_window.cpp).
+const MethodChannel _window = MethodChannel('sports/window');
 
 class StreamPlayerScreen extends StatefulWidget {
   const StreamPlayerScreen({super.key, required this.stream, required this.title});
@@ -794,8 +795,6 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   bool _muted = false;
   // Desktop only: the window itself is fullscreen (no title bar or taskbar).
   bool _fullscreen = false;
-  // Whether the window was maximized before going fullscreen, to put it back.
-  bool _wasMaximized = false;
   // The embed page shows its own broken-player message before we take over,
   // so keep it covered until our player reports back.
   bool _ready = false;
@@ -1075,11 +1074,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     try {
       if (on) {
         WindowState.playerFullscreen = true;
-        // window_manager leaves the title bar (and the taskbar) in place when
-        // the window starts out maximized, so go from a normal window instead.
-        _wasMaximized = await windowManager.isMaximized();
-        if (_wasMaximized) await windowManager.unmaximize();
-        await windowManager.setFullScreen(true);
+        // Done by the runner in one step (see flutter_window.cpp): window_manager
+        // leaves the title bar and taskbar up on a maximized window.
+        await _window.invokeMethod<void>('setFullScreen', true);
       } else {
         await _leaveFullscreen();
       }
@@ -1088,9 +1085,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   }
 
   Future<void> _leaveFullscreen() async {
-    await windowManager.setFullScreen(false);
-    if (_wasMaximized) await windowManager.maximize();
-    _wasMaximized = false;
+    await _window.invokeMethod<void>('setFullScreen', false);
     // Let the resize events from giving the window back settle first.
     Future<void>.delayed(const Duration(seconds: 1), () => WindowState.playerFullscreen = false);
   }
@@ -1218,6 +1213,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       }
     }
 
+    // The title bar and the menu: up together, or hidden together.
+    final bool chrome = _holdTitle || _menuOpen || _peek;
+
     // Desktop has no system back button: Esc leaves the player, M mutes and F
     // goes fullscreen. (The page forwards these too, for when the web view has
     // keyboard focus.)
@@ -1289,6 +1287,19 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                         ),
                       ),
                     ),
+                  // Desktop fullscreen: the pointer hides with the title bar, so
+                  // it isn't left sitting on the picture. Over the page it's the
+                  // page's cursor, and webview_windows shows any it doesn't know
+                  // (CSS cursor: none included) as the arrow, so a layer of our
+                  // own covers the video meanwhile; moving the mouse over it
+                  // brings everything back.
+                  if (_fullscreen && !chrome)
+                    Positioned.fill(
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.none,
+                        onHover: (_) => _peekTitle(),
+                      ),
+                    ),
                   // The game and what's playing, while the menu is open or for a
                   // moment after the mouse moves or the video is tapped. In
                   // fullscreen too, where it's the only way to see them.
@@ -1298,9 +1309,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                       left: 0,
                       right: 0,
                       child: IgnorePointer(
-                        ignoring: !(_holdTitle || _menuOpen || _peek),
+                        ignoring: !chrome,
                         child: AnimatedOpacity(
-                          opacity: (_holdTitle || _menuOpen || _peek) ? 1 : 0,
+                          opacity: chrome ? 1 : 0,
                           duration: const Duration(milliseconds: 150),
                           // The page can't see the mouse over the bar itself, so resting on
                           // it keeps it up.
@@ -1329,46 +1340,64 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                 ],
               ),
             ),
-            // Nothing over the picture in PiP or fullscreen.
-            floatingActionButton: (_inPip || _fullscreen)
+            // The menu comes and goes with the title bar (a tap or the mouse
+            // brings both back), fullscreen included, so nothing sits on the
+            // picture meanwhile. None in PiP.
+            floatingActionButton: _inPip
                 ? null
-                : SpeedDial(
-                    icon: Icons.menu,
-                    foregroundColor: Colors.white,
-                    backgroundColor: Colors.black,
-                    overlayOpacity: 0.0,
-                    onOpen: () => setState(() => _menuOpen = true),
-                    onClose: () => setState(() => _menuOpen = false),
-                    buttonSize: const Size(40, 40),
-                    childrenButtonSize: const Size(40, 40),
-                    childPadding: const EdgeInsets.all(0),
-                    spaceBetweenChildren: 5,
-                    children: [
-                      SpeedDialChild(
-                        shape: const CircleBorder(),
-                        child: Center(
-                          child: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white, size: 18),
-                        ),
-                        backgroundColor: Colors.black,
-                        onTap: _toggleMute,
-                      ),
-                      // Picture-in-picture is Android's; a desktop window can just be resized.
-                      if (Platform.isAndroid)
-                        SpeedDialChild(
-                          shape: const CircleBorder(),
-                          child: const Center(child: Icon(Icons.picture_in_picture, color: Colors.white, size: 15)),
+                : IgnorePointer(
+                    ignoring: !chrome,
+                    child: AnimatedOpacity(
+                      opacity: chrome ? 1 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      // The page can't see the mouse over the button, so resting
+                      // on it keeps it up.
+                      child: MouseRegion(
+                        onHover: (_) => _peekTitle(),
+                        child: SpeedDial(
+                          icon: Icons.menu,
+                          foregroundColor: Colors.white,
                           backgroundColor: Colors.black,
-                          onTap: _enterPip,
+                          overlayOpacity: 0.0,
+                          onOpen: () => setState(() => _menuOpen = true),
+                          onClose: () {
+                            setState(() => _menuOpen = false);
+                            // Linger a moment rather than vanish as it closes.
+                            _peekTitle();
+                          },
+                          buttonSize: const Size(40, 40),
+                          childrenButtonSize: const Size(40, 40),
+                          childPadding: const EdgeInsets.all(0),
+                          spaceBetweenChildren: 5,
+                          children: [
+                            SpeedDialChild(
+                              shape: const CircleBorder(),
+                              child: Center(
+                                child: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white, size: 18),
+                              ),
+                              backgroundColor: Colors.black,
+                              onTap: _toggleMute,
+                            ),
+                            // Picture-in-picture is Android's; a desktop window can just be resized.
+                            if (Platform.isAndroid)
+                              SpeedDialChild(
+                                shape: const CircleBorder(),
+                                child: const Center(child: Icon(Icons.picture_in_picture, color: Colors.white, size: 15)),
+                                backgroundColor: Colors.black,
+                                onTap: _enterPip,
+                              ),
+                            SpeedDialChild(
+                              shape: const CircleBorder(),
+                              child: const Center(child: Icon(Icons.refresh, color: Colors.white, size: 18)),
+                              backgroundColor: Colors.black,
+                              onTap: () async {
+                                await _refresh();
+                              },
+                            ),
+                          ],
                         ),
-                      SpeedDialChild(
-                        shape: const CircleBorder(),
-                        child: const Center(child: Icon(Icons.refresh, color: Colors.white, size: 18)),
-                        backgroundColor: Colors.black,
-                        onTap: () async {
-                          await _refresh();
-                        },
                       ),
-                    ],
+                    ),
                   ),
           ),
         ),

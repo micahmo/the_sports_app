@@ -216,6 +216,7 @@ the others or is added here as a deliberate gap.
 | Streams grouped by source, best first, described | yes | yes | yes |
 | Measured quality on played streams' rows | yes, and "adaptive" when the source offers several qualities | yes, and "adaptive" | yes; never adaptive: the Roku plays a source's best quality only (see Roku) |
 | Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
+| Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
 | A source's server dropping the stream mid-game | reload after 20 s (a visible restart) | reload after 20 s (a visible restart) | fresh link in the background, usually unnoticed; see "Servers that drop a stream" |
 | First link doesn't answer | "unavailable" | "unavailable" | two more fresh sessions first |

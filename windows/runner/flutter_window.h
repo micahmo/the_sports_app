@@ -3,6 +3,7 @@
 
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter/method_channel.h>
 
 #include <memory>
 
@@ -23,11 +24,23 @@ class FlutterWindow : public Win32Window {
                          LPARAM const lparam) noexcept override;
 
  private:
+  // The player's fullscreen (the "sports/window" channel).
+  void SetFullScreen(bool fullscreen);
+
   // The project to run.
   flutter::DartProject project_;
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      window_channel_;
+
+  // What fullscreen took away, to give back on leaving it.
+  bool fullscreen_ = false;
+  WINDOWPLACEMENT placement_before_fullscreen_{};
+  LONG_PTR style_before_fullscreen_ = 0;
+  LONG_PTR ex_style_before_fullscreen_ = 0;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_
