@@ -230,7 +230,7 @@ the others or is added here as a deliberate gap.
 | A stuck segment download | second copy after 4 s if nothing is arriving | same | second copy after 4 s |
 | Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
-| Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it | Streams pill; hover it or the bottom of the video | Streams pill with the title bar; Down, then Left/Right, OK |
+| Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then "unavailable" | same | same |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
 | A source's server dropping the stream mid-game | reload after 20 s (a visible restart) | reload after 20 s (a visible restart) | fresh link in the background, usually unnoticed; see "Servers that drop a stream" |
@@ -311,10 +311,14 @@ paused.
 
 Agreed with the user from mockups (2026-09-30). A tap, mouse movement or OK
 shows the title bar, the menu (phone/desktop) and a small **Streams** pill at
-bottom centre. The row opens only on a deliberate step: tapping the pill,
-hovering it or the bottom strip of the video (the page reports the mouse there
-as `pointer:bottom`), or Down on the Roku. It goes when the title bar does
-(a little longer while it's open), and the menu button makes way for it.
+bottom centre. The row opens only on a deliberate press: tapping or clicking the
+pill, or Down on the Roku (opening it on hover, tried first on desktop, put a
+big bar up by accident). It closes by tapping away from it (the page reports
+taps as `pointer:down`), Back (the phone's gesture too, via `PopScope`), Esc on
+desktop, or Up on the Roku; otherwise it goes when the title bar does (a
+little longer while it's open). The menu button makes way for it. The title
+bar and pill also come up over the loading, fallback and unavailable screens,
+so another stream can be picked without waiting out a fallback.
 
 - **THIS GAME** (left): the match's other streams, the same HD/SD as what's
   playing first, best sources first, none that failed this viewing.
