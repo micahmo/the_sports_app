@@ -504,12 +504,16 @@ sub renderRow()
     if m.divider <> invalid then m.divider.color = t.divider
 end sub
 
-' A label that wraps to up to `lines` lines from the top of its box. Wrapping
-' is set before the text, so the first layout already wraps.
+' A label that wraps to up to `lines` lines from the top of its box. The
+' Roku's own gap between wrapped lines is wide for these fonts: it left a hole
+' between a description's two lines, and pushed a matchup's second line out of
+' its box, so the label cut it to one line instead of wrapping. So the lines
+' sit close, as on the phone.
 function mkWrapped(parent as Object, text as String, font as Object, color as String, x as Float, y as Float, w as Float, h as Float, lines as Integer) as Object
     l = parent.createChild("Label")
     l.wrap = true
     l.maxLines = lines
+    l.lineSpacing = 0
     l.width = w
     l.height = h
     l.vertAlign = "top"
@@ -576,12 +580,12 @@ sub drawCard(c as Object, top as Integer, w as Integer, h as Integer, focused as
         end if
         ' Sized like the phone's cards for their width, so a matchup breaks
         ' between the teams and both lines fit.
-        mkWrapped(g, r.match.title, condensed("SemiBold", 29), t.text, pad, 66, w - 2 * pad, 76, 2)
+        mkWrapped(g, r.match.title, condensed("SemiBold", 29), t.text, pad, 64, w - 2 * pad, 84, 2)
         ' Quality first (what you glance for), then which stream.
         q = qualityLabel(r.stream.embedUrl)
         detail = streamName(r.stream)
         if q <> "" then detail = q.Split(" · ")[0] + " · " + detail
-        mkLabel(g, detail, bodyFont(22), t.textDim, pad, h - 48, w - 2 * pad, 34)
+        mkLabel(g, detail, bodyFont(22), t.textDim, pad, h - 44, w - 2 * pad, 34)
     end if
 end sub
 
