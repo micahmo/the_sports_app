@@ -62,6 +62,7 @@ sub onParams()
     m.streams = p.streams
     if m.streams = invalid then m.streams = [m.stream]
     m.tried[m.stream.embedUrl] = true
+    checkCurrent()
     start()
 end sub
 
@@ -383,15 +384,19 @@ sub openRow()
     m.row.visible = true
     m.pill.visible = false
     showBar()
-    ' Finished games drop out: check the site's list (which has 24/7 channels,
-    ' unlike the live list), at most once a minute.
-    if m.currentAt = invalid or m.currentAt.TotalSeconds() > 60 then
-        m.currentAt = CreateObject("roTimespan")
-        m.allApi = CreateObject("roSGNode", "ApiTask")
-        m.allApi.requests = {all: apiBase() + "/api/matches/all"}
-        m.allApi.observeField("results", "onAllLoaded")
-        m.allApi.control = "run"
-    end if
+    checkCurrent()
+end sub
+
+' Finished games drop out of RECENT: check the site's list (which has 24/7
+' channels, unlike the live list), when the player opens, so the row rarely
+' changes once it's up, and again at most once a minute.
+sub checkCurrent()
+    if m.currentAt <> invalid and m.currentAt.TotalSeconds() <= 60 then return
+    m.currentAt = CreateObject("roTimespan")
+    m.allApi = CreateObject("roSGNode", "ApiTask")
+    m.allApi.requests = {all: apiBase() + "/api/matches/all"}
+    m.allApi.observeField("results", "onAllLoaded")
+    m.allApi.control = "run"
 end sub
 
 sub onAllLoaded()
@@ -415,6 +420,10 @@ end sub
 ' recent game, else the first of this game's streams.
 sub renderRow()
     t = theme()
+    ' The card that has focus, to keep it there if the row changes under it
+    ' (finished games dropping out when the site's list arrives).
+    focusedKey = ""
+    if m.rowFocus >= 0 and m.rowFocus < m.rowCards.Count() then focusedKey = cardKey(m.rowCards[m.rowFocus])
     m.row.removeChildrenIndex(m.row.getChildCount(), 0)
     bg = m.row.createChild("Rectangle")
     bg.translation = [0, 770]
@@ -455,15 +464,23 @@ sub renderRow()
     ' Opening: the first recent game, else the first of this game's streams.
     ' (Starting on the divider, one step from either side, read as a stop you
     ' could never get back to.)
+    m.rowFocus = -1
+    for i = 0 to m.rowCards.Count() - 1
+        if focusedKey <> "" and cardKey(m.rowCards[i]) = focusedKey then m.rowFocus = i
+    end for
     if m.rowFocus = -1 then
         if m.rowSplit < m.rowCards.Count() then m.rowFocus = m.rowSplit else m.rowFocus = 0
     end if
-    if m.rowFocus >= m.rowCards.Count() then m.rowFocus = m.rowCards.Count() - 1
     for i = 0 to m.rowCards.Count() - 1
         drawCard(m.rowCards[i], top, cw, ch, i = m.rowFocus)
     end for
     if m.divider <> invalid then m.divider.color = t.divider
 end sub
+
+function cardKey(c as Object) as String
+    if c.kind = "stream" then return c.stream.embedUrl
+    return "recent:" + c.recent.match.id
+end function
 
 sub drawCard(c as Object, top as Integer, w as Integer, h as Integer, focused as Boolean)
     t = theme()
@@ -573,9 +590,9 @@ sub showNote(text as String)
     m.note.removeChild(l)
     w = lw + 36 + 12 + 48
     x = (1920 - w) / 2
-    mkCard(m.note, x, 972, w, 56, "0x000000D0", "chip")
-    mkPoster(m.note, "pkg:/images/icons/" + appPlayerIcons().switched + ".png", x + 24, 972 + 10, 36, 36, t.text)
-    l.translation = [x + 24 + 36 + 12, 972]
+    mkCard(m.note, x, 1000, w, 56, "0x000000D0", "chip")
+    mkPoster(m.note, "pkg:/images/icons/" + appPlayerIcons().switched + ".png", x + 24, 1000 + 10, 36, 36, t.text)
+    l.translation = [x + 24 + 36 + 12, 1000]
     m.note.appendChild(l)
     m.note.visible = true
     m.pill.visible = false
@@ -597,9 +614,9 @@ sub renderPill()
     m.pill.removeChild(l)
     w = lw + 36 + 8 + 56
     x = (1920 - w) / 2
-    mkCard(m.pill, x, 972, w, 56, "0x000000D0", "chip")
-    mkPoster(m.pill, "pkg:/images/icons/" + appPlayerIcons().streamsPill + ".png", x + 22, 972 + 10, 36, 36, t.text)
-    l.translation = [x + 22 + 36 + 8, 972]
+    mkCard(m.pill, x, 1000, w, 56, "0x000000D0", "chip")
+    mkPoster(m.pill, "pkg:/images/icons/" + appPlayerIcons().streamsPill + ".png", x + 22, 1000 + 10, 36, 36, t.text)
+    l.translation = [x + 22 + 36 + 8, 1000]
     m.pill.appendChild(l)
 end sub
 

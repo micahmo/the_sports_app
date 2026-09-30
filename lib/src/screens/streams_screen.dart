@@ -1073,6 +1073,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _tried.add(_stream.embedUrl);
     _allowedUri = Uri.parse(_stream.embedUrl);
     _loadRecent();
+    _checkCurrent();
 
     _web = PlayerWebView(
       url: _allowedUri,
@@ -1277,7 +1278,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     return <StreamInfo>[...others.where((StreamInfo s) => s.hd == _stream.hd), ...others.where((StreamInfo s) => s.hd != _stream.hd)].take(PlayerTuning.rowThisGame).toList();
   }
 
-  bool get _hasRow => _rowStreams.isNotEmpty || _recent.isNotEmpty;
+  bool get _hasRow => _rowStreams.isNotEmpty || _rowRecent.isNotEmpty;
 
   Future<void> _openRow() async {
     if (_rowOpen || !_hasRow || _inPip) return;
@@ -1290,17 +1291,22 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _peekTitle();
     final Map<String, StreamQuality> q = await StreamQuality.all();
     if (mounted) setState(() => _qualities = q);
-    // Finished games drop out: keep those still on the site's list (which
-    // has 24/7 channels too, unlike the live list) and already started.
-    // Checked at most once a minute.
-    if (_currentIds == null || DateTime.now().difference(_currentIdsAt!) > const Duration(minutes: 1)) {
-      try {
-        final List<ApiMatch> current = await _api.fetchAllMatches();
-        _currentIds = <String>{for (final ApiMatch m in current) m.id};
-        _currentIdsAt = DateTime.now();
-      } catch (_) {}
-    }
+    await _checkCurrent();
     await _loadRecent();
+  }
+
+  // Finished games drop out of RECENT: keep those still on the site's list
+  // (which has 24/7 channels too, unlike the live list) and already started.
+  // Checked when the player opens, so the row rarely changes once it's up, and
+  // again at most once a minute.
+  Future<void> _checkCurrent() async {
+    if (_currentIds != null && DateTime.now().difference(_currentIdsAt!) <= const Duration(minutes: 1)) return;
+    try {
+      final List<ApiMatch> current = await _api.fetchAllMatches();
+      _currentIds = <String>{for (final ApiMatch m in current) m.id};
+      _currentIdsAt = DateTime.now();
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   // The row's RECENT: still on, started, newest first.
