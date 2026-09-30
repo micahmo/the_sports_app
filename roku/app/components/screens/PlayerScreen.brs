@@ -18,6 +18,9 @@ sub init()
     m.barQuality = mkLabel(m.bar, "", bodyFont(28), t.textDim, 96, 88, 1728, 40)
     m.barTimer = m.top.findNode("barTimer")
     m.barTimer.observeField("fire", "onBarTimer")
+    ' The bar is up from the start until the first quality reading, so what's
+    ' playing gets seen; then it goes after the usual few seconds.
+    m.holdBar = true
 
     ' Ours whenever there's something to wait for: starting, reconnecting (with
     ' the status under it) and buffering.
@@ -35,6 +38,7 @@ sub start()
     end if
     showWorking("Starting...")
     m.barTitle.text = m.top.params.title
+    if m.holdBar then m.bar.visible = true
     m.task = CreateObject("roSGNode", "StreamTask")
     m.task.embedUrl = m.top.params.embedUrl
     m.task.driver = driver
@@ -118,6 +122,11 @@ sub onQuality()
     label = qualityText(q)
     if label = "" then return
     m.barQuality.text = label
+    if m.holdBar then
+        m.holdBar = false
+        m.barTimer.control = "stop"
+        m.barTimer.control = "start"
+    end if
     ' The list keeps the best resolution and frame rate this viewing reached (a
     ' dip just before leaving shouldn't stick), with the average bitrate while
     ' at that level: the stream's typical rate. Each viewing starts afresh, in
@@ -163,7 +172,7 @@ sub onVideoState()
 end sub
 
 sub onBarTimer()
-    m.bar.visible = false
+    if not m.holdBar then m.bar.visible = false
 end sub
 
 sub onStall()

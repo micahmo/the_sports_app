@@ -214,8 +214,8 @@ the others or is added here as a deliberate gap.
 | Games beside the chosen game's streams | no: games, then streams | yes (wide windows) | yes |
 | Quiet background refresh | on returning to the app | every minute idle, and on returning | every minute idle, and back from a stream |
 | Streams grouped by source, best first, described | yes | yes | yes |
-| Measured quality on played streams' rows | yes | yes | yes |
-| Title bar with the game and quality in the player | tap, or the menu | mouse movement, or the menu | OK |
+| Measured quality on played streams' rows | yes, and "adaptive" when the source offers several qualities | yes, and "adaptive" | yes; never adaptive: the Roku plays a source's best quality only (see Roku) |
+| Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
 | A source's server dropping the stream mid-game | reload after 20 s (a visible restart) | reload after 20 s (a visible restart) | fresh link in the background, usually unnoticed; see "Servers that drop a stream" |
 | First link doesn't answer | "unavailable" | "unavailable" | two more fresh sessions first |
@@ -266,6 +266,25 @@ into the stale stretch, so "jump to live" replayed the same few seconds forever.
 The watchdog now hops to the next buffered range after ~1s of stalling, and
 only trusts `liveSyncPosition` when it lies inside the buffer. This applies to
 Android too.
+
+The same loop came back another way (2026-09, on a 1080p60 source on Android):
+playback stuck at one spot with data buffered past it. hls.js nudges the
+playhead three times, then raises a fatal media error; `recoverMediaError()`
+reloads from where it was, so the same segment played again, over and over. And
+the watchdog's jump to live could land *behind* the stuck spot. Now:
+
+- Jumps to live only ever go forward; if live isn't ahead, the watchdog steps
+  1 s past the stuck spot instead.
+- Stuck again within 15 s of that, or a second fatal media error within 30 s of
+  a recovery: the app reloads the stream (a fresh link, at live) instead.
+- Playing on but well behind live (`hls.latency` more than 12 s past its target,
+  and under 120 s so a feed with bad timestamps can't set it off): jump to live.
+  This covers a short network blip that hls.js rides out by itself, and the
+  app's jump to live on coming back from the background, which uses the same
+  code.
+- The takeover logs what it does about trouble (`[player] ...` in `adb logcat`):
+  hls.js errors, stuck spots, catching up, and segments that took longer to
+  fetch than to play.
 
 ### Debugging
 

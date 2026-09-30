@@ -150,7 +150,8 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(title: const ScreenTitle('Streams')),
-      body: body,
+      // Clear of a landscape phone's camera cutout, as the app bar is.
+      body: SafeArea(top: false, bottom: false, child: body),
     );
   }
 
@@ -375,6 +376,11 @@ const String _takeoverJs = r'''
   // Whether we have told the app to lift its spinner.
   var announced = false;
   var waitingFor = 0;
+  // When we last recovered from a media error, pushed playback past a stuck
+  // spot, and caught up with live (the error handler, watch(), catchUp()).
+  var mediaRecoveredAt = 0;
+  var forcedAt = 0;
+  var caughtUpAt = 0;
 
   // Lift the app's spinner once, when there is something to see.
   function announce() {
@@ -385,6 +391,11 @@ const String _takeoverJs = r'''
 
   function post(msg) {
     try { AppPlayer.postMessage(msg); } catch (e) {}
+  }
+
+  // What the player does about trouble, for the app's log (adb logcat).
+  function log(msg) {
+    post("log:" + msg);
   }
 
   // The Flutter-side cover is composited over a platform view, which lets the
@@ -474,30 +485,57 @@ const String _takeoverJs = r'''
     return -1;
   }
 
-  // These are live feeds, so being anywhere but the live edge is a bug.
+  // These are live feeds, so being anywhere but the live edge is a bug. Only
+  // ever forward: a jump back replays what was just seen, and a stream stuck at
+  // one spot would then play the same seconds over and over. True if it moved.
   function toLiveEdge() {
-    if (!video) return;
+    if (!video) return false;
     try {
+      var now = video.currentTime;
       var b = video.buffered;
+      var to = -1;
       // Some feeds carry timestamps that throw hls.js's live position off (it
       // has pointed hours past the buffer, or back into stale data), so only
       // trust it once there is a buffer to check it against.
       if (hls && hls.liveSyncPosition > 0 && (b.length === 0 || isBuffered(hls.liveSyncPosition))) {
-        video.currentTime = hls.liveSyncPosition;
-        return;
-      }
-      if (b.length) {
+        to = hls.liveSyncPosition;
+      } else if (b.length) {
         var last = b.length - 1;
-        video.currentTime = Math.max(b.start(last), b.end(last) - 3);
-        return;
+        to = Math.max(b.start(last), b.end(last) - 3);
+      } else if (video.seekable.length) {
+        to = Math.max(0, video.seekable.end(video.seekable.length - 1) - 1);
       }
-      if (video.seekable.length) {
-        video.currentTime = Math.max(0, video.seekable.end(video.seekable.length - 1) - 1);
-      } else if (video.buffered.length) {
-        video.currentTime = Math.max(0, video.buffered.end(video.buffered.length - 1) - 0.5);
+      if (to > now + 0.5) {
+        video.currentTime = to;
+        return true;
       }
     } catch (e) {}
+    return false;
   }
+
+  // Fallen well behind live while playing on (a network blip it got over by
+  // itself, or the app coming back from the background): rejoin live.
+  // hls.latency is how far behind the playlist's edge we are; on feeds whose
+  // timestamps throw that off it reads absurd values, so only act on a
+  // plausible one.
+  function catchUp() {
+    if (!hls || !hls.targetLatency || Date.now() - caughtUpAt < 10000) return;
+    var behind = hls.latency - hls.targetLatency;
+    if (behind > 12 && behind < 120 && hls.liveSyncPosition > video.currentTime) {
+      caughtUpAt = Date.now();
+      log("behind live by " + Math.round(behind) + "s, catching up");
+      video.currentTime = hls.liveSyncPosition;
+    }
+  }
+
+  // For the app, when it comes back from the background.
+  window.__appPlayer.toLive = function () {
+    if (!video) return false;
+    toLiveEdge();
+    catchUp();
+    video.play().catch(function () {});
+    return true;
+  };
 
   function play() {
     video.muted = false;
@@ -561,12 +599,25 @@ const String _takeoverJs = r'''
           fragStats.push([bytes, d.frag.duration]);
           if (fragStats.length > 5) fragStats.shift();
         }
+        // A segment that took longer to fetch than to play: the player is
+        // falling behind the feed, and will pause for it.
+        var ms = d.frag.stats.loading.end - d.frag.stats.loading.start;
+        if (ms > d.frag.duration * 1000) log("slow segment: " + Math.round(ms) + "ms for " + d.frag.duration.toFixed(1) + "s");
       } catch (e) {}
     });
     hls.on(OurHls.Events.ERROR, function (_, d) {
+      log((d.fatal ? "fatal " : "") + d.type + " " + d.details);
       if (!d.fatal) return;
       if (d.type === OurHls.ErrorTypes.NETWORK_ERROR) { try { hls.startLoad(); } catch (e) {} }
-      else if (d.type === OurHls.ErrorTypes.MEDIA_ERROR) { try { hls.recoverMediaError(); } catch (e) {} }
+      else if (d.type === OurHls.ErrorTypes.MEDIA_ERROR) {
+        // Once, this clears a decoding hiccup. Again soon after, it's the same
+        // spot failing each time: recovering reloads from where it was, so it
+        // would play the same segment over and over. Have the app start
+        // afresh at live instead.
+        if (Date.now() - mediaRecoveredAt < 30000) { post("fatal"); return; }
+        mediaRecoveredAt = Date.now();
+        try { hls.recoverMediaError(); } catch (e) {}
+      }
       else { post("fatal"); }
     });
     lastTime = -1;
@@ -608,7 +659,9 @@ const String _takeoverJs = r'''
     for (var j = 0; j < fragStats.length; j++) { bytes += fragStats[j][0]; secs += fragStats[j][1]; }
     if (!secs) return;
     // Every window, changed or not: the app averages the bitrate over them.
-    post("quality:" + JSON.stringify({ h: video.videoHeight, fps: best, mbps: Math.round(bytes * 8 / secs / 1e5) / 10 }));
+    // Adaptive: the source offers several qualities and hls.js moves between them.
+    var adaptive = !!(hls && hls.levels && hls.levels.length > 1);
+    post("quality:" + JSON.stringify({ h: video.videoHeight, fps: best, mbps: Math.round(bytes * 8 / secs / 1e5) / 10, a: adaptive }));
   }
 
   function watch() {
@@ -638,10 +691,26 @@ const String _takeoverJs = r'''
       // network), jumping would only replay the last seconds over and over.
       var b = video.buffered;
       var ahead = b.length ? b.end(b.length - 1) - video.currentTime : 0;
-      if (stalledFor >= 8 && ahead > 1) { stalledFor = 0; toLiveEdge(); video.play().catch(function () {}); }
+      if (stalledFor >= 8 && ahead > 1) {
+        stalledFor = 0;
+        // Stuck again soon after the last push: this stretch won't play (a
+        // bad segment). Have the app load the stream afresh, at live.
+        if (Date.now() - forcedAt < 15000) {
+          forcedAt = 0;
+          log("stuck again at " + video.currentTime.toFixed(1) + ", starting afresh");
+          post("stalled");
+          return;
+        }
+        forcedAt = Date.now();
+        log("stuck at " + video.currentTime.toFixed(1) + " with " + ahead.toFixed(1) + "s buffered ahead");
+        // Rejoin live if that's ahead, otherwise just step past the spot.
+        if (!toLiveEdge()) video.currentTime = Math.min(video.currentTime + 1, b.end(b.length - 1) - 0.5);
+        video.play().catch(function () {});
+      }
     } else {
       stalledFor = 0;
       lastTime = video.currentTime;
+      catchUp();
     }
   }
 
@@ -750,8 +819,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   double _mbpsSum = 0;
   int _mbpsCount = 0;
   DateTime? _savedAt;
-  // The title bar shows while the menu is open, and for a few seconds after the
-  // mouse moves or the video is tapped (_peek), fullscreen included.
+  // The title bar shows from the start until the first quality reading (so
+  // what's playing gets seen), while the menu is open, and for a few seconds
+  // after the mouse moves or the video is tapped (_peek), fullscreen included.
+  bool _holdTitle = true;
   bool _menuOpen = false;
   bool _peek = false;
   Timer? _peekTimer;
@@ -844,11 +915,21 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _onKey(message.substring(4));
       return;
     }
+    if (message.startsWith('log:')) {
+      debugPrint('[player] ${message.substring(4)}');
+      return;
+    }
     if (message.startsWith('quality:')) {
       try {
         final Map<String, dynamic> j = jsonDecode(message.substring(8)) as Map<String, dynamic>;
-        final StreamQuality q = StreamQuality(height: j['h'] as int, fps: j['fps'] as int, mbps: (j['mbps'] as num).toDouble());
+        final StreamQuality q = StreamQuality(height: j['h'] as int, fps: j['fps'] as int, mbps: (j['mbps'] as num).toDouble(), adaptive: j['a'] == true);
         if (q != _quality) setState(() => _quality = q);
+        // The title bar has stayed up since the start; now it has what's
+        // playing to show, let it go after the usual few seconds.
+        if (_holdTitle) {
+          _holdTitle = false;
+          _peekTitle();
+        }
         _onQuality(q);
       } catch (_) {}
       return;
@@ -915,7 +996,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   void _saveQuality() {
     if (_mbpsCount == 0) return;
     _savedAt = DateTime.now();
-    StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10).save(widget.stream.embedUrl);
+    StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10, adaptive: _quality?.adaptive ?? false).save(widget.stream.embedUrl);
   }
 
   void _peekTitle() {
@@ -1104,36 +1185,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   }
 
   Future<void> _jumpToLive() async {
-    const String js = r'''
-      (function(){
-        let jumped = false;
-        const vids = Array.from(document.querySelectorAll('video'));
-        for (const v of vids) {
-          try {
-          // Unmute & ensure playing
-            v.muted = v.muted || false;
-          // If there is a seekable live window, jump to its end (live edge)
-            if (v.seekable && v.seekable.length > 0) {
-              const end = v.seekable.end(v.seekable.length - 1);
-            // Nudge slightly behind the absolute edge to avoid stalling
-              v.currentTime = Math.max(0, end - 1.0);
-              v.play().catch(()=>{});
-              jumped = true;
-            } else if (v.buffered && v.buffered.length > 0) {
-            // Fallback to the end of buffered range
-              const end = v.buffered.end(v.buffered.length - 1);
-              v.currentTime = Math.max(0, end - 0.5);
-              v.play().catch(()=>{});
-              jumped = true;
-            } else {
-            // As a last-ditch attempt, try play (some players re-sync on play)
-              v.play().catch(()=>{});
-            }
-          } catch (e) {}
-        }
-        return jumped;
-      })();
-    ''';
+    // Our player's own way back to live (see toLiveEdge and catchUp in the
+    // takeover script), which knows which feeds' live positions to trust.
+    const String js = '(function(){var p=window.__appPlayer;return !!(p&&p.built&&p.toLive&&p.toLive());})();';
 
     try {
       final Object? res = await _web.runJavaScriptReturningResult(js);
@@ -1244,9 +1298,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                       left: 0,
                       right: 0,
                       child: IgnorePointer(
-                        ignoring: !(_menuOpen || _peek),
+                        ignoring: !(_holdTitle || _menuOpen || _peek),
                         child: AnimatedOpacity(
-                          opacity: (_menuOpen || _peek) ? 1 : 0,
+                          opacity: (_holdTitle || _menuOpen || _peek) ? 1 : 0,
                           duration: const Duration(milliseconds: 150),
                           // The page can't see the mouse over the bar itself, so resting on
                           // it keeps it up.
