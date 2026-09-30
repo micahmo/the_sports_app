@@ -266,13 +266,17 @@ Things that differ from Android and were each found the hard way:
     step down. It now takes the first, the master.
 
 **Quality selection (phone and desktop).** Where a source offers several
-qualities, hls.js starts at the best (`abrEwmaDefaultEstimate` of 20 Mbps) and
-steps down only if the connection can't keep up, judged by what segments really
-weigh (`abrMaxWithRealBitrate`). Left to its defaults it started from a 0.5 Mbps
-guess, i.e. the lowest quality, and since these playlists overstate their
-bitrates (seen: "1080p, 8 Mbps" that is really 720p at ~3.8), it needed a
-connection measuring well over 11 Mbps to climb, so the phone sat at 540p when
-720p played fine. The Roku always plays the best and can't step down.
+qualities, hls.js's own adaptive logic picks, not anything of ours: it's tried
+and tuned, and a switcher of our own (briefly written, 2026-09-30) would only be
+rediscovering its edge cases. It starts at the first quality the master
+playlist lists, which on these sources is the best. The one setting that
+matters is `abrMaxWithRealBitrate`: these playlists overstate their bitrates
+(seen: "1080p, 8 Mbps" that is really 720p at ~3.8), and without it the phone
+measured less than the declared 8 Mbps, dropped to 540p, and needed over ~11
+Mbps to climb back, so it stayed there on connections that play 720p fine. With
+it, the emulator stays on the top quality. Quality switches are logged
+(`[player] quality now ...`). The Roku always plays the best and can't step
+down.
 - **Autoplay with sound is refused** unless the page itself was clicked, and the
   click lands on Flutter. The WebView2 environment is created with
   `--autoplay-policy=no-user-gesture-required`.

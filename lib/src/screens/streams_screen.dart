@@ -577,20 +577,18 @@ const String _takeoverJs = r'''
     if (hls) { try { hls.destroy(); } catch (e) {} }
     // Not low-latency HLS, and these feeds carry ad discontinuities, so keep a
     // real buffer rather than hugging the edge.
-    // Where a source offers several qualities, start at the best and only step
-    // down if the connection can't keep up. hls.js otherwise starts from a
-    // cautious 0.5 Mbps guess (the lowest quality), and the playlists overstate
-    // their bitrates (a "1080p, 8 Mbps" that is really 720p at ~4), so it
-    // rarely climbed back: judge by what segments really weigh instead.
-    hls = new OurHls({
-      liveSyncDurationCount: 3,
-      backBufferLength: 30,
-      abrEwmaDefaultEstimate: 20e6,
-      abrMaxWithRealBitrate: true,
-    });
+    // Where a source offers several qualities, hls.js picks with its own logic.
+    // abrMaxWithRealBitrate: judge a quality by what its segments really weigh,
+    // not what the playlist declares. These overstate ("1080p, 8 Mbps" that is
+    // really 720p at ~3.8), and without it the phone dropped to 540p on
+    // connections that play the top quality fine, and never came back.
+    hls = new OurHls({ liveSyncDurationCount: 3, backBufferLength: 30, abrMaxWithRealBitrate: true });
     hls.loadSource(url);
     hls.attachMedia(video);
     hls.on(OurHls.Events.MANIFEST_PARSED, function () { toLiveEdge(); play(); });
+    hls.on(OurHls.Events.LEVEL_SWITCHED, function (_, d) {
+      try { log("quality now " + hls.levels[d.level].height + "p"); } catch (e) {}
+    });
     fragStats = [];
     frames0 = null;
     fpsMax = 0;
