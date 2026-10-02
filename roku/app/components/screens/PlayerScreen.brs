@@ -409,29 +409,36 @@ sub openRow()
     m.row.visible = true
     m.pill.visible = false
     showBar()
-    ' This game's streams as they are now (pulled ones aren't offered), and the
-    ' site's list of games for RECENT.
+    ' This game's streams as they are now (pulled ones aren't offered), and
+    ' which RECENT games are still on.
+    checkCurrent()
     refreshStreams("row")
 end sub
 
-' Finished games drop out of RECENT: check the site's list (which has 24/7
-' channels, unlike the live list), when the player opens, so the row rarely
-' changes once it's up, and again at most once a minute.
+' Finished games drop out of RECENT: keep those on the site's live list, and
+' 24/7 channels (no start time) still on its full list, which they aren't on
+' the live one. The full list alone won't do: it keeps games for hours after
+' they end. Checked when the player opens, so the row rarely changes once it's
+' up, and again at most once a minute.
 sub checkCurrent()
     if m.currentAt <> invalid and m.currentAt.TotalSeconds() <= 60 then return
     m.currentAt = CreateObject("roTimespan")
     m.allApi = CreateObject("roSGNode", "ApiTask")
-    m.allApi.requests = {all: apiBase() + "/api/matches/all"}
+    m.allApi.requests = {live: apiBase() + "/api/matches/live", all: apiBase() + "/api/matches/all"}
     m.allApi.observeField("results", "onAllLoaded")
     m.allApi.control = "run"
 end sub
 
 sub onAllLoaded()
+    live = ParseJson(m.allApi.results.live)
     list = ParseJson(m.allApi.results.all)
-    if type(list) <> "roArray" then return
+    if type(live) <> "roArray" or type(list) <> "roArray" then return
     ids = {}
-    for each mt in list
+    for each mt in live
         if mt.id <> invalid then ids[mt.id] = true
+    end for
+    for each mt in list
+        if mt.id <> invalid and matchSeconds(mt) <= 0 then ids[mt.id] = true
     end for
     m.currentIds = ids
     if m.rowOpen then renderRow()
@@ -625,15 +632,9 @@ sub onRefreshAll()
     list = ParseJson(m.refreshApi.results.all)
     found = invalid
     if type(list) = "roArray" then
-        ids = {}
         for each mt in list
-            if mt.id <> invalid then
-                ids[mt.id] = true
-                if mt.id = m.refreshFor then found = mt
-            end if
+            if mt.id <> invalid and mt.id = m.refreshFor then found = mt
         end for
-        m.currentIds = ids
-        m.currentAt = CreateObject("roTimespan")
     end if
     if found = invalid or m.refreshFor <> m.match.id then
         afterRefresh()

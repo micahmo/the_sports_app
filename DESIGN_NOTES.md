@@ -341,8 +341,10 @@ so another stream can be picked without waiting out a fallback.
 - **THIS GAME** (left): the match's other streams, the same HD/SD as what's
   playing first, best sources first, none that failed this viewing.
   **RECENT** (right): other games played lately (`Recents`, one per game),
-  kept while `/api/matches/all` still lists them (unlike the live list it has
-  24/7 channels) and they've started. On the Roku, Down lands on the first recent
+  kept while `/api/matches/live` lists them, or for 24/7 channels (no start
+  time, never on the live list) while `/api/matches/all` does. The full list
+  alone won't do: it keeps games for hours after they end (Browns-Steelers was
+  still on it 12 h after kickoff, with no streams). On the Roku, Down lands on the first recent
   game, else the first of this game's streams (a start on the divider read as a
   stop you could never get back to).
 - Cards are all one size with the same three slots (top row, name, details);

@@ -1362,15 +1362,20 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     await _refreshStreams();
   }
 
-  // Finished games drop out of RECENT: keep those still on the site's list
-  // (which has 24/7 channels too, unlike the live list) and already started.
-  // Checked when the player opens, so the row rarely changes once it's up, and
-  // again at most once a minute.
+  // Finished games drop out of RECENT: keep those on the site's live list, and
+  // 24/7 channels (no start time) still on its full list, which they aren't on
+  // the live one. The full list alone won't do: it keeps games for hours after
+  // they end. Checked when the player opens, so the row rarely changes once
+  // it's up, and again at most once a minute.
   Future<void> _checkCurrent() async {
     if (_currentIds != null && DateTime.now().difference(_currentIdsAt!) <= const Duration(minutes: 1)) return;
     try {
-      final List<ApiMatch> current = await _api.fetchAllMatches();
-      _currentIds = <String>{for (final ApiMatch m in current) m.id};
+      final List<List<ApiMatch>> lists = await Future.wait(<Future<List<ApiMatch>>>[_api.fetchLiveMatches(), _api.fetchAllMatches()]);
+      _currentIds = <String>{
+        for (final ApiMatch m in lists[0]) m.id,
+        for (final ApiMatch m in lists[1])
+          if (m.date <= 0) m.id,
+      };
       _currentIdsAt = DateTime.now();
       if (mounted) setState(() {});
     } catch (_) {}
@@ -1382,8 +1387,6 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   Future<void> _refreshStreams() async {
     try {
       final List<ApiMatch> current = await _api.fetchAllMatches();
-      _currentIds = <String>{for (final ApiMatch m in current) m.id};
-      _currentIdsAt = DateTime.now();
       final String id = _match.id;
       final ApiMatch? now = current.where((ApiMatch m) => m.id == id).firstOrNull;
       if (now == null) return;
