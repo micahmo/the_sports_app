@@ -325,71 +325,68 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
 
     final bool showAnyToggles = _showPopularToggle || _showTodayToggle;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: FutureBuilder<List<ApiMatch>>(
-          future: _future,
-          builder: (BuildContext _, AsyncSnapshot<List<ApiMatch>> s) {
-            return ScreenTitle(title, count: showCount && s.hasData ? s.data!.length : null);
-          },
-        ),
-        actions: <Widget>[
-          IconButton(
-            tooltip: _showSearch ? 'Close search' : 'Search',
-            icon: Icon(_showSearch ? Icons.search_off : Icons.search),
-            onPressed: () => setState(() {
-              _showSearch = !_showSearch;
-              // A hidden search that still filters the list would be confusing.
-              if (!_showSearch) _searchCtrl.clear();
-            }),
+    return ScreenFrame(
+      child: Scaffold(
+        appBar: AppBar(
+          title: FutureBuilder<List<ApiMatch>>(
+            future: _future,
+            builder: (BuildContext _, AsyncSnapshot<List<ApiMatch>> s) {
+              return ScreenTitle(title, count: showCount && s.hasData ? s.data!.length : null);
+            },
           ),
-          if (showAnyToggles)
+          actions: <Widget>[
             IconButton(
-              tooltip: _showToggles ? 'Hide filters' : 'Show filters',
-              icon: _showToggles ? const Icon(Icons.filter_list_off) : const Icon(Icons.filter_list),
-              onPressed: () => setState(() => _showToggles = !_showToggles),
+              tooltip: _showSearch ? 'Close search' : 'Search',
+              icon: Icon(_showSearch ? Icons.search_off : Icons.search),
+              onPressed: () => setState(() {
+                _showSearch = !_showSearch;
+                // A hidden search that still filters the list would be confusing.
+                if (!_showSearch) _searchCtrl.clear();
+              }),
             ),
-          IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refreshMatches),
-        ],
-      ),
-      // Wide windows (desktop) show the list and the chosen match's streams
-      // side by side; narrow ones keep the phone layout.
-      // Clear of a landscape phone's camera cutout, as the app bar is.
-      body: SafeArea(
-        top: false,
-        bottom: false,
-        child: LayoutBuilder(
-          builder: (BuildContext _, BoxConstraints box) {
-            final bool wide = box.maxWidth >= kWideLayout;
-            return FutureBuilder<List<ApiMatch>>(
-              future: _future,
-              builder: (BuildContext ctx, AsyncSnapshot<List<ApiMatch>> snap) {
-                final Widget list = _buildList(ctx, snap, wide);
-                if (!wide) return list;
-                final ApiMatch? selected = _selectedMatch();
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    SizedBox(width: _kListWidth, child: list),
-                    VerticalDivider(width: 1, thickness: 1, color: Theme.of(context).colorScheme.outlineVariant),
-                    Expanded(
-                      child: selected == null
-                          ? const SizedBox.shrink()
-                          // Capped so stream rows don't stretch across a big monitor.
-                          : Align(
-                              alignment: Alignment.topLeft,
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 900),
-                                // Keyed by match so switching matches starts a fresh load.
-                                child: StreamsScreen(key: ValueKey<String>(selected.id), matchItem: selected, embedded: true),
-                              ),
-                            ),
-                    ),
-                  ],
-                );
-              },
-            );
-          },
+            if (showAnyToggles)
+              IconButton(
+                tooltip: _showToggles ? 'Hide filters' : 'Show filters',
+                icon: _showToggles ? const Icon(Icons.filter_list_off) : const Icon(Icons.filter_list),
+                onPressed: () => setState(() => _showToggles = !_showToggles),
+              ),
+            IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refreshMatches),
+          ],
+        ),
+        // Wide windows (desktop) show the list and the chosen match's streams
+        // side by side; narrow ones keep the phone layout.
+        // Clear of a landscape phone's camera cutout, as the app bar is.
+        body: SafeArea(
+          top: false,
+          bottom: false,
+          child: LayoutBuilder(
+            builder: (BuildContext _, BoxConstraints box) {
+              final bool wide = box.maxWidth >= kWideLayout;
+              return FutureBuilder<List<ApiMatch>>(
+                future: _future,
+                builder: (BuildContext ctx, AsyncSnapshot<List<ApiMatch>> snap) {
+                  final Widget list = _buildList(ctx, snap, wide);
+                  if (!wide) return list;
+                  final ApiMatch? selected = _selectedMatch();
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      SizedBox(width: _kListWidth, child: list),
+                      VerticalDivider(width: 1, thickness: 1, color: Theme.of(context).colorScheme.outlineVariant),
+                      Expanded(
+                        child: selected == null
+                            ? const SizedBox.shrink()
+                            // The frame keeps stream rows from stretching across a
+                            // big monitor. Keyed by match so switching matches
+                            // starts a fresh load.
+                            : StreamsScreen(key: ValueKey<String>(selected.id), matchItem: selected, embedded: true),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );

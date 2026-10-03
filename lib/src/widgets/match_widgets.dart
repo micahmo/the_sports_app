@@ -14,6 +14,29 @@ bool get isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS
 /// From this width, screens lay out for a desktop window rather than a phone.
 const double kWideLayout = 900;
 
+/// The widest a screen gets: on a bigger window every screen but the player
+/// sits in one centred frame this wide, so titles, buttons and content line up
+/// from screen to screen rather than some hugging the window's edges.
+const double kFrameWidth = 1360;
+
+/// A screen inside the shared frame (kFrameWidth), the window's background
+/// either side.
+class ScreenFrame extends StatelessWidget {
+  const ScreenFrame({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Center(
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: kFrameWidth), child: child),
+      ),
+    );
+  }
+}
+
 /// Material icon for an API sport id.
 IconData sportIcon(String category) => sportIcons[category] ?? defaultSportIcon;
 

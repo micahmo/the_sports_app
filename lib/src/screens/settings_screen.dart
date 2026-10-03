@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app_version.dart';
 import '../desktop/updater.dart';
 import '../theme.dart';
-import '../widgets/match_widgets.dart' show ScreenSpinner;
+import '../widgets/match_widgets.dart' show CardSegment, ScreenFrame, ScreenSpinner, ScreenTitle, SectionLabel;
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -73,79 +73,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      // Clear of a landscape phone's camera cutout, as the app bar is.
-      body: SafeArea(
-        top: false,
-        bottom: false,
-        child: _loading
-            ? const ScreenSpinner()
-            : ListView(
-                padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
-                children: <Widget>[
-                  Text('Appearance', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  ValueListenableBuilder<ThemeMode>(
-                    valueListenable: themeModeNotifier,
-                    builder: (BuildContext context, ThemeMode mode, Widget? _) {
-                      return SegmentedButton<ThemeMode>(
-                        segments: const <ButtonSegment<ThemeMode>>[
-                          ButtonSegment<ThemeMode>(value: ThemeMode.system, label: Text('System'), icon: Icon(Icons.brightness_auto)),
-                          ButtonSegment<ThemeMode>(value: ThemeMode.light, label: Text('Light'), icon: Icon(Icons.light_mode)),
-                          ButtonSegment<ThemeMode>(value: ThemeMode.dark, label: Text('Dark'), icon: Icon(Icons.dark_mode)),
-                        ],
-                        selected: <ThemeMode>{mode},
-                        onSelectionChanged: (Set<ThemeMode> s) => setThemeMode(s.first),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 28),
-                  Text('Favorite teams and channels (comma-separated)', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _controller,
-                    onChanged: _onChanged,
-                    minLines: 1,
-                    maxLines: 3,
-                    textInputAction: TextInputAction.done,
-                    decoration: const InputDecoration(hintText: 'e.g., Patriots, Celtics', border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Tip: Separate with commas. Duplicates are ignored, spaces are trimmed.', style: Theme.of(context).textTheme.bodySmall),
-
-                  const SizedBox(height: 28),
-                  Text('About', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  // Desktop release builds update themselves (Android uses Obtainium).
-                  if (!Updater.available)
-                    Text(appVersion.isEmpty ? 'Development build' : 'Version $appVersion')
-                  else ...<Widget>[
-                    // Inset and rounded like the home screen's cards, so its hover
-                    // highlight has room around the text.
-                    SwitchListTile(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                      title: const Text('Check for updates when the app starts'),
-                      subtitle: const Text('Version $appVersion'),
-                      value: _autoUpdate,
-                      onChanged: (bool on) {
-                        setState(() => _autoUpdate = on);
-                        Updater.setChecksAutomatically(on);
-                      },
+    return ScreenFrame(
+      child: Scaffold(
+        appBar: AppBar(title: const ScreenTitle('Settings')),
+        // Clear of a landscape phone's camera cutout, as the app bar is.
+        body: SafeArea(
+          top: false,
+          bottom: false,
+          child: _loading
+              ? const ScreenSpinner()
+              // Headed cards like Home's, so it reads as the same app; the
+              // controls inside keep to a sensible width on a wide window.
+              : ListView(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
+                  children: <Widget>[
+                    const SectionLabel('Appearance'),
+                    _card(
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 480),
+                          child: ValueListenableBuilder<ThemeMode>(
+                            valueListenable: themeModeNotifier,
+                            builder: (BuildContext context, ThemeMode mode, Widget? _) {
+                              return SegmentedButton<ThemeMode>(
+                                segments: const <ButtonSegment<ThemeMode>>[
+                                  ButtonSegment<ThemeMode>(value: ThemeMode.system, label: Text('System'), icon: Icon(Icons.brightness_auto)),
+                                  ButtonSegment<ThemeMode>(value: ThemeMode.light, label: Text('Light'), icon: Icon(Icons.light_mode)),
+                                  ButtonSegment<ThemeMode>(value: ThemeMode.dark, label: Text('Dark'), icon: Icon(Icons.dark_mode)),
+                                ],
+                                selected: <ThemeMode>{mode},
+                                onSelectionChanged: (Set<ThemeMode> s) => setThemeMode(s.first),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton.icon(onPressed: () => Updater.checkNow(context), icon: const Icon(Icons.system_update_alt), label: const Text('Check now')),
+                    const SectionLabel('Favorite teams and channels'),
+                    _card(
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 640),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            TextField(
+                              controller: _controller,
+                              onChanged: _onChanged,
+                              minLines: 1,
+                              maxLines: 3,
+                              textInputAction: TextInputAction.done,
+                              decoration: const InputDecoration(hintText: 'e.g., Patriots, Celtics', border: OutlineInputBorder()),
+                            ),
+                            const SizedBox(height: 8),
+                            Text('Separate with commas. Duplicates are ignored, spaces are trimmed.', style: Theme.of(context).textTheme.bodySmall),
+                          ],
+                        ),
+                      ),
                     ),
+                    const SectionLabel('About'),
+                    // Desktop release builds update themselves (Android uses Obtainium).
+                    if (!Updater.available)
+                      _card(Text(appVersion.isEmpty ? 'Development build' : 'Version $appVersion'))
+                    else
+                      _card(
+                        // The switch ends where the favorites box does (this card's
+                        // padding is 4, the tile's own 12), so it stays by its label.
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 640 + 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              // Rounded, so its hover highlight sits inside the card.
+                              SwitchListTile(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                                title: const Text('Check for updates when the app starts'),
+                                subtitle: const Text('Version $appVersion'),
+                                value: _autoUpdate,
+                                onChanged: (bool on) {
+                                  setState(() => _autoUpdate = on);
+                                  Updater.setChecksAutomatically(on);
+                                },
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                                child: OutlinedButton.icon(onPressed: () => Updater.checkNow(context), icon: const Icon(Icons.system_update_alt), label: const Text('Check now')),
+                              ),
+                            ],
+                          ),
+                        ),
+                        padding: const EdgeInsets.all(4),
+                      ),
                   ],
-
-                  // Room to grow: add more settings here later...
-                ],
-              ),
+                ),
+        ),
       ),
+    );
+  }
+
+  // One group of settings on a card, as Home's tiles are.
+  Widget _card(Widget child, {EdgeInsets padding = const EdgeInsets.all(16)}) {
+    return CardSegment(
+      first: true,
+      last: true,
+      horizontalMargin: 0,
+      // Left, and loose, so a control can keep to its own width.
+      child: Align(alignment: Alignment.centerLeft, child: Padding(padding: padding, child: child)),
     );
   }
 }

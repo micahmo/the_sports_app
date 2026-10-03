@@ -157,10 +157,12 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     );
 
     if (widget.embedded) return body;
-    return Scaffold(
-      appBar: AppBar(title: const ScreenTitle('Streams')),
-      // Clear of a landscape phone's camera cutout, as the app bar is.
-      body: SafeArea(top: false, bottom: false, child: body),
+    return ScreenFrame(
+      child: Scaffold(
+        appBar: AppBar(title: const ScreenTitle('Streams')),
+        // Clear of a landscape phone's camera cutout, as the app bar is.
+        body: SafeArea(top: false, bottom: false, child: body),
+      ),
     );
   }
 
