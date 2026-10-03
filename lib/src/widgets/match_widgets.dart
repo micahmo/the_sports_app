@@ -19,8 +19,17 @@ const double kWideLayout = 900;
 /// from screen to screen rather than some hugging the window's edges.
 const double kFrameWidth = 1360;
 
+/// Desktop spacing like the TV's: TvLayout's pixels of a 1920-wide screen, as
+/// the same share of the frame.
+double tvSpacing(int tvPixels) => tvPixels * kFrameWidth / 1920;
+
+/// Whether a screen this wide is a desktop window laid out like the TV.
+bool tvSpaced(BuildContext context) => isDesktop && MediaQuery.sizeOf(context).width >= kWideLayout;
+
 /// A screen inside the shared frame (kFrameWidth), the window's background
-/// either side.
+/// either side. On desktop windows the title sits as far from the top as from
+/// the side, as on the TV (screens pad their content by 16 themselves, and a
+/// title's capitals start about 20 below the app bar's top).
 class ScreenFrame extends StatelessWidget {
   const ScreenFrame({super.key, required this.child});
 
@@ -28,10 +37,15 @@ class ScreenFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool tv = tvSpaced(context);
+    final double inset = tvSpacing(TvLayout.desktopMargin);
     return ColoredBox(
       color: Theme.of(context).scaffoldBackgroundColor,
       child: Center(
-        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: kFrameWidth), child: child),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: kFrameWidth),
+          child: Padding(padding: tv ? EdgeInsets.fromLTRB(inset - 16, inset - 20, inset - 16, 0) : EdgeInsets.zero, child: child),
+        ),
       ),
     );
   }

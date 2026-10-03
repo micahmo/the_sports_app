@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'src/desktop/updater.dart';
+import 'src/desktop/window_scale.dart';
 import 'src/desktop/window_state.dart';
 import 'src/screens/sports_screen.dart';
 import 'src/widgets/keep_fresh.dart';
@@ -50,7 +51,7 @@ class SportsApp extends StatelessWidget {
           // themselves before it gets here.
           builder: (BuildContext context, Widget? child) => CallbackShortcuts(
             bindings: <ShortcutActivator, VoidCallback>{const SingleActivator(LogicalKeyboardKey.escape): () => _navigatorKey.currentState?.maybePop()},
-            child: Focus(autofocus: true, child: child!),
+            child: Focus(autofocus: true, child: Platform.isWindows ? WindowScale(child: child!) : child!),
           ),
           debugShowCheckedModeBanner: false,
         );

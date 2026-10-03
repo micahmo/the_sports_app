@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../theme.dart';
+import '../generated/app_data.dart' show TvLayout;
 import '../widgets/match_widgets.dart';
 import '../widgets/keep_fresh.dart';
 import 'matches_screen.dart';
@@ -136,6 +137,11 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                   final bool wide = box.maxWidth >= kWideLayout;
                   const double side = 16;
                   final double content = box.maxWidth - 2 * side;
+                  // Desktop: the TV's gaps between cards and above sections.
+                  final bool tv = tvSpaced(context);
+                  final double gap = tv ? tvSpacing(TvLayout.gap) : 8;
+                  final double rowGap = tv ? tvSpacing(16) : 8;
+                  final double above = tv ? tvSpacing(TvLayout.sectionGap) - 16 : 0;
                   return RefreshIndicator(
                     onRefresh: _refresh,
                     child: ListView(
@@ -153,7 +159,7 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                                 onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.live())),
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            SizedBox(width: gap),
                             Expanded(
                               child: _ShortcutTile(
                                 icon: Icons.local_fire_department,
@@ -162,7 +168,7 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                                 onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MatchesScreen.livePopular())),
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            SizedBox(width: gap),
                             Expanded(
                               child: _ShortcutTile(
                                 icon: Icons.favorite,
@@ -174,6 +180,7 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                           ],
                         ),
                         if (d.top.isNotEmpty) ...<Widget>[
+                          SizedBox(height: above),
                           const SectionLabel('Most watched now'),
                           if (wide)
                             // Side by side as separate cards; each opens the live
@@ -183,7 +190,7 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: <Widget>[
                                   for (int i = 0; i < d.top.length; i++) ...<Widget>[
-                                    if (i > 0) const SizedBox(width: 8),
+                                    if (i > 0) SizedBox(width: gap),
                                     Expanded(
                                       child: CardSegment(
                                         first: true,
@@ -214,6 +221,7 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                                 ),
                               ),
                         ],
+                        SizedBox(height: above),
                         const SectionLabel('All sports'),
                         GridView.builder(
                           shrinkWrap: true,
@@ -222,8 +230,8 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                             // Two on a phone; on desktop as many ~260px tiles as fit.
                             crossAxisCount: wide ? (content / 260).floor().clamp(2, 6) : 2,
-                            mainAxisSpacing: 8,
-                            crossAxisSpacing: 8,
+                            mainAxisSpacing: rowGap,
+                            crossAxisSpacing: gap,
                             mainAxisExtent: 56,
                           ),
                           itemCount: d.sports.length,

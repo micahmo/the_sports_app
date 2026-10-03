@@ -1925,8 +1925,14 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                               // Linger a moment rather than vanish as it closes.
                               _peekTitle();
                             },
-                            buttonSize: const Size(40, 40),
-                            childrenButtonSize: const Size(40, 40),
+                            // On desktop, the Streams pill's height (the window
+                            // scales everything up, and 40 looked big beside it);
+                            // phones keep a fingertip's size.
+                            buttonSize: isDesktop ? const Size(32, 32) : const Size(40, 40),
+                            childrenButtonSize: isDesktop ? const Size(32, 32) : const Size(40, 40),
+                            // Larger than the menu's 18 px icons: the three thin lines
+                            // fill less of their box and looked small beside them.
+                            iconTheme: IconThemeData(size: isDesktop ? 22 : 24),
                             childPadding: const EdgeInsets.all(0),
                             spaceBetweenChildren: 5,
                             children: [

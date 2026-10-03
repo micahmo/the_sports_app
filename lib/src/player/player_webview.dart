@@ -160,7 +160,10 @@ window.AppPlayer = { postMessage: function (m) { try { window.chrome.webview.pos
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
       valueListenable: _initialized,
-      builder: (BuildContext _, bool ready, Widget? __) => ready ? win.Webview(_controller) : const SizedBox.expand(),
+      builder: (BuildContext _, bool ready, Widget? __) => ready
+          // The window may be scaled (WindowScale): render at its real resolution.
+          ? win.Webview(_controller, scaleFactor: MediaQuery.devicePixelRatioOf(context))
+          : const SizedBox.expand(),
     );
   }
 

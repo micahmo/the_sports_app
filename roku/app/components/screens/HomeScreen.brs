@@ -139,9 +139,11 @@ sub build(sports as Object, names as Object, liveBy as Object, liveTotal as Inte
     if m.rows.Count() > 0 then focusKey = actionKey(m.rows[m.fr][m.fc].action)
     m.page.removeChildrenIndex(m.page.getChildCount(), 0)
     t = theme()
-    x0 = 96
-    W = 1728
-    gap = 24
+    ' Spacing shared with the desktop app (shared/app_data.json).
+    lay = appLayout()
+    x0 = lay.margin
+    W = 1920 - 2 * x0
+    gap = lay.gap
     rows = []
 
     mkLabel(m.page, "SPORTS", condensed("SemiBold", 60), t.text, x0, 44, 600, 80)
@@ -156,7 +158,7 @@ sub build(sports as Object, names as Object, liveBy as Object, liveTotal as Inte
     m.settingsNote = mkLabel(settings.findNode("content"), driverNote(), bodyFont(22), t.outline, 24, 18, tw - 48, 36, "right")
     tiles.Push(settings)
     rows.Push(tiles)
-    y = y + 120 + 34
+    y = y + 120 + lay.sectionGap
 
     ' Most watched now: three cards side by side, as on a wide window.
     if top.Count() > 0 then
@@ -175,7 +177,7 @@ sub build(sports as Object, names as Object, liveBy as Object, liveTotal as Inte
             cards.Push(c)
         end for
         rows.Push(cards)
-        y = y + 190 + 34
+        y = y + 190 + lay.sectionGap
     end if
 
     ' All sports, four to a row.

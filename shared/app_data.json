@@ -45,6 +45,14 @@
     "overlayPercent": 70
   },
 
+  "layout": {
+    "_about": "Screen spacing, in pixels of a 1920-wide screen: the Roku draws at exactly that, and the desktop app (which scales its 1360-wide layout to the window) takes the same share of the width. margin: either side of the TV's screen, wide to stay clear of a TV's cropped edges. desktopMargin: the desktop's, smaller (a monitor shows its edges), both beside and above the screen's title, as the TV's title sits about as far from the top as from the side. gap: between cards side by side. sectionGap: above each section's heading.",
+    "margin": 96,
+    "desktopMargin": 56,
+    "gap": 24,
+    "sectionGap": 34
+  },
+
   "playerIcons": {
     "_about": "The player's icons, the same on every app (Material icon names, as for sports). streamsPill: a row of cards, what the pill opens, rather than an arrow for which way (a press on the Roku, a tap elsewhere). switched: the note after falling back.",
     "streamsPill": "view_carousel",

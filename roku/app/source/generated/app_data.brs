@@ -39,6 +39,11 @@ function appPlayer() as Object
     return {rowThisGame: 3, rowRecent: 3, recentsKept: 12, stuckDownloadMs: 4000, switchedNoteMs: 4000, overlayPercent: 70}
 end function
 
+' Screen spacing, in pixels of the 1920-wide screen (see the JSON).
+function appLayout() as Object
+    return {margin: 96, desktopMargin: 56, gap: 24, sectionGap: 34}
+end function
+
 ' The player's wording, the same on every app; {stream} is filled in.
 function appPlayerText() as Object
     return {"streamsPill": "Streams", "thisGame": "THIS GAME", "recent": "RECENT", "notPlayed": "Not played yet", "stoppedWorking": "{stream} stopped working", "trying": "Trying {stream}…", "switchedTo": "Switched to {stream}"}

@@ -94,6 +94,14 @@ abstract final class PlayerTuning {
   static const int overlayPercent = 70;
 }
 
+/// Screen spacing, in pixels of a 1920-wide TV screen (see the JSON).
+abstract final class TvLayout {
+  static const int margin = 96;
+  static const int desktopMargin = 56;
+  static const int gap = 24;
+  static const int sectionGap = 34;
+}
+
 /// The player's wording, the same on every app; {stream} is filled in.
 abstract final class PlayerText {
   static const String streamsPill = 'Streams';

@@ -34,7 +34,8 @@ def load():
     player = {k: v for k, v in data['player'].items() if not k.startswith('_')}
     player_text = {k: v for k, v in data['playerText'].items() if not k.startswith('_')}
     player_icons = {k: v for k, v in data['playerIcons'].items() if not k.startswith('_')}
-    return sports, data['defaultSportIcon'], sources, palette, player, player_text, player_icons
+    layout = {k: v for k, v in data['layout'].items() if not k.startswith('_')}
+    return sports, data['defaultSportIcon'], sources, palette, player, player_text, player_icons, layout
 
 
 def q(s):
@@ -49,7 +50,7 @@ def dq(s):
     return "'" + s + "'"
 
 
-def dart(sports, default_icon, sources, palette, player, player_text, player_icons):
+def dart(sports, default_icon, sources, palette, player, player_text, player_icons, layout):
     out = [
         f'// {HEADER}',
         '// ignore_for_file: constant_identifier_names',
@@ -76,6 +77,8 @@ def dart(sports, default_icon, sources, palette, player, player_text, player_ico
             out.append(f'  static const Color {name}Light = Color(0xFF{v["light"][1:].upper()});')
     out += ['}', '', '/// Player numbers both apps follow (see the JSON for what each is).', 'abstract final class PlayerTuning {']
     out += [f'  static const int {k} = {int(v)};' for k, v in player.items()]
+    out += ['}', '', '/// Screen spacing, in pixels of a 1920-wide TV screen (see the JSON).', 'abstract final class TvLayout {']
+    out += [f'  static const int {k} = {int(v)};' for k, v in layout.items()]
     out += ['}', '', '/// The player\'s wording, the same on every app; {stream} is filled in.', 'abstract final class PlayerText {']
     out += [f'  static const String {k} = {dq(v)};' for k, v in player_text.items()]
     out += ['}', '', '/// The player\'s icons, the same on every app.', 'abstract final class PlayerIcons {']
@@ -84,7 +87,7 @@ def dart(sports, default_icon, sources, palette, player, player_text, player_ico
     return '\n'.join(out)
 
 
-def brs(sports, default_icon, sources, palette, player, player_text, player_icons):
+def brs(sports, default_icon, sources, palette, player, player_text, player_icons, layout):
     def aa(pairs):
         return '{' + ', '.join(f'{q(k)}: {q(v)}' for k, v in pairs) + '}'
     out = [f"' {HEADER}", '']
@@ -119,6 +122,10 @@ def brs(sports, default_icon, sources, palette, player, player_text, player_icon
             'function appPlayer() as Object',
             '    return {' + ', '.join(f'{k}: {int(v)}' for k, v in player.items()) + '}',
             'end function', '',
+            "' Screen spacing, in pixels of the 1920-wide screen (see the JSON).",
+            'function appLayout() as Object',
+            '    return {' + ', '.join(f'{k}: {int(v)}' for k, v in layout.items()) + '}',
+            'end function', '',
             "' The player's wording, the same on every app; {stream} is filled in.",
             'function appPlayerText() as Object',
             '    return ' + aa(player_text.items()),
@@ -131,10 +138,10 @@ def brs(sports, default_icon, sources, palette, player, player_text, player_icon
 
 
 def main():
-    sports, default_icon, sources, palette, player, player_text, player_icons = load()
+    sports, default_icon, sources, palette, player, player_text, player_icons, layout = load()
     wanted = {
-        DART: dart(sports, default_icon, sources, palette, player, player_text, player_icons),
-        BRS: brs(sports, default_icon, sources, palette, player, player_text, player_icons),
+        DART: dart(sports, default_icon, sources, palette, player, player_text, player_icons, layout),
+        BRS: brs(sports, default_icon, sources, palette, player, player_text, player_icons, layout),
     }
     check = '--check' in sys.argv
     stale = []
