@@ -97,6 +97,9 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
         actionsPadding: wide ? EdgeInsets.only(right: math.max(0, side - 12)) : null,
         title: const ScreenTitle('Sports'),
         actions: <Widget>[
+          // Phones pull to refresh; a mouse can't, so desktop gets the button
+          // the match lists have.
+          if (isDesktop) IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refresh),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
