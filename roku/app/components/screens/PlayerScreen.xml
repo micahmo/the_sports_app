@@ -23,7 +23,7 @@
     <!-- Our own title bar: the game and what's playing, full width, for a few
          seconds after OK (see onKeyEvent). -->
     <Group id="bar" visible="false">
-      <Rectangle id="barBg" width="1920" height="150" color="0x000000B3" />
+      <Rectangle id="barBg" width="1920" height="150" />
     </Group>
     <Timer id="barTimer" duration="5" />
   </children>

@@ -103,6 +103,14 @@ function bodyTopOnBaseline(baseline as Float, boxH as Float, size as Float, opti
 end function
 
 ' A rounded rectangle (9-patch), tinted.
+' The black behind the player's overlays (title bar, streams pill and row,
+' fallback note): shared/app_data.json's overlayPercent as a colour.
+function overlayColor() as String
+    a = UCase(StrI(Int(appPlayer().overlayPercent * 255 / 100 + 0.5), 16))
+    if Len(a) < 2 then a = "0" + a
+    return "0x000000" + a
+end function
+
 function mkCard(parent as Object, x as Float, y as Float, w as Float, h as Float, color as String, image = "card" as String) as Object
     p = parent.createChild("Poster")
     p.uri = "pkg:/images/" + image + ".9.png"

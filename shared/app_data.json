@@ -36,12 +36,13 @@
   },
 
   "player": {
-    "_about": "Player numbers both apps follow. rowThisGame / rowRecent: how many cards each side of the streams row shows. recentsKept: how many recent games are remembered (finished ones are dropped when the row is shown). stuckDownloadMs: a segment download still running this long (and, on phone/desktop, receiving nothing) gets a second copy.",
+    "_about": "Player numbers both apps follow. rowThisGame / rowRecent: how many cards each side of the streams row shows. recentsKept: how many recent games are remembered (finished ones are dropped when the row is shown). stuckDownloadMs: a segment download still running this long (and, on phone/desktop, receiving nothing) gets a second copy. overlayPercent: how opaque the black behind the player's overlays is (title bar, streams pill and row, fallback note), the same for all of them.",
     "rowThisGame": 3,
     "rowRecent": 3,
     "recentsKept": 12,
     "stuckDownloadMs": 4000,
-    "switchedNoteMs": 4000
+    "switchedNoteMs": 4000,
+    "overlayPercent": 70
   },
 
   "playerIcons": {

@@ -4,6 +4,7 @@ sub init()
     m.status = m.top.findNode("status")
     m.status.font = bodyFont(32)
     m.status.color = t.textDim
+    m.top.findNode("barBg").color = overlayColor()
     m.video.observeField("state", "onVideoState")
     ' Our spinner stands in for the player's own buffering indicators.
     m.video.bufferingBarVisibilityAuto = false
@@ -463,7 +464,7 @@ sub renderRow()
     bg.translation = [0, 770]
     bg.width = 1920
     bg.height = 310
-    bg.color = "0x000000C0"
+    bg.color = overlayColor()
     m.rowCards = []
     cw = 272
     ch = 190
@@ -703,7 +704,7 @@ sub showNote(text as String)
     m.note.removeChild(l)
     w = lw + 36 + 12 + 48
     x = (1920 - w) / 2
-    mkCard(m.note, x, 1000, w, 56, "0x000000D0", "chip")
+    mkCard(m.note, x, 1000, w, 56, overlayColor(), "chip")
     mkPoster(m.note, "pkg:/images/icons/" + appPlayerIcons().switched + ".png", x + 24, 1000 + 10, 36, 36, t.text)
     l.translation = [x + 24 + 36 + 12, 1000]
     m.note.appendChild(l)
@@ -725,11 +726,13 @@ sub renderPill()
     l = mkLabel(m.pill, playerText("streamsPill"), bodyFont(28), t.text, 0, 0, 0, 56)
     lw = l.boundingRect().width
     m.pill.removeChild(l)
-    w = lw + 36 + 8 + 56
+    ' The phone's proportions (12 before the icon, 6 between, 16 after the
+    ' text, at 13 px text), scaled to 28 px text.
+    w = 26 + 36 + 13 + lw + 34
     x = (1920 - w) / 2
-    mkCard(m.pill, x, 1000, w, 56, "0x000000D0", "chip")
-    mkPoster(m.pill, "pkg:/images/icons/" + appPlayerIcons().streamsPill + ".png", x + 22, 1000 + 10, 36, 36, t.text)
-    l.translation = [x + 22 + 36 + 8, 1000]
+    mkCard(m.pill, x, 1000, w, 56, overlayColor(), "chip")
+    mkPoster(m.pill, "pkg:/images/icons/" + appPlayerIcons().streamsPill + ".png", x + 26, 1000 + 10, 36, 36, t.text)
+    l.translation = [x + 26 + 36 + 13, 1000]
     m.pill.appendChild(l)
 end sub
 

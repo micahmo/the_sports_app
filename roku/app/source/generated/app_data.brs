@@ -36,7 +36,7 @@ end function
 
 ' Player numbers both apps follow (see the JSON for what each is).
 function appPlayer() as Object
-    return {rowThisGame: 3, rowRecent: 3, recentsKept: 12, stuckDownloadMs: 4000, switchedNoteMs: 4000}
+    return {rowThisGame: 3, rowRecent: 3, recentsKept: 12, stuckDownloadMs: 4000, switchedNoteMs: 4000, overlayPercent: 70}
 end function
 
 ' The player's wording, the same on every app; {stream} is filled in.

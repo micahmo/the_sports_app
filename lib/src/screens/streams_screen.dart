@@ -1814,7 +1814,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                             child: MouseRegion(
                               onHover: (_) => _peekTitle(),
                               child: Container(
-                                color: Colors.black.withValues(alpha: 0.7),
+                                color: Colors.black.withValues(alpha: PlayerTuning.overlayPercent / 100),
                                 padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 16, 10),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1880,7 +1880,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                             child: Center(
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.78), borderRadius: BorderRadius.circular(8)),
+                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: PlayerTuning.overlayPercent / 100), borderRadius: BorderRadius.circular(8)),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: <Widget>[

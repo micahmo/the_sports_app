@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
-import '../generated/app_data.dart' show AppPalette, PlayerIcons, PlayerText;
+import '../generated/app_data.dart' show AppPalette, PlayerIcons, PlayerText, PlayerTuning;
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
 import 'recents.dart';
@@ -23,7 +23,7 @@ class StreamsPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.black.withValues(alpha: 0.78),
+      color: Colors.black.withValues(alpha: PlayerTuning.overlayPercent / 100),
       shape: const StadiumBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -81,7 +81,7 @@ class StreamsRow extends StatelessWidget {
           onPointerDown: (_) => onActivity(),
           onPointerMove: (_) => onActivity(),
           child: Container(
-            color: Colors.black.withValues(alpha: 0.72),
+            color: Colors.black.withValues(alpha: PlayerTuning.overlayPercent / 100),
             padding: EdgeInsets.fromLTRB(0, 10, 0, 12 + MediaQuery.paddingOf(context).bottom),
             // Sideways when a narrow screen can't fit them all.
             child: SingleChildScrollView(

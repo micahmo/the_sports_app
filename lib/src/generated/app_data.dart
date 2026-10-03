@@ -91,6 +91,7 @@ abstract final class PlayerTuning {
   static const int recentsKept = 12;
   static const int stuckDownloadMs = 4000;
   static const int switchedNoteMs = 4000;
+  static const int overlayPercent = 70;
 }
 
 /// The player's wording, the same on every app; {stream} is filled in.
