@@ -144,9 +144,9 @@ sub onLoaded()
             m.names[s.id] = s.name
         end for
     end if
-    matches = withViewers(matches, viewerCounts(ParseJson(r.counts)))
     ' Opened from a Home card whose match isn't in this list (e.g. a 24/7
-    ' channel the API doesn't call live): put it first so it can be watched.
+    ' channel the API doesn't call live): add it before the view-count sort, so
+    ' it lands where its count puts it, as if it had been there all along.
     p = m.top.params
     if p.initialMatch <> invalid and p.match <> invalid then
         found = false
@@ -155,6 +155,7 @@ sub onLoaded()
         end for
         if not found then matches.Unshift(p.match)
     end if
+    matches = withViewers(matches, viewerCounts(ParseJson(r.counts)))
     if quiet then
         applyRefresh(matches)
         return

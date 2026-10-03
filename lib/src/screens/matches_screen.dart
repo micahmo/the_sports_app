@@ -67,7 +67,7 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
   Future<List<ApiMatch>> _loadData() {
     switch (widget.mode) {
       case Mode.live:
-        return _withViewCounts(_api.fetchLiveMatches()).then(_withInitialMatch);
+        return _withViewCounts(_api.fetchLiveMatches().then(_withInitialMatch));
       case Mode.livePopular:
         return _withViewCounts(_api.fetchLivePopular());
       case Mode.bySport:
@@ -79,8 +79,10 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
 
   /// Opened from a Home card whose match isn't in the Live list: Most watched
   /// comes from the view counts, which include games the site hasn't marked
-  /// live yet and 24/7 channels. Put it first, so the streams shown beside the
-  /// list are that match's rather than the first game's. (The Roku does the same.)
+  /// live yet and 24/7 channels. Add it before the view-count sort, so it lands
+  /// where its count puts it, as if it had been there all along (among the few
+  /// biggest, near the top). It's selected, so the streams shown beside the
+  /// list are its own. (The Roku does the same.)
   List<ApiMatch> _withInitialMatch(List<ApiMatch> list) {
     final ApiMatch? m = widget.initialMatch;
     if (m == null || list.any((ApiMatch x) => x.id == m.id)) return list;
