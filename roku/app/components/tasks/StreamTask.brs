@@ -424,7 +424,7 @@ end sub
 
 function startDownload(u as String) as Object
     ' asked: when the player asked, if it had to wait; active: copies running.
-    d = {url: u, xfers: [], started: CreateObject("roTimespan"), done: false, file: "", took: 0, waiters: [], asked: invalid, hedged: false, active: 0, retries: 0}
+    d = {url: u, xfers: [], started: CreateObject("roTimespan"), done: false, file: "", took: 0, waiters: [], asked: invalid, hedged: false, active: 0, retries: 0, retryIn: 0, since: invalid}
     m.dl[u] = d
     addTransfer(d)
     return d
@@ -488,13 +488,21 @@ sub onDownload(ev as Object)
         return
     end if
     DeleteFile(mine.path)
+    code = ev.GetResponseCode()
     if d.active > 0 then return   ' another copy is still going
-    if d.retries < 2 then
+    ' Tries again a little later each time (0.5, 1, 2, 4 s): straight away, all
+    ' three tries failed within a tenth of a second, on segments the CDN didn't
+    ' have yet just after they were listed (2026-10-04); the player usually has
+    ' ~12 s in hand, so there's time to wait for them.
+    delays = [500, 1000, 2000, 4000]
+    if d.retries < delays.Count() then
+        d.retryIn = delays[d.retries]
         d.retries = d.retries + 1
-        addTransfer(d)
+        d.since = CreateObject("roTimespan")
+        print "[stream] segment error "; code; ": trying again in "; d.retryIn; " ms"
         return
     end if
-    print "[stream] segment FAILED after "; d.started.TotalMilliseconds(); " ms"
+    print "[stream] segment FAILED after "; d.started.TotalMilliseconds(); " ms (error "; code; ")"
     for each sock in d.waiters
         respond(sock, "502 Bad Gateway", "text/plain", invalid)
         sock.Close()
@@ -545,12 +553,25 @@ function askSegment(sock as Object, u as String) as Boolean
     return false
 end function
 
+' Every turn of the loop: start the retries that are due (see onDownload).
+sub checkRetries()
+    for each u in m.dl
+        d = m.dl[u]
+        if d.since <> invalid and d.since.TotalMilliseconds() >= d.retryIn then
+            d.since = invalid
+            ' (no second copy of a retry: the time it's run counts from the first try)
+            d.hedged = true
+            addTransfer(d)
+        end if
+    end for
+end sub
+
 ' Every half second: second copies for slow downloads, and cleanup.
 sub tick()
     stale = []
     for each u in m.dl
         d = m.dl[u]
-        if not d.done and not d.hedged and d.started.TotalMilliseconds() > m.stuckMs then
+        if not d.done and not d.hedged and d.active > 0 and d.started.TotalMilliseconds() > m.stuckMs then
             d.hedged = true
             print "[stream] segment slow after "; d.started.TotalMilliseconds(); " ms: starting a second copy"
             addTransfer(d)
@@ -627,6 +648,7 @@ sub serve()
     while true
         ev = wait(500, m.port)
         checkPlaylist()
+        checkRetries()
         if ev = invalid then
             tick()
         else if type(ev) = "roSGNodeEvent" and ev.getField() = "quit" then

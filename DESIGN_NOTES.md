@@ -490,6 +490,13 @@ buffered. Prefetch alone gains little, because the player asks for a segment
 almost as soon as the playlist lists it; hiding the newest segment from the
 player would buy a whole segment of cushion, at ~6 s more delay behind live.
 
+A download that fails outright is tried again after 0.5, 1, 2 and 4 s, with
+the CDN's error code logged. The tries used to go straight after one another,
+and on 2026-10-04 four admin segments failed all three within a tenth of a
+second (other segments loading fine meanwhile, so most likely not yet on the
+CDN just after being listed); the player skipped the one it needed and froze.
+Spaced out, the tries span ~7.5 s, within the ~12 s the player has in hand.
+
 Things that were tried and didn't pan out: headers/HTTP-2 tricks for the
 playlist (it's the TLS fingerprint), and a server relay that re-serves the video
 (works, but unnecessary once the Roku can unwrap segments itself).
