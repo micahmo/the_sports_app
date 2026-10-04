@@ -34,6 +34,9 @@ sub work()
     m.fps = 0
     ' The last good playlist, and a new link being found (see playlist()).
     m.lastPlaylist = invalid
+    ' The segments the player is offered, kept longer than the source lists
+    ' them (see longerWindow()).
+    m.win = invalid
     m.minter = invalid
     m.mintTry = invalid
     m.port = CreateObject("roMessagePort")
@@ -148,9 +151,83 @@ function playlist(url as String) as Dynamic
         out.Push(line)
     end for
     prefetch(segs)
+    if main then out = longerWindow(out)
     result = out.Join(Chr(10)) + Chr(10)
     if main then m.lastPlaylist = result
     return result
+end function
+
+' The playlist the player gets lists the last 30 s of segments, not just the
+' few the source lists (some list only 12 s). With a high-bitrate stream the
+' player's buffer fills before it holds that many seconds, so it asks for its
+' next segment late; by then the source had dropped it from the list, and the
+' player skipped ahead and froze the picture for as long, once a minute (a
+' 12.5 Mbps admin stream, 2026-10-04). The source's servers still have the
+' segments, so a late one is fetched as usual. Starts over when the link
+' changes or the numbering jumps, and leaves alone playlists with anything
+' this doesn't follow (discontinuities, an end).
+function longerWindow(lines as Object) as Object
+    keepSeconds = 30
+    header = []
+    items = []
+    tags = []
+    seq = -1
+    for each line in lines
+        if Left(line, 22) = "#EXT-X-MEDIA-SEQUENCE:" then seq = Mid(line, 23).Trim().ToInt()
+        if Instr(1, line, "DISCONTINUITY") > 0 or line = "#EXT-X-ENDLIST" then
+            m.win = invalid
+            return lines
+        end if
+        if line = "" then
+            ' (blank lines carry nothing)
+        else if Left(line, 1) <> "#" then
+            tags.Push(line)
+            items.Push({lines: tags, dur: m.segDur[segTarget(line)]})
+            tags = []
+        else if items.Count() = 0 and Left(line, 8) <> "#EXTINF:" and Left(line, 25) <> "#EXT-X-PROGRAM-DATE-TIME:" then
+            header.Push(line)
+        else
+            tags.Push(line)
+        end if
+    end for
+    if seq < 0 or items.Count() = 0 then
+        m.win = invalid
+        return lines
+    end if
+    for i = 0 to items.Count() - 1
+        items[i].seq = seq + i
+    end for
+    ' Carry on from what's kept, or start over.
+    w = m.win
+    if w = invalid or w.url <> m.playlistUrl or items[0].seq > w.items.Peek().seq + 1 or items.Peek().seq < w.items.Peek().seq then
+        w = {url: m.playlistUrl, items: []}
+    end if
+    for each it in items
+        if w.items.Count() = 0 or it.seq > w.items.Peek().seq then w.items.Push(it)
+    end for
+    total = 0
+    for each it in w.items
+        if it.dur <> invalid then total = total + it.dur
+    end for
+    while w.items.Count() > 1 and w.items[0].dur <> invalid and total - w.items[0].dur >= keepSeconds
+        total = total - w.items[0].dur
+        w.items.Shift()
+    end while
+    m.win = w
+    out = []
+    for each line in header
+        if Left(line, 22) = "#EXT-X-MEDIA-SEQUENCE:" then line = "#EXT-X-MEDIA-SEQUENCE:" + w.items[0].seq.ToStr()
+        out.Push(line)
+    end for
+    for each it in w.items
+        out.Append(it.lines)
+    end for
+    return out
+end function
+
+' The source's address in one of our /seg?u= lines.
+function segTarget(line as String) as String
+    return CreateObject("roUrlTransfer").Unescape(Mid(line, 8))
 end function
 
 ' A new link from a fresh browser session (MintTask), while this one keeps

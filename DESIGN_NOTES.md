@@ -522,6 +522,25 @@ a hidden same-site iframe inside the player page (tested: its link can be read,
 the new one. The iframe tended to land on the same server as the page, so it
 would need retries too.
 
+### Short playlists and high bitrates
+
+Some sources list only their last 4 segments (12 s). On 2026-10-04 an admin
+stream at 12.5 Mbps froze the Roku's picture for ~4 s once a minute, like
+clockwork, with no spinner: the player's position jumped ~4 s ahead and then
+held. The segments were fine (continuous timestamps, fast downloads) and the
+player was ~24 s behind live with its buffer ~94% full. Of 60 segments
+published in 3 minutes it asked for 56: its buffer fills by size before it
+holds enough seconds, so it asks for its next segment late, finds it gone from
+the list and skips. (At 7 Mbps the night before, no skips.)
+
+The proxy now offers the player the last 30 s of segments (`longerWindow` in
+StreamTask): the source's CDN still serves a segment minutes after it leaves
+the list (checked 5 min later). It starts over when the link changes or the
+numbering jumps, and passes through playlists with discontinuities or an end.
+No freezes after. Phone and desktop don't need it: hls.js limits its buffer by
+time (30 s) before size (60 MB), so it fetches each segment as soon as it's
+listed.
+
 ## Debugging recipe
 
 `AndroidWebViewController.enableDebugging(true)` is not enabled in the committed
