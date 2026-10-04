@@ -204,16 +204,32 @@ function longerWindow(lines as Object) as Object
         m.win = invalid
         return lines
     end if
-    for i = 0 to items.Count() - 1
-        items[i].seq = seq + i
-    end for
-    ' Carry on from what's kept, or start over.
+    ' Carry on from what's kept. The player gets our own numbering, one after
+    ' another, so a jump in the source's never empties the list: when a slow
+    ' answer meant we missed a segment or two, the player loses just those, not
+    ' the older ones it's still playing (an emptied list made it skip, then again
+    ' a minute later, 2026-10-04). Starts over only if the numbering restarts.
     w = m.win
-    if w = invalid or w.url <> m.playlistUrl or items[0].seq > w.items.Peek().seq + 1 or items.Peek().seq < w.items.Peek().seq then
-        w = {url: m.playlistUrl, items: []}
+    if w <> invalid then
+        last = w.lastSrc
+        if seq + items.Count() - 1 < last - 100 or seq > last + 100 then
+            print "[stream] playlist numbering restarted: starting the list over"
+            w = invalid
+        else if seq > last + 1 then
+            missed = seq - last - 1
+            print "[stream] playlist: missed "; missed; " segment(s) while the source was slow"
+            w.offset = w.offset - missed
+        end if
     end if
-    for each it in items
-        if w.items.Count() = 0 or it.seq > w.items.Peek().seq then w.items.Push(it)
+    if w = invalid then w = {offset: 0, lastSrc: seq - 1, items: []}
+    for i = 0 to items.Count() - 1
+        src = seq + i
+        if src > w.lastSrc then
+            it = items[i]
+            it.seq = src + w.offset
+            w.items.Push(it)
+            w.lastSrc = src
+        end if
     end for
     total = 0
     for each it in w.items

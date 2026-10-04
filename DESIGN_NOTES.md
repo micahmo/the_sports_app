@@ -536,8 +536,15 @@ the list and skips. (At 7 Mbps the night before, no skips.)
 
 The proxy now offers the player the last 45 s of segments (`longerWindow` in
 StreamTask): the source's CDN still serves a segment minutes after it leaves
-the list (checked 5 min later). It starts over when the link changes or the
-numbering jumps, and passes through playlists with discontinuities or an end.
+the list (checked 5 min later). It passes through playlists with
+discontinuities or an end. The player gets the proxy's own numbering, one after
+another: at first the list started over whenever the source's numbering
+jumped, and a slow playlist answer could skip a number, so the list emptied to
+the source's 4, the player (~20 s behind) fell off it and skipped, then again a
+minute later (twice on 2026-10-04, ~20 s after a slow answer each time; the
+source's timestamps were continuous). Now a jump only costs the segments
+actually missed (logged as "missed N segment(s)"), and the list starts over
+only if the numbering restarts (by 100 or more).
 No freezes after. Phone and desktop don't need it: hls.js limits its buffer by
 time (30 s) before size (60 MB), so it fetches each segment as soon as it's
 listed.
