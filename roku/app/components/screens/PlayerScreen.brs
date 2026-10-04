@@ -30,6 +30,14 @@ sub init()
     hideStatus()
 
     m.restarts = 0
+    ' How much further behind live to start: none, until a reconnect shows the
+    ' stream is flaky (see onHoldBack).
+    m.holdBack = 0
+    m.holdPending = false
+    m.holding = false
+    m.holdCover = m.top.findNode("holdCover")
+    m.holdTimerBack = m.top.createChild("Timer")
+    m.holdTimerBack.observeField("fire", "onHoldBack")
 
     ' The streams row (this game's other streams, recent games), its pill, and
     ' the note after falling back. See the phone app's streams_row.dart.
@@ -241,6 +249,8 @@ sub switchTo(s as Object, fallback as Boolean)
     m.tried[s.embedUrl] = true
     m.stream = s
     m.restarts = 0
+    m.holdBack = 0
+    endHold()
     closeRow()
     m.note.visible = false
     start()
@@ -306,6 +316,20 @@ end sub
 sub onVideoState()
     st = m.video.state
     print "[player] "; st; " "; m.video.errorMsg
+    if st = "playing" and m.holdPending then
+        ' Reconnected: wait a little longer behind the spinner, paused, while
+        ' the source publishes on. Its segments stay listed (StreamTask keeps
+        ' 45 s), so it resumes that much behind live with that much in hand.
+        m.holdPending = false
+        m.holding = true
+        m.stall.control = "stop"
+        m.holdCover.visible = true
+        m.video.control = "pause"
+        m.holdTimerBack.duration = m.holdBack
+        m.holdTimerBack.control = "start"
+        print "[player] holding back "; m.holdBack; " s after reconnecting"
+        return
+    end if
     if st = "playing" then
         hideStatus()
         m.stall.control = "stop"
@@ -334,11 +358,28 @@ sub onVideoState()
         m.spinner.control = "start"
         m.stall.control = "stop"
         m.stall.control = "start"
-    else if st = "paused" and not m.status.visible then
+    else if st = "paused" and (m.holding or m.status.visible) then
+        ' (holding back after a reconnect, or paused for something else)
+    else if st = "paused" then
         hideStatus()
     else if st = "error" then
         reconnect("Playback failed: " + m.video.errorMsg)
     end if
+end sub
+
+sub onHoldBack()
+    if not m.holding then return
+    m.holding = false
+    m.holdCover.visible = false
+    m.video.control = "resume"
+end sub
+
+' No hold back in progress or waiting (a new stream, a reconnect, leaving).
+sub endHold()
+    m.holdPending = false
+    m.holding = false
+    m.holdCover.visible = false
+    m.holdTimerBack.control = "stop"
 end sub
 
 sub onHoldTimer()
@@ -749,6 +790,7 @@ end sub
 ' network up count, and three of those without playback mean the stream itself
 ' is gone, so say so. (The phone and desktop apps heal the same way.)
 sub reconnect(reason as String)
+    endHold()
     m.stall.control = "stop"
     m.retry.control = "stop"
     m.video.control = "stop"
@@ -770,6 +812,10 @@ sub reconnect(reason as String)
     end if
     m.restarts = m.restarts + 1
     print "[player] reconnecting ("; m.restarts; "): "; reason
+    ' A stream that hung this long hangs again: start it further behind live,
+    ' keeping the cushion the hang would have left.
+    m.holdBack = 12
+    m.holdPending = true
     showWorking("Reconnecting...")
     if m.restarts = 1 then
         start()
@@ -781,6 +827,7 @@ sub reconnect(reason as String)
 end sub
 
 sub onClosing()
+    endHold()
     saveBest()
     m.stall.control = "stop"
     m.retry.control = "stop"

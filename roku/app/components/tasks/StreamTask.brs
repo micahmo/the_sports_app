@@ -157,7 +157,7 @@ function playlist(url as String) as Dynamic
     return result
 end function
 
-' The playlist the player gets lists the last 30 s of segments, not just the
+' The playlist the player gets lists the last 45 s of segments, not just the
 ' few the source lists (some list only 12 s). With a high-bitrate stream the
 ' player's buffer fills before it holds that many seconds, so it asks for its
 ' next segment late; by then the source had dropped it from the list, and the
@@ -166,8 +166,14 @@ end function
 ' segments, so a late one is fetched as usual. Starts over when the link
 ' changes or the numbering jumps, and leaves alone playlists with anything
 ' this doesn't follow (discontinuities, an end).
+'
+' It also keeps the cushion a flaky stream earns: after a hang the player
+' carries on from where it paused, behind live by the hang, and the segments
+' it hasn't played stay listed, so the next hang plays through. (45 s leaves
+' room for that and the player's own ~12 s; see PlayerScreen's holdBack for
+' the cushion after a reconnect.)
 function longerWindow(lines as Object) as Object
-    keepSeconds = 30
+    keepSeconds = 45
     header = []
     items = []
     tags = []
