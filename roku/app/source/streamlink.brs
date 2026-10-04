@@ -192,8 +192,14 @@ function fetchInPage(url as String) as Dynamic
     return text
 end function
 
+' The page fetches a URL (only its Chrome handshake gets the playlists) and
+' hands back the status, a newline, and the text.
+function fetchScript() as String
+    return "var done=arguments[arguments.length-1];fetch(arguments[0]).then(function(r){return r.text().then(function(t){done(r.status+'\n'+t)})}).catch(function(e){done('0\n'+e)});"
+end function
+
 function fetchInPageOnce(url as String) as Dynamic
-    js = "var done=arguments[arguments.length-1];fetch(arguments[0]).then(function(r){return r.text().then(function(t){done(r.status+'\n'+t)})}).catch(function(e){done('0\n'+e)});"
+    js = fetchScript()
     ' They take ~130 ms; waiting longer holds up everything the proxy serves.
     v = wd(m.driver, "POST", "/session/" + m.sid + "/execute/async", {script: js, args: [url]}, 8000)
     if not isString(v) then

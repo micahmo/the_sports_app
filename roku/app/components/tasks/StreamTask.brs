@@ -37,6 +37,10 @@ sub work()
     ' The segments the player is offered, kept longer than the source lists
     ' them (see longerWindow()).
     m.win = invalid
+    ' The playlist fetch under way (see askPlaylist) and the player's requests
+    ' waiting on it.
+    m.plFetch = invalid
+    m.plWaiters = []
     m.minter = invalid
     m.mintTry = invalid
     m.port = CreateObject("roMessagePort")
@@ -121,14 +125,14 @@ end sub
 ' segments, without noticing. (Some sources' servers drop a stream every few
 ' minutes; reloading the page in the same session only gave the dead link back.)
 function playlist(url as String) as Dynamic
-    main = (url = m.playlistUrl)
     text = fetchInPage(url)
-    if text = invalid then
-        if not main then return invalid
-        startMint()
-        if m.lastPlaylist <> invalid then print "[stream] serving the last playlist while a new link is found"
-        return m.lastPlaylist
-    end if
+    if text = invalid then return invalid
+    return rewritePlaylist(url, text)
+end function
+
+' The source's playlist with its entries pointed at this proxy.
+function rewritePlaylist(url as String, text as String) as String
+    main = (url = m.playlistUrl)
     esc = CreateObject("roUrlTransfer")
     out = []
     ' Each segment's length (its #EXTINF), for measure().
@@ -235,6 +239,120 @@ end function
 function segTarget(line as String) as String
     return CreateObject("roUrlTransfer").Unescape(Mid(line, 8))
 end function
+
+' The player asked for the playlist. It gets the source's newest if that comes
+' within a moment (it takes ~100 ms), else the last good one: the source is
+' sometimes slow to answer (17 s, several times on 2026-10-04), and waiting
+' held up the whole proxy, so the player couldn't get even the segments it had
+' in hand and showed the spinner. Now it plays on through what it has. A fetch
+' that fails twice finds a new link, as before. Starting, it waits for the
+' first.
+function askPlaylist(sock as Object) as Boolean
+    if m.plFetch = invalid then startPlaylistFetch(false)
+    at = invalid
+    if m.lastPlaylist <> invalid then at = CreateObject("roTimespan")
+    m.plWaiters.Push({sock: sock, at: at})
+    return false
+end function
+
+sub startPlaylistFetch(retry as Boolean)
+    js = fetchScript()
+    x = CreateObject("roUrlTransfer")
+    x.SetMessagePort(m.port)
+    x.SetUrl(m.driver + "/session/" + m.sid + "/execute/async")
+    x.AddHeader("Content-Type", "application/json")
+    x.RetainBodyOnError(true)
+    x.SetRequest("POST")
+    f = {x: x, id: x.GetIdentity().ToStr(), url: m.playlistUrl, started: CreateObject("roTimespan"), retry: retry, slow: false}
+    m.plFetch = f
+    if not x.AsyncPostFromString(FormatJson({script: js, args: [m.playlistUrl]})) then playlistFetched(f, invalid)
+end sub
+
+' Every turn of the loop: a fetch with no answer in 8 s has failed, and a
+' player that has waited 1.5 s gets the last playlist.
+sub checkPlaylist()
+    f = m.plFetch
+    if f <> invalid and f.started.TotalMilliseconds() > 8000 then
+        f.x.AsyncCancel()
+        print "[stream] playlist fetch: no reply from the server"
+        playlistFetched(f, invalid)
+        return
+    end if
+    if m.lastPlaylist = invalid then return
+    keep = []
+    for each w in m.plWaiters
+        if w.at <> invalid and w.at.TotalMilliseconds() > 1500 then
+            if f <> invalid and not f.slow then
+                f.slow = true
+                print "[stream] playlist slow: serving the last one meanwhile"
+            end if
+            answerPlaylist(w.sock, m.lastPlaylist)
+        else
+            keep.Push(w)
+        end if
+    end for
+    m.plWaiters = keep
+end sub
+
+' The page's answer (from the loop's roUrlEvent): the playlist's text or invalid.
+sub onPlaylistEvent(ev as Object)
+    if ev.GetInt() <> 1 then return
+    f = m.plFetch
+    text = invalid
+    json = ParseJson(ev.GetString())
+    v = invalid
+    if json <> invalid then v = json.value
+    if not isString(v) then
+        if v = invalid then print "[stream] playlist fetch: no reply from the server" else print "[stream] playlist fetch: "; Left(FormatJson(v), 200)
+    else
+        nl = Instr(1, v, Chr(10))
+        body = Mid(v, nl + 1)
+        if nl = 0 or Left(v, nl - 1) <> "200" or Left(body, 7) <> "#EXTM3U" then
+            print "[stream] playlist fetch: "; Left(v, 60)
+        else
+            text = body
+        end if
+    end if
+    playlistFetched(f, text)
+end sub
+
+sub playlistFetched(f as Object, text as Dynamic)
+    m.plFetch = invalid
+    if quitRequested() then return
+    ' The link changed meanwhile: ask the new one.
+    if f.url <> m.playlistUrl then
+        if m.plWaiters.Count() > 0 then startPlaylistFetch(false)
+        return
+    end if
+    if text = invalid then
+        if not f.retry then
+            print "[stream] retrying playlist fetch"
+            startPlaylistFetch(true)
+            return
+        end if
+        startMint()
+        if m.lastPlaylist <> invalid then print "[stream] serving the last playlist while a new link is found"
+        result = m.lastPlaylist
+    else
+        result = rewritePlaylist(f.url, text)
+        print "[stream] playlist "; f.started.TotalMilliseconds(); " ms"
+    end if
+    for each w in m.plWaiters
+        answerPlaylist(w.sock, result)
+    end for
+    m.plWaiters = []
+end sub
+
+sub answerPlaylist(sock as Object, text as Dynamic)
+    if text = invalid then
+        respond(sock, "502 Bad Gateway", "text/plain", invalid)
+    else
+        ba = CreateObject("roByteArray")
+        ba.FromAsciiString(text)
+        respond(sock, "200 OK", "application/vnd.apple.mpegurl", ba)
+    end if
+    sock.Close()
+end sub
 
 ' A new link from a fresh browser session (MintTask), while this one keeps
 ' serving. One at a time, and not more often than every 10 seconds.
@@ -492,6 +610,7 @@ sub serve()
     conns = {}
     while true
         ev = wait(500, m.port)
+        checkPlaylist()
         if ev = invalid then
             tick()
         else if type(ev) = "roSGNodeEvent" and ev.getField() = "quit" then
@@ -499,7 +618,7 @@ sub serve()
         else if type(ev) = "roSGNodeEvent" and ev.getField() = "result" then
             onMinted(ev.getData())
         else if type(ev) = "roUrlEvent" then
-            onDownload(ev)
+            if m.plFetch <> invalid and ev.GetSourceIdentity().ToStr() = m.plFetch.id then onPlaylistEvent(ev) else onDownload(ev)
         else if type(ev) = "roSocketEvent" then
             id = ev.getSocketID()
             if id = srv.GetID() then
@@ -536,6 +655,10 @@ sub serve()
     for each k in conns
         conns[k].sock.Close()
     end for
+    if m.plFetch <> invalid then m.plFetch.x.AsyncCancel()
+    for each w in m.plWaiters
+        w.sock.Close()
+    end for
     cancelDownloads()
     srv.Close()
     ' A new link still being found: stop it, or close its session if it's done.
@@ -552,10 +675,10 @@ function handle(sock as Object, req as String) as Boolean
     path = req.Split(" ")[1]
     esc = CreateObject("roUrlTransfer")
     t = CreateObject("roTimespan")
-    if path = "/live.m3u8" or Left(path, 6) = "/pl?u=" then
-        url = m.playlistUrl
-        if Left(path, 6) = "/pl?u=" then url = esc.Unescape(Mid(path, 7))
-        text = playlist(url)
+    if path = "/live.m3u8" then
+        return askPlaylist(sock)
+    else if Left(path, 6) = "/pl?u=" then
+        text = playlist(esc.Unescape(Mid(path, 7)))
         if text = invalid then
             respond(sock, "502 Bad Gateway", "text/plain", invalid)
         else

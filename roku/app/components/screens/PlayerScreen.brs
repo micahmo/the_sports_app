@@ -839,7 +839,9 @@ end sub
 ' bar instead of the player's own (which never said when it hid again): OK, or
 ' any button but Back (which leaves), shows it for a few seconds, with the
 ' Streams pill. Down opens the streams row; there Left/Right move (starting on
-' the first recent game), OK plays, Up or Back closes it. Play/Pause still pauses.
+' the first recent game), OK plays, Up or Back closes it. Play/Pause only shows
+' the bar like the rest: these are live streams, and a pause would just fall
+' behind live (the phone and desktop apps have no pause either).
 function onKeyEvent(key as String, press as Boolean) as Boolean
     if not press then return false
     ' Any press: the "Switched to" note has done its job, and would sit where
@@ -872,9 +874,6 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
         return true
     end if
     if key = "back" then return false
-    if key = "play" then
-        if m.video.state = "paused" then m.video.control = "resume" else m.video.control = "pause"
-    end if
     if key = "down" and m.bar.visible then
         openRow()
         return true

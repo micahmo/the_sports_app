@@ -237,6 +237,7 @@ the others or is added here as a deliberate gap.
 | Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
+| No pause (live streams only; a pause would just fall behind live) | no pause control | no pause control | Play/Pause shows the title bar like the other buttons |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
 | A source's server dropping the stream mid-game | reload after 20 s (a visible restart) | reload after 20 s (a visible restart) | fresh link in the background, usually unnoticed; see "Servers that drop a stream" |
@@ -533,13 +534,37 @@ published in 3 minutes it asked for 56: its buffer fills by size before it
 holds enough seconds, so it asks for its next segment late, finds it gone from
 the list and skips. (At 7 Mbps the night before, no skips.)
 
-The proxy now offers the player the last 30 s of segments (`longerWindow` in
+The proxy now offers the player the last 45 s of segments (`longerWindow` in
 StreamTask): the source's CDN still serves a segment minutes after it leaves
 the list (checked 5 min later). It starts over when the link changes or the
 numbering jumps, and passes through playlists with discontinuities or an end.
 No freezes after. Phone and desktop don't need it: hls.js limits its buffer by
 time (30 s) before size (60 MB), so it fetches each segment as soon as it's
 listed.
+
+The same window gives a flaky stream a cushion, with no delay for healthy
+ones. After a hang the player carries on from where it paused, behind live by
+the hang, and the segments it hasn't played stay listed, so the next hang of
+that length plays through. (The same source that day also had 17 s playlist
+hangs that hit a fresh link too, so getting a new link sooner wouldn't help.)
+A reconnect (a stall past 20 s) would start at the live edge and lose the
+cushion, so after one the player pauses the new stream for 12 s behind a black
+cover and the spinner (`holdBack` in PlayerScreen) while the source publishes
+on, then resumes 12 s further behind live with those segments in hand
+(tested: resumed ~24 s behind, every segment ready before it was asked for).
+Switching streams starts without it. Phone and desktop can't hold a cushion
+beyond what the source lists (~12 s): hls.js jumps back to live once its next
+segment is gone.
+
+None of that helped while the proxy fetched the playlist and waited: a 17 s
+playlist request held up the whole proxy, so the player couldn't get even the
+segments it had in hand, and spun after ~15 s however far behind live it was.
+The playlist is now fetched in the background like the segments (`askPlaylist`
+in StreamTask): the player gets the source's newest if it comes within 1.5 s
+(it takes ~100 ms), else the last good one, and segments keep flowing. Tested
+with a build that held one playlist fetch in ten for 9 s: segments were served
+all through each hold, no buffering. Phone and desktop already fetch playlists
+in the background (hls.js).
 
 ## Debugging recipe
 
