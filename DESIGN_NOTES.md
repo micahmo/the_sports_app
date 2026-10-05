@@ -237,6 +237,7 @@ the others or is added here as a deliberate gap.
 | Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
+| A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides) |
 | No pause (live streams only; a pause would just fall behind live) | no pause control | no pause control | Play/Pause shows the title bar like the other buttons |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
@@ -392,6 +393,19 @@ the watchdog's jump to live could land *behind* the stuck spot. Now:
 - The takeover logs what it does about trouble (`[player] ...` in `adb logcat`):
   hls.js errors, stuck spots, catching up, and segments that took longer to
   fetch than to play.
+
+Progress means playing on at near normal speed (0.2 s or more per half-second
+check). hls.js nudges the playhead 0.1 s at a time when stuck, and those used
+to count, so in a dead zone the watchdog never read the stream as stalled: the
+picture sat frozen with no word for as long as the network was gone. Now after
+20 s it tells the app, which shows "Waiting for connection…". And when the
+stream plays on by itself after that (the network came back), the page tells
+the app "playing" again: it used to say so only once, so the spinner stayed up
+over the playing stream, sound and all, until the app's next look (up to 10 s).
+Tested on the emulator with the network off for 70 s: the message came up, and
+the spinner lifted ~4 s after the network returned, the same stream playing on.
+The player page is also exactly the screen's height now (the video sat on a
+line of text, 4 px taller, and the page could be scrolled by that).
 
 ### Debugging
 

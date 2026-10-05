@@ -384,8 +384,11 @@ const String _takeoverJs = r'''
   // The stream's own frame rate, from the frames in each segment (see build());
   // 0 until one reads as a standard rate.
   var streamFps = 0;
-  // Whether we have told the app to lift its spinner.
+  // Whether we have told the app to lift its spinner; whether we've since told
+  // it we're stuck, and how many checks in a row have played on since.
   var announced = false;
+  var toldStuck = false;
+  var goodTicks = 0;
   var waitingFor = 0;
   // When we last recovered from a media error, pushed playback past a stuck
   // spot, and caught up with live (the error handler, watch(), catchUp()).
@@ -401,6 +404,8 @@ const String _takeoverJs = r'''
   }
 
   function post(msg) {
+    // The app puts its spinner up for these; say when it plays on (watch()).
+    if (msg === "stalled" || msg === "fatal") { toldStuck = true; goodTicks = 0; }
     try { AppPlayer.postMessage(msg); } catch (e) {}
   }
 
@@ -692,6 +697,9 @@ const String _takeoverJs = r'''
       "<head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
       "<style>*{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;" +
       "-webkit-touch-callout:none;outline:none}</style></head><body></body>";
+    // Exactly the screen and no more: the video sat on a line of text, 4 px
+    // taller than the screen, and the page could be scrolled by that much.
+    document.documentElement.style.cssText = "margin:0;padding:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#000";
     document.body.style.cssText = "margin:0;padding:0;background:#000;overflow:hidden";
 
     video = document.createElement("video");
@@ -699,7 +707,7 @@ const String _takeoverJs = r'''
     video.autoplay = true;
     video.playsInline = true;
     video.setAttribute("playsinline", "");
-    video.style.cssText = "width:100vw;height:100vh;object-fit:contain;background:#000";
+    video.style.cssText = "display:block;width:100vw;height:100vh;object-fit:contain;background:#000";
     // Without a poster, Android's WebView paints a big grey play button until
     // the first frame arrives. A transparent one leaves the black background.
     video.poster = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -865,9 +873,31 @@ const String _takeoverJs = r'''
     // per check (more if timers run late). Our own seeks don't count, and
     // since the jump to live below never jumps back with nothing ahead, a
     // stream that has run dry can't replay its last seconds as "progress".
+    // Nor do hls.js's nudges at a stall (0.1 s every few seconds): counted,
+    // a dead zone never read as stalled, and the picture sat frozen with no
+    // word for as long as the network was gone.
     var moved = video.currentTime - lastTime;
-    if (lastTime >= 0 && moved > 0 && moved < 3) lastProgressAt = Date.now();
-    if (video.currentTime === lastTime) {
+    if (lastTime < 0 || moved < 0 || moved >= 3) {
+      // Starting, or a seek: measure from here.
+      stalledFor = 0;
+      lastTime = video.currentTime;
+      return;
+    }
+    if (moved >= 0.2) {
+      lastProgressAt = Date.now();
+      // Playing on by itself after the app was told it was stuck (the
+      // network came back): lift the spinner, which otherwise stayed up over
+      // the stream, sound and all, until the app's next look.
+      if (toldStuck && ++goodTicks >= 2) {
+        toldStuck = false;
+        post("playing");
+      }
+      stalledFor = 0;
+      lastTime = video.currentTime;
+      catchUp();
+    } else {
+      goodTicks = 0;
+      lastTime = video.currentTime;
       stalledFor += 1;
       // Nothing for 20s, beyond what the retries and hops below fix: the
       // stream link has likely expired, or the network is gone. The app loads
@@ -900,10 +930,6 @@ const String _takeoverJs = r'''
         if (!toLiveEdge()) video.currentTime = Math.min(video.currentTime + 1, b.end(b.length - 1) - 0.5);
         video.play().catch(function () {});
       }
-    } else {
-      stalledFor = 0;
-      lastTime = video.currentTime;
-      catchUp();
     }
   }
 
