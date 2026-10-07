@@ -21,10 +21,10 @@ Future<void> main() async {
   await loadThemeMode();
   runApp(const SportsApp());
   // Desktop: a newer release? Asked a little after startup, so it doesn't hold
-  // up the first screen.
+  // up the first screen, then again later on Home (see Updater.checkAutomatically).
   if (Updater.available) {
     Future<void>.delayed(const Duration(seconds: 3), () {
-      if (_navigatorKey.currentContext != null) Updater.checkAtStartup(() => _navigatorKey.currentContext!);
+      Updater.checkAutomatically(_navigatorKey);
     });
   }
 }
@@ -45,7 +45,7 @@ class SportsApp extends StatelessWidget {
           themeMode: mode,
           home: const SportsScreen(),
           navigatorKey: _navigatorKey,
-          navigatorObservers: <NavigatorObserver>[keepFreshRoutes],
+          navigatorObservers: <NavigatorObserver>[keepFreshRoutes, Updater.observer],
           // Esc goes back from any screen, for desktop. Screens that need Esc
           // for something else first (the player's fullscreen) handle it
           // themselves before it gets here.

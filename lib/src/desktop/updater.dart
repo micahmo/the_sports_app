@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_version.dart';
+import '../generated/app_data.dart';
 import 'window_state.dart';
 
 /// Desktop: finds a newer release on GitHub, offers it, and installs it over
@@ -29,13 +30,47 @@ class Updater {
 
   static Future<void> setChecksAutomatically(bool on) async => (await SharedPreferences.getInstance()).setBool(_autoKey, on);
 
-  /// At every startup, if it's switched on in Settings.
-  static Future<void> checkAtStartup(BuildContext Function() context) async {
-    if (!available || !await checksAutomatically()) return;
+  static GlobalKey<NavigatorState>? _navigator;
+  static DateTime? _checkedAt;
+  static bool _offering = false;
+
+  /// A version the user said "Not now" to: not offered again automatically
+  /// until the app starts again (Settings' "Check now" still offers it).
+  static String? _declined;
+
+  /// Add to the app's navigatorObservers: coming back to Home checks.
+  static final NavigatorObserver observer = _BackHome();
+
+  /// Only on Home, so the dialog never lands on a game or mid-task: at startup,
+  /// when the window gets focus with Home showing, and when the user comes back
+  /// to Home. At most every UpdateTuning.checkEveryMinutes, as a window left
+  /// open never starts again. Only if it's switched on in Settings.
+  static void checkAutomatically(GlobalKey<NavigatorState> navigator) {
+    if (!available) return;
+    _navigator = navigator;
+    _checkIfDue();
+    AppLifecycleListener(onResume: _checkIfDue);
+  }
+
+  static bool get _atHome => !(_navigator?.currentState?.canPop() ?? true);
+
+  static void _checkIfDue() {
+    final DateTime? at = _checkedAt;
+    if (at == null || DateTime.now().difference(at) >= const Duration(minutes: UpdateTuning.checkEveryMinutes)) unawaited(_checkAutomatically());
+  }
+
+  static Future<void> _checkAutomatically() async {
+    if (!_atHome || _offering || !await checksAutomatically()) return;
+    _checkedAt = DateTime.now();
     final _Release? release = await _latest();
-    if (release == null) return;
-    final BuildContext c = context();
-    if (release.isNewer && c.mounted) await _offer(c, release);
+    if (release == null || !release.isNewer || release.version == _declined) return;
+    // Left Home before the answer came: offer it when they're back, not in an hour.
+    if (!_atHome || _offering) {
+      _checkedAt = null;
+      return;
+    }
+    final BuildContext? c = _navigator?.currentContext;
+    if (c != null && c.mounted) await _offer(c, release);
   }
 
   /// From Settings: always checks, and says so when there's nothing new.
@@ -69,6 +104,7 @@ class Updater {
   }
 
   static Future<void> _offer(BuildContext context, _Release release) async {
+    _offering = true;
     final bool? update = await showDialog<bool>(
       context: context,
       builder: (BuildContext c) => AlertDialog(
@@ -97,6 +133,8 @@ class Updater {
         ],
       ),
     );
+    _offering = false;
+    if (update != true) _declined = release.version;
     if (update == true && context.mounted) await _install(context, release);
   }
 
@@ -202,6 +240,14 @@ try {
   }
 
   static void _say(BuildContext context, String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+}
+
+class _BackHome extends NavigatorObserver {
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    // Wait for the screen to finish closing, so Home is all that's left.
+    if (previousRoute?.isFirst ?? false) Future<void>.delayed(const Duration(milliseconds: 500), Updater._checkIfDue);
+  }
 }
 
 class _Release {

@@ -49,6 +49,11 @@
     "slowStartMs": 20000
   },
 
+  "updates": {
+    "_about": "How often the apps look for a newer release while running: the Roku on a timer, the desktop app on Home only (when its window gets focus, and on coming back to Home). Android updates through Obtainium.",
+    "checkEveryMinutes": 60
+  },
+
   "layout": {
     "_about": "Screen spacing, in pixels of a 1920-wide screen: the Roku draws at exactly that, and the desktop app (which scales its 1360-wide layout to the window) takes the same share of the width. margin: either side of the TV's screen, wide to stay clear of a TV's cropped edges. desktopMargin: the desktop's, smaller (a monitor shows its edges), both beside and above the screen's title, as the TV's title sits about as far from the top as from the side. gap: between cards side by side. sectionGap: above each section's heading.",
     "margin": 96,

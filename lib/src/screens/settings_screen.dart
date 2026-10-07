@@ -148,7 +148,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               SwitchListTile(
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                                title: const Text('Check for updates when the app starts'),
+                                title: const Text('Check for updates automatically'),
                                 subtitle: const Text('Version $appVersion'),
                                 value: _autoUpdate,
                                 onChanged: (bool on) {

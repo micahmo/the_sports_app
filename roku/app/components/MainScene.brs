@@ -35,6 +35,7 @@ sub init()
     if appVersion() <> "" then
         checkForUpdate()
         m.updateTimer = m.top.findNode("updateTimer")
+        m.updateTimer.duration = appUpdates().checkEveryMinutes * 60
         m.updateTimer.observeField("fire", "checkForUpdate")
         m.updateTimer.control = "start"
     end if

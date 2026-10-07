@@ -44,6 +44,11 @@ function appLayout() as Object
     return {margin: 96, desktopMargin: 56, gap: 24, sectionGap: 34}
 end function
 
+' Update checks while running (see the JSON).
+function appUpdates() as Object
+    return {checkEveryMinutes: 60}
+end function
+
 ' The player's wording, the same on every app; {stream} is filled in.
 function appPlayerText() as Object
     return {"streamsPill": "Streams", "thisGame": "THIS GAME", "recent": "RECENT", "notPlayed": "Not played yet", "stoppedWorking": "{stream} stopped working", "trying": "Trying {stream}…", "switchedTo": "Switched to {stream}", "switchingDown": "Weak connection · Switching to {quality}…", "switchingUp": "Connection improved · Switching to {quality}…", "weakConnection": "Weak connection", "slowConnection": "Still loading · your connection is slow", "slowSource": "Still loading · the stream is slow to respond"}

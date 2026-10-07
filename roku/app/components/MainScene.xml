@@ -17,6 +17,6 @@
     <!-- Keeps what's showing current; see onFreshTimer. -->
     <Timer id="freshTimer" duration="60" repeat="true" />
     <!-- The app tends to stay open on the TV, so look for a release hourly too. -->
-    <Timer id="updateTimer" duration="3600" repeat="true" />
+    <Timer id="updateTimer" repeat="true" />
   </children>
 </component>

@@ -106,6 +106,11 @@ abstract final class TvLayout {
   static const int sectionGap = 34;
 }
 
+/// Update checks while running (see the JSON).
+abstract final class UpdateTuning {
+  static const int checkEveryMinutes = 60;
+}
+
 /// The player's wording, the same on every app; {stream} is filled in.
 abstract final class PlayerText {
   static const String streamsPill = 'Streams';

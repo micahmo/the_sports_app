@@ -35,7 +35,8 @@ def load():
     player_text = {k: v for k, v in data['playerText'].items() if not k.startswith('_')}
     player_icons = {k: v for k, v in data['playerIcons'].items() if not k.startswith('_')}
     layout = {k: v for k, v in data['layout'].items() if not k.startswith('_')}
-    return sports, data['defaultSportIcon'], sources, palette, player, player_text, player_icons, layout
+    updates = {k: v for k, v in data['updates'].items() if not k.startswith('_')}
+    return sports, data['defaultSportIcon'], sources, palette, player, player_text, player_icons, layout, updates
 
 
 def q(s):
@@ -50,7 +51,7 @@ def dq(s):
     return "'" + s + "'"
 
 
-def dart(sports, default_icon, sources, palette, player, player_text, player_icons, layout):
+def dart(sports, default_icon, sources, palette, player, player_text, player_icons, layout, updates):
     out = [
         f'// {HEADER}',
         '// ignore_for_file: constant_identifier_names',
@@ -79,6 +80,8 @@ def dart(sports, default_icon, sources, palette, player, player_text, player_ico
     out += [f'  static const int {k} = {int(v)};' for k, v in player.items()]
     out += ['}', '', '/// Screen spacing, in pixels of a 1920-wide TV screen (see the JSON).', 'abstract final class TvLayout {']
     out += [f'  static const int {k} = {int(v)};' for k, v in layout.items()]
+    out += ['}', '', '/// Update checks while running (see the JSON).', 'abstract final class UpdateTuning {']
+    out += [f'  static const int {k} = {int(v)};' for k, v in updates.items()]
     out += ['}', '', '/// The player\'s wording, the same on every app; {stream} is filled in.', 'abstract final class PlayerText {']
     out += [f'  static const String {k} = {dq(v)};' for k, v in player_text.items()]
     out += ['}', '', '/// The player\'s icons, the same on every app.', 'abstract final class PlayerIcons {']
@@ -87,7 +90,7 @@ def dart(sports, default_icon, sources, palette, player, player_text, player_ico
     return '\n'.join(out)
 
 
-def brs(sports, default_icon, sources, palette, player, player_text, player_icons, layout):
+def brs(sports, default_icon, sources, palette, player, player_text, player_icons, layout, updates):
     def aa(pairs):
         return '{' + ', '.join(f'{q(k)}: {q(v)}' for k, v in pairs) + '}'
     out = [f"' {HEADER}", '']
@@ -126,6 +129,10 @@ def brs(sports, default_icon, sources, palette, player, player_text, player_icon
             'function appLayout() as Object',
             '    return {' + ', '.join(f'{k}: {int(v)}' for k, v in layout.items()) + '}',
             'end function', '',
+            "' Update checks while running (see the JSON).",
+            'function appUpdates() as Object',
+            '    return {' + ', '.join(f'{k}: {int(v)}' for k, v in updates.items()) + '}',
+            'end function', '',
             "' The player's wording, the same on every app; {stream} is filled in.",
             'function appPlayerText() as Object',
             '    return ' + aa(player_text.items()),
@@ -138,10 +145,10 @@ def brs(sports, default_icon, sources, palette, player, player_text, player_icon
 
 
 def main():
-    sports, default_icon, sources, palette, player, player_text, player_icons, layout = load()
+    sports, default_icon, sources, palette, player, player_text, player_icons, layout, updates = load()
     wanted = {
-        DART: dart(sports, default_icon, sources, palette, player, player_text, player_icons, layout),
-        BRS: brs(sports, default_icon, sources, palette, player, player_text, player_icons, layout),
+        DART: dart(sports, default_icon, sources, palette, player, player_text, player_icons, layout, updates),
+        BRS: brs(sports, default_icon, sources, palette, player, player_text, player_icons, layout, updates),
     }
     check = '--check' in sys.argv
     stale = []
