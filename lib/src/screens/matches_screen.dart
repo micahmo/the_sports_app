@@ -435,6 +435,7 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
       // Keep pull-to-refresh usable while loading, but dismiss immediately:
       return RefreshIndicator(
         onRefresh: _refreshMatchesQuiet,
+        notificationPredicate: pullToRefresh,
         // The spinner in the middle of the screen, the header above it.
         child: Stack(
           fit: StackFit.expand,
@@ -448,6 +449,7 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
     if (snap.hasError) {
       return RefreshIndicator(
         onRefresh: _refreshMatchesQuiet,
+        notificationPredicate: pullToRefresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: <Widget>[
@@ -479,6 +481,7 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
 
       return RefreshIndicator(
         onRefresh: _refreshMatchesQuiet,
+        notificationPredicate: pullToRefresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: <Widget>[
@@ -495,6 +498,7 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
     // Header, then the games as one rounded card built row by row.
     return RefreshIndicator(
       onRefresh: _refreshMatchesQuiet,
+      notificationPredicate: pullToRefresh,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),

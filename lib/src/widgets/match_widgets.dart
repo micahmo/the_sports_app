@@ -11,6 +11,10 @@ import '../theme.dart';
 /// A mouse-and-keyboard platform, where sideways-swiping rows don't work.
 bool get isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
+/// Pull to refresh is for phones. Desktop has a refresh button, and a
+/// trackpad's scroll counts as a drag, so scrolling past the top would refresh.
+bool pullToRefresh(ScrollNotification n) => !isDesktop && defaultScrollNotificationPredicate(n);
+
 /// From this width, screens lay out for a desktop window rather than a phone.
 const double kWideLayout = 900;
 

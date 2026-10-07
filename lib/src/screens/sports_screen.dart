@@ -144,6 +144,7 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                   final double above = tv ? tvSpacing(TvLayout.sectionGap) - 16 : 0;
                   return RefreshIndicator(
                     onRefresh: _refresh,
+                    notificationPredicate: pullToRefresh,
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: EdgeInsets.fromLTRB(side, 4, side, 24 + MediaQuery.paddingOf(context).bottom),

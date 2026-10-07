@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'generated/app_data.dart';
@@ -82,7 +84,18 @@ Color favoriteColor(BuildContext c) => adaptiveColor(c, light: AppPalette.favori
 Color hdColor(BuildContext c) => adaptiveColor(c, light: AppPalette.hdLight, dark: AppPalette.hd);
 Color sdColor(BuildContext c) => adaptiveColor(c, light: AppPalette.sdLight, dark: AppPalette.sd);
 
-ThemeData buildLightTheme() => ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo);
+// Phones tint the app bar while the list scrolls under it. Desktop doesn't:
+// there the bar sits inside the inset frame, and tinted it's a floating box.
+final bool _phone = Platform.isAndroid || Platform.isIOS;
+
+ThemeData buildLightTheme() {
+  final ColorScheme scheme = ColorScheme.fromSeed(seedColor: Colors.indigo);
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    appBarTheme: _phone ? null : AppBarTheme(backgroundColor: scheme.surface, scrolledUnderElevation: 0),
+  );
+}
 
 ThemeData buildDarkTheme() {
   const ColorScheme scheme = ColorScheme.dark(
@@ -114,6 +127,11 @@ ThemeData buildDarkTheme() {
     // the default is too dim against this background.
     hintColor: _darkOnSurfaceVariant,
     dividerColor: scheme.outlineVariant,
-    appBarTheme: AppBarTheme(backgroundColor: scheme.surface, foregroundColor: scheme.onSurface, elevation: 0),
+    appBarTheme: AppBarTheme(
+      backgroundColor: scheme.surface,
+      foregroundColor: scheme.onSurface,
+      elevation: 0,
+      scrolledUnderElevation: _phone ? null : 0,
+    ),
   );
 }

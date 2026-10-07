@@ -230,9 +230,11 @@ the others or is added here as a deliberate gap.
 | Search and filters (today, popular, sport chips) | yes | yes | no: no text entry worth using on a remote |
 | Games beside the chosen game's streams | no: games, then streams | yes (wide windows) | yes |
 | Quiet background refresh | on returning to the app | every minute idle, and on returning | every minute idle, and back from a stream |
+| Refresh by hand | pull down | refresh button; no pull (a trackpad's scroll counts as a drag, so scrolling past the top refreshed) | none: the quiet refresh covers it |
+| App bar while the list scrolls under it | tinted (Material's default) | stays flat: inside the inset frame a tinted bar is a floating box | n/a |
 | Streams grouped by source, best first, described | yes | yes | yes |
 | Measured quality on played streams' rows | yes | yes | yes |
-| Which of a source's qualities plays | the best, never switched (they're separate feeds) | the best, never switched | the best, never switched |
+| Which of a source's qualities plays | the best to start (see the weak-connection row) | same | the best, never switched |
 | A stuck segment download | second copy after 4 s if nothing is arriving | same | second copy after 4 s |
 | Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
