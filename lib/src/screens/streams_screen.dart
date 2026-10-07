@@ -381,6 +381,24 @@ const String _takeoverJs = r'''
   // reported.
   var fragStats = [];
   var lastMeasure = 0;
+  // Quality: the source's feeds, best first, and which is playing. Feeds that
+  // line up are one master left to hls.js; separate ones (admin's) are
+  // switched between here, by loading the other afresh at live (adapt()).
+  var feeds = [];
+  var cur = 0;
+  var ownSwitching = false;
+  var startedAt = 0;
+  var switchedAt = 0;
+  var lastUpAt = 0;
+  var upHold = __UP_HOLD_MS__;
+  var upOkSince = 0;
+  var slowRun = 0;
+  var weakToldAt = 0;
+  var slowStartTold = false;
+  // How many times faster than it plays the last segment came (0: none yet).
+  var lastRatio = 0;
+  // Segment downloads under way (hedgedLoader), for inflight().
+  var loading = [];
   // The stream's own frame rate, from the frames in each segment (see build());
   // 0 until one reads as a standard rate.
   var streamFps = 0;
@@ -389,6 +407,8 @@ const String _takeoverJs = r'''
   var announced = false;
   var toldStuck = false;
   var goodTicks = 0;
+  // The playhead over the last 2 s, [when, where], for progress.
+  var trail = [];
   var waitingFor = 0;
   // When we last recovered from a media error, pushed playback past a stuck
   // spot, and caught up with live (the error handler, watch(), catchUp()).
@@ -400,12 +420,19 @@ const String _takeoverJs = r'''
   function announce() {
     if (announced) return;
     announced = true;
+    // The 20 s without progress counts from here, not from the start: a slow
+    // first segment (23 s on a weak connection) otherwise read as stalled the
+    // moment it began to play, and the app started it all over.
+    lastProgressAt = Date.now();
     post("playing");
   }
 
   function post(msg) {
     // The app puts its spinner up for these; say when it plays on (watch()).
     if (msg === "stalled" || msg === "fatal") { toldStuck = true; goodTicks = 0; }
+    // What we tell the app about the stream, for the log (not the chatter:
+    // pointer moves, keys, quality readings, log lines themselves).
+    if (!/^(pointer|key:|quality:|log:)/.test(msg)) log("tell app: " + msg);
     try { AppPlayer.postMessage(msg); } catch (e) {}
   }
 
@@ -439,6 +466,7 @@ const String _takeoverJs = r'''
       var running = 0;
       self.context = context;
       self.callbacks = callbacks;
+      loading.push(self);
       function start(loader) {
         running++;
         var cb = {
@@ -503,6 +531,8 @@ const String _takeoverJs = r'''
     // Stop the timer and every copy but the winner.
     Hedged.prototype.settle = function (winner) {
       this.settled = true;
+      var at = loading.indexOf(this);
+      if (at >= 0) loading.splice(at, 1);
       clearTimeout(this.timer);
       var all = [this.first, this.second];
       for (var i = 0; i < all.length; i++) {
@@ -658,7 +688,9 @@ const String _takeoverJs = r'''
   function catchUp() {
     if (!hls || !hls.targetLatency || Date.now() - caughtUpAt < 10000) return;
     var behind = hls.latency - hls.targetLatency;
-    if (behind > 12 && behind < 120 && hls.liveSyncPosition > video.currentTime) {
+    // Only to video that's here: on a slow connection, jumping to where live
+    // will be leaves nothing to play, and it jumped again every 10 s.
+    if (behind > 12 && behind < 120 && hls.liveSyncPosition > video.currentTime && isBuffered(hls.liveSyncPosition)) {
       caughtUpAt = Date.now();
       log("behind live by " + Math.round(behind) + "s, catching up");
       video.currentTime = hls.liveSyncPosition;
@@ -743,6 +775,13 @@ const String _takeoverJs = r'''
         // falling behind the feed, and will pause for it.
         var ms = d.frag.stats.loading.end - d.frag.stats.loading.start;
         if (ms > d.frag.duration * 1000) log("slow segment: " + Math.round(ms) + "ms for " + d.frag.duration.toFixed(1) + "s");
+        // How fast it came once it was coming (the wait for the first byte
+        // swamps a small segment's time), for whether a better feed would keep up.
+        var flowMs = d.frag.stats.loading.end - (d.frag.stats.loading.first || d.frag.stats.loading.start);
+        if (ms > 0 && d.frag.duration > 0) {
+          lastRatio = d.frag.duration * 1000 / ms;
+          adapt(lastRatio, flowMs > 0 ? bytes * 8000 / flowMs : 0);
+        }
       } catch (e) {}
     });
     hls.on(OurHls.Events.ERROR, function (_, d) {
@@ -763,41 +802,153 @@ const String _takeoverJs = r'''
     lastTime = -1;
     stalledFor = 0;
     lastProgressAt = Date.now();
+    startedAt = Date.now();
+    slowRun = 0;
+    upOkSince = 0;
+    slowStartTold = false;
+    lastRatio = 0;
+    loading = [];
     play();
     window.__appPlayer.built = true;
   }
 
-  // A master playlist lists a source's qualities, but on these sources they
-  // are separate feeds (seen: "1080p" in 5 s segments numbered from 83,350 on
-  // one host, "540p" in 3 s segments from 2,367 on another). Players assume a
-  // source's qualities line up, so switching between these landed on the
-  // wrong stretch and replayed it over and over. Play the best one's own
-  // playlist and never switch, as the Roku does (pickMedia).
-  function bestFeed(url) {
-    return fetch(url).then(function (r) { return r.text(); }).then(function (text) {
-      if (text.indexOf("#EXT-X-STREAM-INF") === -1) return url;
-      var lines = text.split("\n");
-      var best = null;
-      var bestBw = -1;
+  // A master playlist lists a source's qualities. On some sources they are
+  // separate feeds (seen: "1080p" in 5 s segments numbered from 83,350 on one
+  // host, "540p" in 3 s segments from 2,367 on another), and letting hls.js
+  // switch between those landed on the wrong stretch and replayed it over and
+  // over. So: read each feed's playlist once. If they line up (the same
+  // segment length and numbering), hls.js gets the master and switches as it
+  // likes; if not, we switch, loading the other feed afresh at live (adapt()).
+  function readFeeds(url) {
+    function get(u) { return fetch(u).then(function (r) { return r.text(); }); }
+    function single() { return { feeds: [{ url: url, bw: 0, h: 0 }], aligned: false, master: url }; }
+    return get(url).then(function (text) {
+      if (text.indexOf("#EXT-X-STREAM-INF") === -1) return single();
+      var lines = text.split("\n"), list = [];
       for (var i = 0; i < lines.length - 1; i++) {
         var line = lines[i].trim();
         if (line.indexOf("#EXT-X-STREAM-INF:") !== 0) continue;
-        var m = /BANDWIDTH=(\d+)/.exec(line);
-        var bw = m ? parseInt(m[1], 10) : 0;
+        var bw = /BANDWIDTH=(\d+)/.exec(line), res = /RESOLUTION=\d+x(\d+)/.exec(line);
         var uri = lines[i + 1].trim();
-        if (uri && uri.charAt(0) !== "#" && bw > bestBw) { best = uri; bestBw = bw; }
+        if (uri && uri.charAt(0) !== "#") list.push({ url: new URL(uri, url).href, bw: bw ? parseInt(bw[1], 10) : 0, h: res ? parseInt(res[1], 10) : 0 });
       }
-      return best ? new URL(best, url).href : url;
-    }, function () { return url; });
+      if (!list.length) return single();
+      list.sort(function (a, b) { return b.bw - a.bw; });
+      if (list.length < 2) return { feeds: list, aligned: false, master: url };
+      return Promise.all(list.map(function (f) { return get(f.url).then(shape, function () { return null; }); })).then(function (shapes) {
+        var ok = !!shapes[0];
+        for (var k = 1; ok && k < shapes.length; k++) {
+          ok = !!shapes[k] && shapes[k].target === shapes[0].target && Math.abs(shapes[k].seq - shapes[0].seq) <= 2;
+        }
+        return { feeds: list, aligned: ok, master: url };
+      });
+    }, single);
+  }
+
+  function shape(text) {
+    var t = /#EXT-X-TARGETDURATION:(\d+)/.exec(text), q = /#EXT-X-MEDIA-SEQUENCE:(\d+)/.exec(text);
+    return t && q ? { target: parseInt(t[1], 10), seq: parseInt(q[1], 10) } : null;
   }
 
   function takeOver(url) {
     window.__appPlayer.url = url;
-    Promise.all([loadHls(), bestFeed(url)]).then(function (r) {
+    Promise.all([loadHls(), readFeeds(url)]).then(function (r) {
       if (!OurHls || !OurHls.isSupported()) return post("unsupported");
-      window.__appPlayer.url = r[1];
-      build(r[1]);
+      var f = r[1];
+      feeds = f.feeds;
+      ownSwitching = !f.aligned && feeds.length > 1;
+      // A reconnect starts where it had got to: down a feed on a weak
+      // connection stays down, rather than starting over at the best.
+      cur = ownSwitching ? Math.min(__START_FEED__, feeds.length - 1) : 0;
+      if (feeds.length > 1) log(feeds.length + " feeds (" + feeds.map(function (x) { return (x.h || "?") + "p " + (x.bw / 1e6).toFixed(1) + " Mbps"; }).join(", ") + "), " + (f.aligned ? "lined up: hls.js switches" : "separate: switched here"));
+      var src = f.aligned ? f.master : feeds[cur].url;
+      window.__appPlayer.url = src;
+      build(src);
     }, function () { post("hls-load-failed"); });
+  }
+
+  // A segment came `ratio` times faster than it plays, at `bps` once it was
+  // coming. Down a feed after two in a row that barely kept up; up once, for
+  // upHold straight, the connection has been well above what the better feed
+  // needs. An up that doesn't hold (down again within upHold) doubles the
+  // wait, so it can't flap.
+  function adapt(ratio, bps) {
+    if (!ownSwitching) return;
+    if (ratio * 100 < __DOWN_PCT__) {
+      upOkSince = 0;
+      if (++slowRun >= 2 && cur < feeds.length - 1) switchFeed(cur + 1);
+      return;
+    }
+    slowRun = 0;
+    if (cur === 0) return;
+    var better = feeds[cur - 1].bw;
+    if (!better || bps * 100 < better * __UP_PCT__) { upOkSince = 0; return; }
+    if (!upOkSince) upOkSince = Date.now();
+    if (Date.now() - upOkSince >= upHold && Date.now() - switchedAt >= upHold) switchFeed(cur - 1);
+  }
+
+  function switchFeed(i) {
+    var dir = i > cur ? "down" : "up";
+    if (dir === "down" && lastUpAt && Date.now() - lastUpAt < upHold) upHold = Math.min(upHold * 2, 600000);
+    if (dir === "up") lastUpAt = Date.now();
+    log("quality " + dir + " to " + (feeds[i].h ? feeds[i].h + "p" : "feed " + i));
+    cur = i;
+    switchedAt = Date.now();
+    post("switching:" + dir + ":" + (feeds[i].h ? feeds[i].h + "p" : ""));
+    announced = false;
+    window.__appPlayer.url = feeds[i].url;
+    build(feeds[i].url);
+  }
+
+  // The oldest segment download under way: how long it has run and what has
+  // arrived, to tell a slow connection from a source that isn't answering.
+  function inflight() {
+    var best = null;
+    for (var i = 0; i < loading.length; i++) {
+      var st = loading[i].first.stats;
+      if (!st || !st.loading || !st.loading.start) continue;
+      var got = st.loaded || 0;
+      if (loading[i].second && loading[i].second.stats) got = Math.max(got, loading[i].second.stats.loaded || 0);
+      var ms = performance.now() - st.loading.start;
+      if (!best || ms > best.ms) best = { ms: ms, bytes: got };
+    }
+    return best;
+  }
+
+  // What the playing feed needs: its stated bitrate, else what it has measured.
+  function needBps() {
+    if (feeds[cur] && feeds[cur].bw) return feeds[cur].bw;
+    var bytes = 0, secs = 0;
+    for (var j = 0; j < fragStats.length; j++) { bytes += fragStats[j][0]; secs += fragStats[j][1]; }
+    return secs ? bytes * 8 / secs : 0;
+  }
+
+  // Every half second. Slow to start, or stuck while playing, on a download
+  // that's coming in slower than the feed needs: the connection. Go down a
+  // feed if there is one; otherwise say so (once a minute at most), and at a
+  // slow start say which it is.
+  function checkConnection() {
+    var f = inflight(), need = needBps();
+    var slow = !!f && f.ms > 2000 && f.bytes > 0 && need > 0 && f.bytes * 8000 / f.ms < need;
+    var canDown = ownSwitching && cur < feeds.length - 1;
+    if (!announced) {
+      if (slow && canDown && Date.now() - startedAt > 6000) { switchFeed(cur + 1); return; }
+      if (!slowStartTold && Date.now() - startedAt > __SLOW_START_MS__) {
+        slowStartTold = true;
+        // (A segment that just came in slowly says so too: checked the moment
+        // one finished, there was no download under way to measure.)
+        post("slowstart:" + (slow || (lastRatio > 0 && lastRatio < 1) ? "network" : "source"));
+      }
+      return;
+    }
+    // Stuck right now (not just resuming: the last progress reading lags a
+    // moment behind, and the note came up just as the stream came back).
+    if (!slow || Date.now() - lastProgressAt < 3000 || video.readyState >= 3) return;
+    if (canDown) { switchFeed(cur + 1); return; }
+    if (Date.now() - weakToldAt > 60000) {
+      weakToldAt = Date.now();
+      post("weak");
+    }
   }
 
   // An MPEG-TS segment's frame rate from its video's own timestamps, as the
@@ -881,10 +1032,17 @@ const String _takeoverJs = r'''
       // Starting, or a seek: measure from here.
       stalledFor = 0;
       lastTime = video.currentTime;
+      trail = [];
       return;
     }
-    if (moved >= 0.2) {
-      lastProgressAt = Date.now();
+    // Progress: half a second of video or more over the last 2 s. hls.js's
+    // nudges (0.1 s at a time) stay under that; a slow device decoding at a
+    // crawl still plays on (judged per half second, it read as stalled).
+    var nowMs = Date.now();
+    trail.push([nowMs, video.currentTime]);
+    while (trail.length > 1 && nowMs - trail[0][0] > 2000) trail.shift();
+    if (video.currentTime - trail[0][1] >= 0.5) {
+      lastProgressAt = nowMs;
       // Playing on by itself after the app was told it was stuck (the
       // network came back): lift the spinner, which otherwise stayed up over
       // the stream, sound and all, until the app's next look.
@@ -892,19 +1050,28 @@ const String _takeoverJs = r'''
         toldStuck = false;
         post("playing");
       }
+    } else {
+      goodTicks = 0;
+    }
+    // Any movement at all keeps the hops and restarts below away: stuttering
+    // on a weak connection isn't stuck (counting it as stuck, 1.0.104, had the
+    // player jumping ahead and starting afresh every few seconds).
+    if (moved > 0) {
       stalledFor = 0;
       lastTime = video.currentTime;
       catchUp();
     } else {
-      goodTicks = 0;
-      lastTime = video.currentTime;
       stalledFor += 1;
       // Nothing for 20s, beyond what the retries and hops below fix: the
       // stream link has likely expired, or the network is gone. The app loads
       // the page again for a fresh link, once the network is back.
+      // Not while video is still coming in, however slowly: on a weak
+      // connection starting again only throws away what was arriving.
       if (announced && Date.now() - lastProgressAt > 20000) {
         lastProgressAt = Date.now();
-        post("stalled");
+        var f = inflight();
+        if (f && f.bytes > 0) log("stalled on a slow download: waiting rather than reconnecting");
+        else post("stalled");
       }
       // Stuck at a hole in the buffer with newer data past it: hop over it.
       var next = nextBufferedStart(video.currentTime);
@@ -962,10 +1129,16 @@ const String _takeoverJs = r'''
     if (window.__appPlayer.built) {
       watch();
       measure();
+      checkConnection();
       // Took over, but the feed never actually started: say so rather than
       // leave a black screen up.
+      // (Not while a download is coming in, however slowly: on a weak
+      // connection the first segment can take longer than that, and starting
+      // again only started the wait over.)
       if (video && video.readyState === 0 && !settled) {
-        if (++deadFor > 30) { settled = true; post("fatal"); }
+        var f = inflight();
+        if (f && f.bytes > 0) deadFor = 0;
+        else if (++deadFor > 30) { settled = true; post("fatal"); }
       } else {
         deadFor = 0;
       }
@@ -1038,7 +1211,15 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   String? _fallbackFrom;
   String? _trying;
   String? _switchedNote;
+  IconData _noteIcon = PlayerIcons.switched;
   Timer? _noteTimer;
+  // Under the spinner: changing quality ("Weak connection · Switching to
+  // 540p…"), or why it's slow to start. Cleared when it plays.
+  String? _waitText;
+  // Which of the source's feeds the page plays from (0: the best). A step
+  // down on a weak connection is kept when the page loads again (a
+  // reconnect); another stream starts from the best.
+  int _startFeed = 0;
 
   bool _inPip = false;
   bool _muted = false;
@@ -1183,7 +1364,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         // playing to show, let it go after the usual few seconds.
         if (_holdTitle) {
           _holdTitle = false;
-          _peekTitle();
+          _peekTitle(byUser: false);
         }
         _onQuality(q);
       } catch (_) {}
@@ -1199,6 +1380,30 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _tapVideo();
       return;
     }
+    if (message.startsWith('switching:')) {
+      final List<String> part = message.split(':');
+      final bool down = part[1] == 'down';
+      _startFeed = down ? _startFeed + 1 : (_startFeed > 0 ? _startFeed - 1 : 0);
+      final String q = part.length > 2 && part[2].isNotEmpty ? part[2] : (down ? 'a lower quality' : 'a higher quality');
+      setState(() {
+        _ready = false;
+        _waitText = (down ? PlayerText.switchingDown : PlayerText.switchingUp).replaceAll('{quality}', q);
+      });
+      return;
+    }
+    if (message.startsWith('slowstart:')) {
+      final bool network = message == 'slowstart:network';
+      // Nothing arriving at all may be no connection rather than the source.
+      (network ? Future<bool>.value(true) : _siteReachable()).then((bool online) {
+        if (!mounted || _ready) return;
+        setState(() => _waitText = network ? PlayerText.slowConnection : (online ? PlayerText.slowSource : 'Waiting for connection…'));
+      });
+      return;
+    }
+    if (message == 'weak') {
+      _showNote(PlayerText.weakConnection, PlayerIcons.weakConnection);
+      return;
+    }
     if (message == 'stalled') {
       _heal();
       return;
@@ -1212,6 +1417,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       // showing the page itself, so stop covering it either way.
       if (message == 'playing' || message == 'passthrough') {
         _ready = true;
+        _waitText = null;
         _failed = false;
         _everPlayed = true;
         _healing = false;
@@ -1219,13 +1425,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         _healTries = 0;
         _healTimer?.cancel();
         // Fell back to this one: say so briefly, then get out of the way.
-        if (_trying != null) {
-          _switchedNote = PlayerText.switchedTo.replaceAll('{stream}', _label(_stream));
-          _noteTimer?.cancel();
-          _noteTimer = Timer(const Duration(milliseconds: PlayerTuning.switchedNoteMs), () {
-            if (mounted) setState(() => _switchedNote = null);
-          });
-        }
+        if (_trying != null) _showNote(PlayerText.switchedTo.replaceAll('{stream}', _label(_stream)), PlayerIcons.switched, rebuild: false);
         _trying = null;
         _fallbackFrom = null;
         Recents.played(_match, _stream).then((_) => _loadRecent());
@@ -1234,7 +1434,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         Timer(const Duration(seconds: 10), () {
           if (mounted && _holdTitle) {
             _holdTitle = false;
-            _peekTitle();
+            _peekTitle(byUser: false);
           }
         });
       } else if (message == 'muted') {
@@ -1297,6 +1497,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   void _switchTo(StreamInfo s, {bool fallback = false}) {
     _saveQuality();
     _healTimer?.cancel();
+    _startFeed = 0;
+    _waitText = null;
     setState(() {
       if (!fallback) {
         _tried.clear();
@@ -1457,12 +1659,33 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10).save(_stream.embedUrl);
   }
 
-  void _peekTitle() {
+  // A brief note where the pill sits ("Switched to …", "Weak connection").
+  // rebuild: false when already inside a setState.
+  void _showNote(String text, IconData icon, {bool rebuild = true}) {
+    void apply() {
+      _switchedNote = text;
+      _noteIcon = icon;
+    }
+
+    if (rebuild) {
+      setState(apply);
+    } else {
+      apply();
+    }
+    _noteTimer?.cancel();
+    _noteTimer = Timer(const Duration(milliseconds: PlayerTuning.switchedNoteMs), () {
+      if (mounted) setState(() => _switchedNote = null);
+    });
+  }
+
+  void _peekTitle({bool byUser = true}) {
     if (!mounted) return;
     if (!_peek) setState(() => _peek = true);
     // Any tap or mouse movement: the "Switched to" note has done its job, and
-    // would sit where the pill and row go.
-    if (_switchedNote != null) {
+    // would sit where the pill and row go. (Not when the app brings the bar
+    // up itself, as when the first quality reading arrives: that wiped a
+    // "Weak connection" note a second after it appeared.)
+    if (byUser && _switchedNote != null) {
       _noteTimer?.cancel();
       setState(() => _switchedNote = null);
     }
@@ -1577,7 +1800,14 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   }
 
   void _inject() {
-    _web.runJavaScript(_takeoverJs.replaceAll('__STUCK_MS__', '${PlayerTuning.stuckDownloadMs}')).catchError((_) {});
+    final String js = _takeoverJs
+        .replaceAll('__STUCK_MS__', '${PlayerTuning.stuckDownloadMs}')
+        .replaceAll('__UP_HOLD_MS__', '${PlayerTuning.upHoldMs}')
+        .replaceAll('__DOWN_PCT__', '${PlayerTuning.downPercent}')
+        .replaceAll('__UP_PCT__', '${PlayerTuning.upPercent}')
+        .replaceAll('__SLOW_START_MS__', '${PlayerTuning.slowStartMs}')
+        .replaceAll('__START_FEED__', '$_startFeed');
+    _web.runJavaScript(js).catchError((_) {});
   }
 
   void _cover() {
@@ -1793,6 +2023,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                                     _offline ? 'Waiting for connection…' : 'Reconnecting…',
                                     style: const TextStyle(color: Colors.white70),
                                   ),
+                                )
+                              else if (_waitText != null)
+                                Transform.translate(
+                                  offset: const Offset(0, 44),
+                                  child: Text(_waitText!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
                                 ),
                             ],
                           ),
@@ -1912,7 +2147,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: <Widget>[
-                                    const Icon(PlayerIcons.switched, color: Colors.white, size: 16),
+                                    Icon(_noteIcon, color: Colors.white, size: 16),
                                     const SizedBox(width: 8),
                                     Text(_switchedNote ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
                                   ],

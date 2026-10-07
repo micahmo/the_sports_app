@@ -237,6 +237,7 @@ the others or is added here as a deliberate gap.
 | Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
+| Quality on a weak connection | steps down a source's separate feeds and back up (or hls.js switching where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |
 | A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides) |
 | No pause (live streams only; a pause would just fall behind live) | no pause control | no pause control | Play/Pause shows the title bar like the other buttons |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
@@ -289,20 +290,62 @@ Things that differ from Android and were each found the hard way:
 
 ### Playlists and segment downloads (phone and desktop)
 
-**One quality, never switched (all apps).** A master playlist lists a
-source's qualities, but on these sources they are **separate feeds**, not
+**Separate feeds: never handed to hls.js as one.** A master playlist lists a
+source's qualities, but on some sources they are **separate feeds**, not
 renditions of one stream. Seen on admin streams (2026-09-30): "1080p" in 5 s
 segments numbered from 83,350 on tiktokcdn with program-date-time tags, "540p"
 in 3 s segments numbered from 2,367 on the site's own host, without them. Every
 player assumes a source's qualities line up, so switching between these lands
 on the wrong stretch: hls.js replayed the same few seconds over and over. That
 was the phone's loop on a 1080p60 source, and 1.0.88 (which handed desktop the
-master too) made desktop do it on every admin stream. So the takeover reads the
-master itself and plays the best feed's own playlist (`bestFeed()`), as the Roku
-always has (`pickMedia`). The cost is no stepping down on a weak connection;
-the upside is that playback works. Don't hand hls.js a master playlist from
-these sources again, and when checking playback, check that `currentTime`
-keeps advancing, not just the quality label.
+master too) made desktop do it on every admin stream. From 1.0.89 the phone and
+desktop played only the best feed, as the Roku always has (`pickMedia`): no
+stepping down on a weak connection, and a 12.7 Mbps 1080p60 feed on one bar of
+5G never started at all (2026-10-04).
+
+**Adaptive again, safely (phone and desktop, 2026-10-07).** The takeover reads
+the master and each feed's playlist once (`readFeeds()`):
+- **Feeds that line up** (the same target duration, numbering within 2): hls.js
+  gets the master and switches as it likes, as before 1.0.88.
+- **Separate feeds:** we switch (`adapt()`, `switchFeed()`), by loading the
+  other feed afresh at live, which can't land on the wrong stretch. Down after
+  two segments in a row that came in under 110% of real time
+  (`player.downPercent`), or at once when a download under way is slower than
+  the feed needs while starting (after 6 s) or stalled for 3 s. Up once, for a
+  minute straight (`upHoldMs`), every segment has come in at 150% of what the
+  better feed needs (`upPercent`), measured from first byte to last (the wait
+  for the first byte swamps a small 540p segment). An up that doesn't hold
+  doubles the wait (up to 10 min). Each switch is a brief spinner saying why
+  ("Weak connection · Switching to 540p…", "Connection improved · Switching to
+  1080p…"). A reconnect keeps the feed it had stepped down to (the app passes
+  it in); another stream starts from the best.
+- **Nowhere lower to go** (one feed, or already the lowest) and stalled on a
+  slow download: a "Weak connection" note, once a minute at most. A stall while
+  video is still arriving, however slowly, waits rather than reconnecting
+  (starting again only threw away what was coming).
+- **Slow to start:** after 20 s (`slowStartMs`) the spinner says why: "Still
+  loading · your connection is slow" (a download coming in slowly, or the last
+  one was slower than real time) or "… the stream is slow to respond" (nothing
+  arriving; "Waiting for connection…" if the site can't be reached). It keeps
+  loading; nothing gives up. The old 15 s "never started" restart no longer
+  fires while a download is coming in.
+- Tested on the emulator by throttling the web view's own downloads (DevTools
+  `Network.emulateNetworkConditions`, re-applied every 2 s so a reload can't
+  drop it; the emulator's `network speed` stalls downloads outright rather
+  than slowing them): 4 Mbps went down to 540p in 7 s and back up a minute
+  after the throttle lifted; 100 kbps gave the slow-start message; 200 kbps
+  (540p needs ~250) gave the note and waited instead of reconnecting. The TV
+  stays on the best feed: it has the bandwidth.
+- Also fixed on the way: catching up to live only jumps to buffered video (on
+  a slow connection it jumped past the end every 10 s, leaving nothing to
+  play), and a slow first segment no longer reads as a 20 s stall the moment it
+  starts to play (the timer starts when it plays). Progress for the 20 s timer
+  is half a second of video over the last 2 s: hls.js's 0.1 s nudges stay
+  under it, a slow decoder still counts. The hops and restarts count any
+  movement, as before (counting stutter as stuck, 1.0.104, had them firing
+  every few seconds on a weak connection).
+- When checking playback, check that `currentTime` keeps advancing, not just
+  the quality label. The takeover logs what it tells the app (`tell app: …`).
 
 **Racing stuck downloads (phone and desktop).** hls.js fetches one segment at
 a time, so one request the server sits on (seen: ~11 s for a 6 s segment) pauses
@@ -394,9 +437,10 @@ the watchdog's jump to live could land *behind* the stuck spot. Now:
   hls.js errors, stuck spots, catching up, and segments that took longer to
   fetch than to play.
 
-Progress means playing on at near normal speed (0.2 s or more per half-second
-check). hls.js nudges the playhead 0.1 s at a time when stuck, and those used
-to count, so in a dead zone the watchdog never read the stream as stalled: the
+For the 20 s timer, progress means half a second of video or more over the
+last 2 s (first, in 1.0.104, 0.2 s per half-second check, which also drove the
+hops and restarts and fired them on mere stutter; see "Adaptive again"). hls.js
+nudges the playhead 0.1 s at a time when stuck, and those used to count, so in a dead zone the watchdog never read the stream as stalled: the
 picture sat frozen with no word for as long as the network was gone. Now after
 20 s it tells the app, which shows "Waiting for connection…". And when the
 stream plays on by itself after that (the network came back), the page tells

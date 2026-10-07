@@ -36,13 +36,17 @@
   },
 
   "player": {
-    "_about": "Player numbers both apps follow. rowThisGame / rowRecent: how many cards each side of the streams row shows. recentsKept: how many recent games are remembered (finished ones are dropped when the row is shown). stuckDownloadMs: a segment download still running this long (and, on phone/desktop, receiving nothing) gets a second copy. overlayPercent: how opaque the black behind the player's overlays is (title bar, streams pill and row, fallback note), the same for all of them.",
+    "_about": "Player numbers both apps follow. rowThisGame / rowRecent: how many cards each side of the streams row shows. recentsKept: how many recent games are remembered (finished ones are dropped when the row is shown). stuckDownloadMs: a segment download still running this long (and, on phone/desktop, receiving nothing) gets a second copy. overlayPercent: how opaque the black behind the player's overlays is (title bar, streams pill and row, fallback note), the same for all of them. Phone and desktop only, switching between a source's separate quality feeds (the TV has the bandwidth and stays on the best): downPercent, down when segments download in under this much of their length's time (110: barely keeping up); upPercent, up once they'd download this much faster than needed on the better feed for upHoldMs straight (doubled after an up that didn't hold). slowStartMs: how long a stream may take to start before the spinner says why.",
     "rowThisGame": 3,
     "rowRecent": 3,
     "recentsKept": 12,
     "stuckDownloadMs": 4000,
     "switchedNoteMs": 4000,
-    "overlayPercent": 70
+    "overlayPercent": 70,
+    "upHoldMs": 60000,
+    "downPercent": 110,
+    "upPercent": 150,
+    "slowStartMs": 20000
   },
 
   "layout": {
@@ -54,20 +58,26 @@
   },
 
   "playerIcons": {
-    "_about": "The player's icons, the same on every app (Material icon names, as for sports). streamsPill: a row of cards, what the pill opens, rather than an arrow for which way (a press on the Roku, a tap elsewhere). switched: the note after falling back.",
+    "_about": "The player's icons, the same on every app (Material icon names, as for sports). streamsPill: a row of cards, what the pill opens, rather than an arrow for which way (a press on the Roku, a tap elsewhere). switched: the note after falling back. weakConnection: the note when the connection can't keep up and there's no lower quality (phone and desktop).",
     "streamsPill": "view_carousel",
-    "switched": "swap_horiz"
+    "switched": "swap_horiz",
+    "weakConnection": "network_check"
   },
 
   "playerText": {
-    "_about": "The player's wording, the same on every app. {stream} is a stream's name and HD/SD, e.g. \"Delta 1 (HD)\".",
+    "_about": "The player's wording, the same on every app. {stream} is a stream's name and HD/SD, e.g. \"Delta 1 (HD)\"; {quality} a feed's resolution, e.g. \"540p\". switching*, weakConnection and slow* are phone and desktop only (see player).",
     "streamsPill": "Streams",
     "thisGame": "THIS GAME",
     "recent": "RECENT",
     "notPlayed": "Not played yet",
     "stoppedWorking": "{stream} stopped working",
     "trying": "Trying {stream}…",
-    "switchedTo": "Switched to {stream}"
+    "switchedTo": "Switched to {stream}",
+    "switchingDown": "Weak connection · Switching to {quality}…",
+    "switchingUp": "Connection improved · Switching to {quality}…",
+    "weakConnection": "Weak connection",
+    "slowConnection": "Still loading · your connection is slow",
+    "slowSource": "Still loading · the stream is slow to respond"
   },
 
   "palette": {
