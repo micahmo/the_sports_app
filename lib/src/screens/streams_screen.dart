@@ -1031,7 +1031,9 @@ const String _takeoverJs = r'''
     for (var j = 0; j < fragStats.length; j++) { bytes += fragStats[j][0]; secs += fragStats[j][1]; }
     if (!secs) return;
     // Every window, changed or not: the app averages the bitrate over them.
-    post("quality:" + JSON.stringify({ h: video.videoHeight, fps: streamFps, mbps: Math.round(bytes * 8 / secs / 1e5) / 10 }));
+    // Adaptive: the source has more than one quality, so the player may move
+    // between them (ours, or hls.js's where they line up).
+    post("quality:" + JSON.stringify({ h: video.videoHeight, fps: streamFps, mbps: Math.round(bytes * 8 / secs / 1e5) / 10, adaptive: feeds.length > 1 }));
   }
 
   function watch() {
@@ -1263,6 +1265,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // viewing reached, with the average bitrate while at it (see _onQuality).
   int _bestHeight = 0;
   int _bestFps = 0;
+  bool _adaptive = false;
   double _mbpsSum = 0;
   int _mbpsCount = 0;
   DateTime? _savedAt;
@@ -1377,7 +1380,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     if (message.startsWith('quality:')) {
       try {
         final Map<String, dynamic> j = jsonDecode(message.substring(8)) as Map<String, dynamic>;
-        final StreamQuality q = StreamQuality(height: j['h'] as int, fps: j['fps'] as int, mbps: (j['mbps'] as num).toDouble());
+        final StreamQuality q = StreamQuality(height: j['h'] as int, fps: j['fps'] as int, mbps: (j['mbps'] as num).toDouble(), adaptive: j['adaptive'] == true);
         if (q != _quality) setState(() => _quality = q);
         // The title bar has stayed up since the start; now it has what's
         // playing to show, let it go after the usual few seconds.
@@ -1536,6 +1539,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _quality = null;
       _bestHeight = 0;
       _bestFps = 0;
+      _adaptive = false;
       _mbpsSum = 0;
       _mbpsCount = 0;
       _savedAt = null;
@@ -1674,6 +1678,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // stream's typical rate, not whatever the last few seconds happened to be.
   // Each viewing starts afresh, in case the site swaps the feed behind a stream.
   void _onQuality(StreamQuality q) {
+    if (q.adaptive) _adaptive = true;
     final bool better = q.height > _bestHeight || (q.height == _bestHeight && q.fps > _bestFps);
     if (better) {
       _bestHeight = q.height;
@@ -1692,7 +1697,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   void _saveQuality() {
     if (_mbpsCount == 0) return;
     _savedAt = DateTime.now();
-    StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10).save(_stream.embedUrl);
+    StreamQuality(height: _bestHeight, fps: _bestFps, mbps: (_mbpsSum / _mbpsCount * 10).round() / 10, adaptive: _adaptive).save(_stream.embedUrl);
   }
 
   // A brief note where the pill sits ("Switched to …", "Weak connection").

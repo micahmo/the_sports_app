@@ -233,7 +233,7 @@ the others or is added here as a deliberate gap.
 | Refresh by hand | pull down | refresh button; no pull (a trackpad's scroll counts as a drag, so scrolling past the top refreshed) | none: the quiet refresh covers it |
 | App bar while the list scrolls under it | tinted (Material's default) | stays flat: inside the inset frame a tinted bar is a floating box | n/a |
 | Streams grouped by source, best first, described | yes | yes | yes |
-| Measured quality on played streams' rows | yes | yes | yes |
+| Measured quality on played streams' rows | yes, and "adaptive" when the source has more than one quality (it may play lower or higher another time) | same | yes; never adaptive: the TV plays the best feed only |
 | A stream that recently failed | "Failed 12 min ago" where its quality goes, for an hour or until it plays; last in the row and when falling back | same | same; on the row's card the note and the language are on separate lines |
 | Which of a source's qualities plays | the best to start (see the weak-connection row) | same | the best, never switched |
 | A stuck segment download | second copy after 4 s if nothing is arriving | same | second copy after 4 s |

@@ -8,14 +8,19 @@ import '../generated/app_data.dart' show PlayerText, PlayerTuning;
 /// rate and bitrate, as measured by the player. The site only says HD or SD,
 /// and its "HD" covers anything from 720p at 30 fps to 1080p at 60.
 class StreamQuality {
-  const StreamQuality({required this.height, required this.fps, required this.mbps});
+  const StreamQuality({required this.height, required this.fps, required this.mbps, this.adaptive = false});
 
   final int height;
   final int fps;
   final double mbps;
 
-  /// "1080p60 · 8.5 Mbps"; "1080p · 8.5 Mbps" while the frame rate is unknown.
-  String get label => '$resolution · ${mbps.toStringAsFixed(1)} Mbps';
+  /// The source has more than one quality, so the player may switch between
+  /// them on a weak connection: a 540p here may be 720p another time.
+  final bool adaptive;
+
+  /// "1080p60 · 8.5 Mbps", then "· adaptive" if it is; "1080p · …" while the
+  /// frame rate is unknown.
+  String get label => '$resolution · ${mbps.toStringAsFixed(1)} Mbps${adaptive ? ' · adaptive' : ''}';
 
   /// "1080p60", or "1080p" while the frame rate is unknown (0).
   String get resolution => '${height}p${fps > 0 ? fps : ''}';
@@ -34,7 +39,7 @@ class StreamQuality {
     final Map<String, dynamic> raw = await _read();
     return <String, StreamQuality>{
       for (final MapEntry<String, dynamic> e in raw.entries)
-        e.key: StreamQuality(height: e.value['h'] as int, fps: _standard(e.value['fps'] as int), mbps: (e.value['mbps'] as num).toDouble()),
+        e.key: StreamQuality(height: e.value['h'] as int, fps: _standard(e.value['fps'] as int), mbps: (e.value['mbps'] as num).toDouble(), adaptive: e.value['a'] == true),
     };
   }
 
@@ -43,7 +48,7 @@ class StreamQuality {
     final Map<String, dynamic> raw = await _read();
     final int now = DateTime.now().millisecondsSinceEpoch;
     raw.removeWhere((String _, dynamic v) => now - (v['at'] as int) > _keep.inMilliseconds);
-    raw[embedUrl] = <String, Object>{'h': height, 'fps': fps, 'mbps': mbps, 'at': now};
+    raw[embedUrl] = <String, Object>{'h': height, 'fps': fps, 'mbps': mbps, 'a': adaptive, 'at': now};
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString(_key, jsonEncode(raw));
   }
@@ -59,10 +64,10 @@ class StreamQuality {
   }
 
   @override
-  bool operator ==(Object other) => other is StreamQuality && other.height == height && other.fps == fps && other.mbps == mbps;
+  bool operator ==(Object other) => other is StreamQuality && other.height == height && other.fps == fps && other.mbps == mbps && other.adaptive == adaptive;
 
   @override
-  int get hashCode => Object.hash(height, fps, mbps);
+  int get hashCode => Object.hash(height, fps, mbps, adaptive);
 }
 
 /// Streams that failed (never started, or reconnecting gave up), remembered
