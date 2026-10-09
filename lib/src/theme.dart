@@ -84,6 +84,9 @@ Color favoriteColor(BuildContext c) => adaptiveColor(c, light: AppPalette.favori
 Color hdColor(BuildContext c) => adaptiveColor(c, light: AppPalette.hdLight, dark: AppPalette.hd);
 Color sdColor(BuildContext c) => adaptiveColor(c, light: AppPalette.sdLight, dark: AppPalette.sd);
 
+/// A stream that recently failed: a soft red, not the LIVE red.
+Color failedColor(BuildContext c) => adaptiveColor(c, light: AppPalette.failedLight, dark: AppPalette.failed);
+
 // Phones tint the app bar while the list scrolls under it. Desktop doesn't:
 // there the bar sits inside the inset frame, and tinted it's a floating box.
 final bool _phone = Platform.isAndroid || Platform.isIOS;

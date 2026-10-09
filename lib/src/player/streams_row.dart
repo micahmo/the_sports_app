@@ -45,7 +45,7 @@ class StreamsPill extends StatelessWidget {
 }
 
 class StreamsRow extends StatelessWidget {
-  const StreamsRow({super.key, required this.thisGame, required this.recent, required this.qualities, required this.onStream, required this.onRecent, required this.onActivity});
+  const StreamsRow({super.key, required this.thisGame, required this.recent, required this.qualities, required this.failures, required this.onStream, required this.onRecent, required this.onActivity});
 
   /// This game's other streams, in the order to show them.
   final List<StreamInfo> thisGame;
@@ -55,6 +55,9 @@ class StreamsRow extends StatelessWidget {
 
   /// What streams measured when played, by embed URL.
   final Map<String, StreamQuality> qualities;
+
+  /// Streams that recently failed, and when (see StreamFailures).
+  final Map<String, DateTime> failures;
 
   final void Function(StreamInfo) onStream;
   final void Function(RecentGame) onRecent;
@@ -106,7 +109,9 @@ class StreamsRow extends StatelessWidget {
         child: Text(s.hd ? 'HD' : 'SD', style: condensed(14, FontWeight.w700, color: Colors.black, letterSpacing: 0.5)),
       ),
       title: s.name,
-      detail: <String>[q?.label ?? PlayerText.notPlayed, if (s.language.isNotEmpty) s.language].join(' · '),
+      // A recent failure takes the quality's place, in its own colour.
+      warning: failures[s.embedUrl] == null ? null : StreamFailures.note(failures[s.embedUrl]!),
+      detail: <String>[if (failures[s.embedUrl] == null) q?.label ?? PlayerText.notPlayed, if (s.language.isNotEmpty) s.language].join(' · '),
       // The name is one line here, so the details can have two ("English -
       // NBC" and the like).
       detailLines: 2,
@@ -158,11 +163,12 @@ class _Section extends StatelessWidget {
 /// Every card the same size, with the same slots at the same heights: the
 /// top row (HD/SD, or badges), the name (up to two lines), the details.
 class _Card extends StatefulWidget {
-  const _Card({required this.onTap, required this.top, required this.title, required this.detail, this.detailLines = 1});
+  const _Card({required this.onTap, required this.top, required this.title, required this.detail, this.warning, this.detailLines = 1});
   final VoidCallback onTap;
   final Widget top;
   final String title;
   final String detail;
+  final String? warning;
   final int detailLines;
 
   @override
@@ -196,7 +202,16 @@ class _CardState extends State<_Card> {
                 const SizedBox(height: 5),
                 Text(widget.title, maxLines: widget.detailLines > 1 ? 1 : 2, overflow: TextOverflow.ellipsis, style: condensed(15, FontWeight.w600, color: Colors.white)),
                 const Spacer(),
-                Text(widget.detail, maxLines: widget.detailLines, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, height: 1.3, color: Colors.white70)),
+                Text.rich(
+                  TextSpan(children: <InlineSpan>[
+                    if (widget.warning != null) TextSpan(text: widget.warning, style: TextStyle(color: failedColor(context))),
+                    if (widget.warning != null && widget.detail.isNotEmpty) const TextSpan(text: ' · '),
+                    TextSpan(text: widget.detail),
+                  ]),
+                  maxLines: widget.detailLines,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, height: 1.3, color: Colors.white70),
+                ),
               ],
             ),
           ),

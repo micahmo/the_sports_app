@@ -76,6 +76,7 @@ sub onVisible()
     end if
     for each c in m.streamItems
         c.quality = qualityLabel(c.stream.embedUrl)
+        c.failed = failedNote(c.stream.embedUrl)
         c.lastPlayed = (c.stream.embedUrl = m.lastPlayed)
     end for
     if m.loadedAt <> invalid and m.loadedAt.TotalSeconds() > 60 then fetch(true)
@@ -399,7 +400,7 @@ sub onStreamsLoaded()
         head.addFields({heading: UCase(source), description: sourceDescription(source)})
         for each s in g.streams
             item = content.createChild("ContentNode")
-            item.addFields({stream: s, lastPlayed: (s.embedUrl = m.lastPlayed), quality: qualityLabel(s.embedUrl)})
+            item.addFields({stream: s, lastPlayed: (s.embedUrl = m.lastPlayed), quality: qualityLabel(s.embedUrl), failed: failedNote(s.embedUrl)})
             items.Push(item)
             v = ""
             if s.viewers <> invalid then

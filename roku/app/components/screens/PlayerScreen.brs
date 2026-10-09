@@ -56,7 +56,6 @@ sub init()
     m.rowFocus = -1
     renderPill()
     m.tried = {}
-    m.failed = {}
     m.trying = ""
     m.fallbackFrom = ""
 end sub
@@ -171,7 +170,7 @@ end sub
 ' one, never one already tried. No limit: Back leaves any time. (As the phone
 ' app.)
 sub failedForGood(reason as String)
-    m.failed[m.stream.embedUrl] = true
+    markFailed(m.stream.embedUrl)
     m.pendingReason = reason
     ' Only what the site lists for the game now (see refreshStreams): the list
     ' from when the player opened sent fallbacks after streams that were gone.
@@ -181,16 +180,21 @@ end sub
 
 sub pickFallback(reason as String)
     ' The same kind first; when none of those are left, the other kind (an SD
-    ' stream beats nothing when every HD one is down).
-    left = []
-    untried = []
+    ' stream beats nothing when every HD one is down). Recently failed ones
+    ' only after every other.
+    tiers = [[], [], [], []]
     for each s in m.streams
         if not m.tried.DoesExist(s.embedUrl) then
-            untried.Push(s)
-            if s.hd = m.stream.hd then left.Push(s)
+            i = 0
+            if s.hd <> m.stream.hd then i = 1
+            if failedAt(s.embedUrl) > 0 then i = i + 2
+            tiers[i].Push(s)
         end if
     end for
-    if left.Count() = 0 then left = untried
+    left = []
+    for each t in tiers
+        if left.Count() = 0 then left = t
+    end for
     if left.Count() = 0 then
         m.trying = ""
         m.fallbackFrom = ""
@@ -337,6 +341,8 @@ sub onVideoState()
         if not m.recorded then
             m.recorded = true
             if m.match.id <> "" then recordRecent(m.match, m.stream)
+            ' It works after all: no longer "Failed … ago".
+            clearFailed(m.stream.embedUrl)
             ' The bar waits for the first quality reading; if none comes, let it
             ' go 10 s into playback anyway (as the phone app).
             if m.holdBar then
@@ -408,18 +414,24 @@ end sub
 ' ---- the streams row ----------------------------------------------------------
 
 ' This game's other streams: the same HD/SD as what's playing first, then the
-' rest, best sources first within each; none that failed.
+' rest, best sources first within each; recently failed ones last, so they only
+' show when there's room.
 function rowStreams() as Object
-    same = []
-    other = []
+    tiers = [[], [], [], []]
     for each s in m.streams
-        if s.embedUrl <> m.stream.embedUrl and not m.failed.DoesExist(s.embedUrl) then
-            if s.hd = m.stream.hd then same.Push(s) else other.Push(s)
+        if s.embedUrl <> m.stream.embedUrl then
+            i = 0
+            if s.hd <> m.stream.hd then i = 1
+            if failedAt(s.embedUrl) > 0 then i = i + 2
+            tiers[i].Push(s)
         end if
     end for
-    same.Append(other)
+    ordered = []
+    for each t in tiers
+        ordered.Append(t)
+    end for
     out = []
-    for each s in same
+    for each s in ordered
         if out.Count() >= appPlayer().rowThisGame then exit for
         out.Push(s)
     end for
@@ -601,12 +613,20 @@ sub drawCard(c as Object, top as Integer, w as Integer, h as Integer, focused as
         mkCard(g, pad, pad, 64, 40, tagColor, "chip")
         mkLabel(g, tag, condensed("Bold", 26), t.bg, pad, pad - capsShift("condensed", 26), 64, 40, "center")
         mkLabel(g, streamName(s), condensed("SemiBold", 36), t.text, pad, 70, w - 2 * pad, 46)
-        q = qualityLabel(s.embedUrl)
-        if q = "" then q = playerText("notPlayed")
-        if s.language <> invalid and s.language <> "" then q = q + " · " + s.language
-        ' The name is one line here, so the details can have two. (Two lines of
-        ' Roboto 22 need ~62px: at 60 only one fit, and it was cut off.)
-        mkWrapped(g, q, bodyFont(22), t.textDim, pad, 116, w - 2 * pad, 70, 2)
+        note = failedNote(s.embedUrl)
+        if note <> "" then
+            ' A recent failure takes the quality's place, in its own colour; a
+            ' label has one colour, so the language goes on the line below.
+            mkLabel(g, note, bodyFont(22), t.failed, pad, 116, w - 2 * pad, 31)
+            if s.language <> invalid and s.language <> "" then mkLabel(g, s.language, bodyFont(22), t.textDim, pad, 147, w - 2 * pad, 31)
+        else
+            q = qualityLabel(s.embedUrl)
+            if q = "" then q = playerText("notPlayed")
+            if s.language <> invalid and s.language <> "" then q = q + " · " + s.language
+            ' The name is one line here, so the details can have two. (Two lines of
+            ' Roboto 22 need ~62px: at 60 only one fit, and it was cut off.)
+            mkWrapped(g, q, bodyFont(22), t.textDim, pad, 116, w - 2 * pad, 70, 2)
+        end if
     else
         r = c.recent
         teams = orderedTeams(r.match)

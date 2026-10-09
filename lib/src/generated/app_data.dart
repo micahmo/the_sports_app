@@ -80,6 +80,8 @@ abstract final class AppPalette {
   static const Color hdLight = Color(0xFF277A31);
   static const Color sd = Color(0xFFE8B76B);
   static const Color sdLight = Color(0xFFA15C00);
+  static const Color failed = Color(0xFFF28B82);
+  static const Color failedLight = Color(0xFFC5221F);
   static const Color disc = Color(0xFFE6E8EE);
   static const Color discLight = Color(0xFFFFFFFF);
 }
@@ -96,6 +98,7 @@ abstract final class PlayerTuning {
   static const int downPercent = 110;
   static const int upPercent = 150;
   static const int slowStartMs = 20000;
+  static const int failedForMinutes = 60;
 }
 
 /// Screen spacing, in pixels of a 1920-wide TV screen (see the JSON).
@@ -117,6 +120,9 @@ abstract final class PlayerText {
   static const String thisGame = 'THIS GAME';
   static const String recent = 'RECENT';
   static const String notPlayed = 'Not played yet';
+  static const String failedJustNow = 'Failed just now';
+  static const String failedMinutesAgo = 'Failed {n} min ago';
+  static const String failedHoursAgo = 'Failed {n} hr ago';
   static const String stoppedWorking = '{stream} stopped working';
   static const String trying = 'Trying {stream}…';
   static const String switchedTo = 'Switched to {stream}';

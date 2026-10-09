@@ -234,6 +234,7 @@ the others or is added here as a deliberate gap.
 | App bar while the list scrolls under it | tinted (Material's default) | stays flat: inside the inset frame a tinted bar is a floating box | n/a |
 | Streams grouped by source, best first, described | yes | yes | yes |
 | Measured quality on played streams' rows | yes | yes | yes |
+| A stream that recently failed | "Failed 12 min ago" where its quality goes, for an hour or until it plays; last in the row and when falling back | same | same; on the row's card the note and the language are on separate lines |
 | Which of a source's qualities plays | the best to start (see the weak-connection row) | same | the best, never switched |
 | A stuck segment download | second copy after 4 s if nothing is arriving | same | second copy after 4 s |
 | Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu; always in debug builds | from the start until the quality is known, then mouse movement, or the menu; always in debug builds | from the start until the quality is known, then OK |
@@ -386,7 +387,9 @@ bar and pill also come up over the loading, fallback and unavailable screens,
 so another stream can be picked without waiting out a fallback.
 
 - **THIS GAME** (left): the match's other streams, the same HD/SD as what's
-  playing first, best sources first, none that failed this viewing.
+  playing first, best sources first; recently failed ones last, so they only
+  show when there's room (user, 2026-10-08: "keep showing it unless there are
+  better options"), with the failure in the quality's place.
   **RECENT** (right): other games played lately (`Recents`, one per game),
   kept while `/api/matches/live` lists them, or for 24/7 channels (no start
   time, never on the live list) while `/api/matches/all` does. The full list
@@ -407,7 +410,17 @@ so another stream can be picked without waiting out a fallback.
   says "Golf 1 (HD) stopped working / Trying Admin 1 (HD)…", then a short
   "Switched to Admin 1 (HD)" note takes the pill's place. When nothing like it
   is left, the other kind (an SD stream beats nothing when every HD one is down;
-  user, 2026-09-30), and only then "unavailable".
+  user, 2026-09-30), and only then "unavailable". Recently failed streams come
+  after every other: working ones of either kind first.
+- **Recently failed:** a stream that fails for good is remembered like its
+  quality (`StreamFailures` / `failedNote()` in common.brs), through restarts,
+  for `player.failedForMinutes` (an hour) or until it plays. Its quality line
+  says "Failed 12 min ago" in a soft red (`palette.failed`, not the LIVE red),
+  in the streams list and on the row's card. Relative, not "at 8:26 PM": the
+  clock time didn't mean much (user, 2026-10-08). Until 1.0.109 a failure was
+  forgotten when the player closed, so it came back as an untried stream.
+  On the Roku the row card puts the note and the language on separate lines
+  (a label has one colour).
 - The numbers (cards per side, recents kept, the note's time) and the wording
   are in `shared/app_data.json` (`player`, `playerText`).
 

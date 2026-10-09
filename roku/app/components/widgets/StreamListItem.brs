@@ -21,10 +21,12 @@ sub render()
         if m.watched <> invalid then
             m.watched.unobserveField("lastPlayed")
             m.watched.unobserveField("quality")
+            m.watched.unobserveField("failed")
             m.watched.unobserveField("stream")
         end if
         c.observeField("lastPlayed", "render")
         c.observeField("quality", "render")
+        c.observeField("failed", "render")
         ' Background refreshes update a row's stream (viewers) in place.
         c.observeField("stream", "render")
         m.watched = c
@@ -66,6 +68,12 @@ sub render()
     ' line; the name and language move up to make room.
     quality = ""
     if c.quality <> invalid then quality = c.quality
+    ' A recent failure takes the quality's place, in its own colour.
+    qualityColor = t.outline
+    if c.failed <> invalid and c.failed <> "" then
+        quality = c.failed
+        qualityColor = t.failed
+    end if
     lineTop = 0
     lineH = h
     if quality <> "" then
@@ -89,7 +97,7 @@ sub render()
         mkLabel(m.content, s.language, bodyFont(24), t.textDim, x, bodyTopOnBaseline(baselineOf(lineTop, lineH, 38), lineH, 24), right - sw - 24 - x, lineH)
     end if
     if quality <> "" then
-        mkLabel(m.content, quality, bodyFont(22), t.outline, 112, lineTop + lineH - 6, right - 112, 30)
+        mkLabel(m.content, quality, bodyFont(22), qualityColor, 112, lineTop + lineH - 6, right - 112, 30)
     end if
 end sub
 

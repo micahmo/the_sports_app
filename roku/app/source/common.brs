@@ -199,6 +199,46 @@ sub saveQuality(embedUrl as String, label as String)
     s.Flush()
 end sub
 
+' Streams that failed (never started, or the reconnects gave up), remembered
+' like their quality, for player.failedForMinutes or until they play (as the
+' phone app's StreamFailures). The lists say so where the quality goes.
+function failedAt(embedUrl as String) as Integer
+    s = CreateObject("roRegistrySection", "failed")
+    if not s.Exists(embedUrl) then return 0
+    at = Val(s.Read(embedUrl))
+    if CreateObject("roDateTime").AsSeconds() - at >= appPlayer().failedForMinutes * 60 then return 0
+    return at
+end function
+
+' "Failed just now", "Failed 12 min ago", "Failed 2 hr ago", or "".
+function failedNote(embedUrl as String) as String
+    at = failedAt(embedUrl)
+    if at = 0 then return ""
+    ago = CreateObject("roDateTime").AsSeconds() - at
+    t = appPlayerText()
+    if ago < 60 then return t.failedJustNow
+    if ago < 3600 then return t.failedMinutesAgo.Replace("{n}", (ago \ 60).ToStr())
+    return t.failedHoursAgo.Replace("{n}", (ago \ 3600).ToStr())
+end function
+
+sub markFailed(embedUrl as String)
+    s = CreateObject("roRegistrySection", "failed")
+    now = CreateObject("roDateTime").AsSeconds()
+    ' Drop the expired ones, so the section stays small.
+    for each k in s.GetKeyList()
+        if now - Val(s.Read(k)) >= appPlayer().failedForMinutes * 60 then s.Delete(k)
+    end for
+    s.Write(embedUrl, now.ToStr())
+    s.Flush()
+end sub
+
+sub clearFailed(embedUrl as String)
+    s = CreateObject("roRegistrySection", "failed")
+    if not s.Exists(embedUrl) then return
+    s.Delete(embedUrl)
+    s.Flush()
+end sub
+
 ' ---- streams ---------------------------------------------------------------
 
 ' "Admin 1": a stream's source and number, as the player names streams.

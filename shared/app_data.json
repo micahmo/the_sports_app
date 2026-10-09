@@ -36,7 +36,7 @@
   },
 
   "player": {
-    "_about": "Player numbers both apps follow. rowThisGame / rowRecent: how many cards each side of the streams row shows. recentsKept: how many recent games are remembered (finished ones are dropped when the row is shown). stuckDownloadMs: a segment download still running this long (and, on phone/desktop, receiving nothing) gets a second copy. overlayPercent: how opaque the black behind the player's overlays is (title bar, streams pill and row, fallback note), the same for all of them. Phone and desktop only, switching between a source's separate quality feeds (the TV has the bandwidth and stays on the best): downPercent, down when segments download in under this much of their length's time (110: barely keeping up); upPercent, up once they'd download this much faster than needed on the better feed for upHoldMs straight (doubled after an up that didn't hold). slowStartMs: how long a stream may take to start before the spinner says why.",
+    "_about": "Player numbers both apps follow. rowThisGame / rowRecent: how many cards each side of the streams row shows. recentsKept: how many recent games are remembered (finished ones are dropped when the row is shown). stuckDownloadMs: a segment download still running this long (and, on phone/desktop, receiving nothing) gets a second copy. overlayPercent: how opaque the black behind the player's overlays is (title bar, streams pill and row, fallback note), the same for all of them. Phone and desktop only, switching between a source's separate quality feeds (the TV has the bandwidth and stays on the best): downPercent, down when segments download in under this much of their length's time (110: barely keeping up); upPercent, up once they'd download this much faster than needed on the better feed for upHoldMs straight (doubled after an up that didn't hold). slowStartMs: how long a stream may take to start before the spinner says why. failedForMinutes: how long a stream that failed (never started, or reconnecting gave up) says so where its quality goes, through restarts, unless it plays again; meanwhile it sorts after the working ones in the streams row and falling back tries it last.",
     "rowThisGame": 3,
     "rowRecent": 3,
     "recentsKept": 12,
@@ -46,7 +46,8 @@
     "upHoldMs": 60000,
     "downPercent": 110,
     "upPercent": 150,
-    "slowStartMs": 20000
+    "slowStartMs": 20000,
+    "failedForMinutes": 60
   },
 
   "updates": {
@@ -70,11 +71,14 @@
   },
 
   "playerText": {
-    "_about": "The player's wording, the same on every app. {stream} is a stream's name and HD/SD, e.g. \"Delta 1 (HD)\"; {quality} a feed's resolution, e.g. \"540p\". switching*, weakConnection and slow* are phone and desktop only (see player).",
+    "_about": "The player's wording, the same on every app. {stream} is a stream's name and HD/SD, e.g. \"Delta 1 (HD)\"; {quality} a feed's resolution, e.g. \"540p\"; {n} a number. failed*: a stream that recently failed, where its quality would go (see player.failedForMinutes). switching*, weakConnection and slow* are phone and desktop only (see player).",
     "streamsPill": "Streams",
     "thisGame": "THIS GAME",
     "recent": "RECENT",
     "notPlayed": "Not played yet",
+    "failedJustNow": "Failed just now",
+    "failedMinutesAgo": "Failed {n} min ago",
+    "failedHoursAgo": "Failed {n} hr ago",
     "stoppedWorking": "{stream} stopped working",
     "trying": "Trying {stream}…",
     "switchedTo": "Switched to {stream}",
@@ -101,6 +105,7 @@
     "favorite": { "dark": "#FF7BAC", "light": "#C2185B" },
     "hd": { "dark": "#7BD88F", "light": "#277A31" },
     "sd": { "dark": "#E8B76B", "light": "#A15C00" },
+    "failed": { "dark": "#F28B82", "light": "#C5221F" },
     "disc": { "dark": "#E6E8EE", "light": "#FFFFFF" }
   }
 }

@@ -44,8 +44,10 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
   // Remember last-picked stream (per list view instance)
   String? _lastPlayedUrl;
 
-  // What streams measured when they were played (see StreamQuality).
+  // What streams measured when they were played (see StreamQuality), and
+  // which recently failed (see StreamFailures).
   Map<String, StreamQuality> _qualities = <String, StreamQuality>{};
+  Map<String, DateTime> _failures = <String, DateTime>{};
 
   @override
   void initState() {
@@ -108,7 +110,13 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
 
   Future<void> _loadQualities() async {
     final Map<String, StreamQuality> q = await StreamQuality.all();
-    if (mounted) setState(() => _qualities = q);
+    final Map<String, DateTime> f = await StreamFailures.all();
+    if (mounted) {
+      setState(() {
+        _qualities = q;
+        _failures = f;
+      });
+    }
   }
 
   @override
@@ -148,6 +156,7 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
                     stream: g.streams[i],
                     lastPlayed: g.streams[i].embedUrl == _lastPlayedUrl,
                     quality: _qualities[g.streams[i].embedUrl],
+                    failedAt: _failures[g.streams[i].embedUrl],
                     onTap: () => _play(g.streams[i], groups),
                   ),
                 ),
@@ -289,13 +298,16 @@ class _SourceHeading extends StatelessWidget {
 }
 
 class _StreamRow extends StatelessWidget {
-  const _StreamRow({required this.stream, required this.lastPlayed, required this.quality, required this.onTap});
+  const _StreamRow({required this.stream, required this.lastPlayed, required this.quality, required this.failedAt, required this.onTap});
   final StreamInfo stream;
   final bool lastPlayed;
   final VoidCallback onTap;
 
   /// What it measured when played, on a quiet second line; null if never played.
   final StreamQuality? quality;
+
+  /// When it failed, if recently: said in the quality's place (see StreamFailures).
+  final DateTime? failedAt;
 
   @override
   Widget build(BuildContext context) {
@@ -339,7 +351,12 @@ class _StreamRow extends StatelessWidget {
                         ],
                       ],
                     ),
-                    if (quality != null)
+                    if (failedAt != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(StreamFailures.note(failedAt!), style: TextStyle(fontSize: 12, color: failedColor(context))),
+                      )
+                    else if (quality != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(quality!.label, style: TextStyle(fontSize: 12, color: cs.outline)),
@@ -1206,9 +1223,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // it (see _failedForGood). What's been tried since the last pick, what the
   // spinner says meanwhile, and the note once one plays.
   final Set<String> _tried = <String>{};
-  // Streams that failed for good while this player was open: not offered in
-  // the streams row again.
-  final Set<String> _failedUrls = <String>{};
+  // Streams that recently failed (see StreamFailures): last in the streams row
+  // and when falling back.
+  Map<String, DateTime> _failures = <String, DateTime>{};
   String? _fallbackFrom;
   String? _trying;
   String? _switchedNote;
@@ -1315,6 +1332,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _tried.add(_stream.embedUrl);
     _allowedUri = Uri.parse(_stream.embedUrl);
     _loadRecent();
+    _loadFailures();
     _checkCurrent();
 
     _web = PlayerWebView(
@@ -1421,6 +1439,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         _waitText = null;
         _failed = false;
         _everPlayed = true;
+        // It works after all: no longer "Failed … ago".
+        _failures.remove(_stream.embedUrl);
+        StreamFailures.clear(_stream.embedUrl);
         _healing = false;
         _offline = false;
         _healTries = 0;
@@ -1462,7 +1483,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // is one, never one already tried. No limit: Back leaves any time.
   Future<void> _failedForGood() async {
     if (!mounted) return;
-    _failedUrls.add(_stream.embedUrl);
+    _failures[_stream.embedUrl] = DateTime.now();
+    StreamFailures.mark(_stream.embedUrl);
     // Only what the site lists for the game now: streams get pulled (a game
     // winding down), and the list from when the player opened sent fallbacks
     // after streams that were gone.
@@ -1470,8 +1492,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     if (!mounted) return;
     // The same kind first; when none of those are left, the other kind (an SD
     // stream beats nothing when every HD one is down).
+    // Recently failed ones only after every other.
     final List<StreamInfo> untried = _streams.where((StreamInfo s) => !_tried.contains(s.embedUrl)).toList();
-    List<StreamInfo> left = untried.where((StreamInfo s) => s.hd == _stream.hd).toList();
+    List<StreamInfo> left = untried.where((StreamInfo s) => s.hd == _stream.hd && !_failures.containsKey(s.embedUrl)).toList();
+    if (left.isEmpty) left = untried.where((StreamInfo s) => !_failures.containsKey(s.embedUrl)).toList();
+    if (left.isEmpty) left = untried.where((StreamInfo s) => s.hd == _stream.hd).toList();
     if (left.isEmpty) left = untried;
     if (left.isEmpty) {
       setState(() {
@@ -1568,10 +1593,19 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   }
 
   // This game's other streams for the row: the same HD/SD as what's playing
-  // first, then the rest, best sources first within each.
+  // first, then the rest, best sources first within each; recently failed ones
+  // last, so they only show when there's room.
   List<StreamInfo> get _rowStreams {
-    final List<StreamInfo> others = _streams.where((StreamInfo s) => s.embedUrl != _stream.embedUrl && !_failedUrls.contains(s.embedUrl)).toList();
-    return <StreamInfo>[...others.where((StreamInfo s) => s.hd == _stream.hd), ...others.where((StreamInfo s) => s.hd != _stream.hd)].take(PlayerTuning.rowThisGame).toList();
+    final List<StreamInfo> others = _streams.where((StreamInfo s) => s.embedUrl != _stream.embedUrl).toList();
+    final List<StreamInfo> ok = others.where((StreamInfo s) => !_failures.containsKey(s.embedUrl)).toList();
+    final List<StreamInfo> failed = others.where((StreamInfo s) => _failures.containsKey(s.embedUrl)).toList();
+    List<StreamInfo> byKind(List<StreamInfo> l) => <StreamInfo>[...l.where((StreamInfo s) => s.hd == _stream.hd), ...l.where((StreamInfo s) => s.hd != _stream.hd)];
+    return <StreamInfo>[...byKind(ok), ...byKind(failed)].take(PlayerTuning.rowThisGame).toList();
+  }
+
+  Future<void> _loadFailures() async {
+    final Map<String, DateTime> f = await StreamFailures.all();
+    if (mounted) setState(() => _failures = f);
   }
 
   bool get _hasRow => _rowStreams.isNotEmpty || _rowRecent.isNotEmpty;
@@ -1587,6 +1621,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _peekTitle();
     final Map<String, StreamQuality> q = await StreamQuality.all();
     if (mounted) setState(() => _qualities = q);
+    await _loadFailures();
     await _checkCurrent();
     await _loadRecent();
     // And this game's streams as they are now, so pulled ones aren't offered.
@@ -2127,6 +2162,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                           thisGame: _rowStreams,
                           recent: _rowRecent,
                           qualities: _qualities,
+                          failures: _failures,
                           onStream: _switchTo,
                           onRecent: _playRecent,
                           onActivity: _peekTitle,
