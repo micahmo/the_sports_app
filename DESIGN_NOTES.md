@@ -236,7 +236,7 @@ the others or is added here as a deliberate gap.
 | Measured quality on played streams' rows | yes | yes | yes |
 | Which of a source's qualities plays | the best to start (see the weak-connection row) | same | the best, never switched |
 | A stuck segment download | second copy after 4 s if nothing is arriving | same | second copy after 4 s |
-| Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu | from the start until the quality is known, then mouse movement, or the menu | from the start until the quality is known, then OK |
+| Title bar with the game and quality in the player | from the start until the quality is known, then tap, or the menu; always in debug builds | from the start until the quality is known, then mouse movement, or the menu; always in debug builds | from the start until the quality is known, then OK |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
 | Quality on a weak connection | steps down a source's separate feeds and back up (or hls.js switching where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |

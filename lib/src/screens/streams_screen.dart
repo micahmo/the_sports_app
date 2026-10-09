@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
@@ -1930,8 +1931,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       }
     }
 
-    // The title bar and the menu: up together, or hidden together.
-    final bool chrome = _holdTitle || _menuOpen || _peek || _rowOpen;
+    // The title bar and the menu: up together, or hidden together. Debug builds
+    // keep them up, so the quality can be read and screenshots taken any time.
+    final bool chrome = kDebugMode || _holdTitle || _menuOpen || _peek || _rowOpen;
 
     // Desktop has no system back button: Esc leaves the player, M mutes and F
     // goes fullscreen. (The page forwards these too, for when the web view has

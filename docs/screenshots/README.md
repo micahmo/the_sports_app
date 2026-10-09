@@ -48,8 +48,10 @@ also plugged in, a bare `adb` or `flutter run` may pick the phone.
 1. Start the app on the emulator:
 
    ```bash
-   fvm flutter run -d emulator-5554 --flavor development
+   fvm flutter run -d emulator-5554 --flavor production
    ```
+   Production, not development: the emulator has no real install to keep apart
+   from, and the development flavor adds a second app ("Sports (Dev)").
 2. Put the status bar in demo mode: fixed clock, full signal and battery, no
    notification icons.
 
