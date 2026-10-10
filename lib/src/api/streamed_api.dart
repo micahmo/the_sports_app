@@ -72,8 +72,33 @@ class StreamedApi {
 
   /// All of a match's streams, best sources first (see [sourceRank]). Sources
   /// that fail or have nothing right now are left out.
-  Future<List<StreamInfo>> fetchMatchStreams(ApiMatch m) async {
-    final List<MatchSourceRef> sources = List<MatchSourceRef>.of(m.sources);
+  /// A game's sources from the site's live and full lists combined, or null if
+  /// neither lists it. They disagree (2026-10-10: Alabama-Georgia had golf on
+  /// the full list but not the live one; Oklahoma-Texas had admin only on the
+  /// live one), and a working source shouldn't go missing because one list
+  /// left it out. 24/7 channels are only on the full list.
+  Future<List<MatchSourceRef>?> currentSources(String matchId) async {
+    final List<List<ApiMatch>> lists = await Future.wait(<Future<List<ApiMatch>>>[fetchLiveMatches(), fetchAllMatches()]);
+    final List<ApiMatch> found = <ApiMatch>[for (final List<ApiMatch> l in lists) ...l.where((ApiMatch m) => m.id == matchId)];
+    if (found.isEmpty) return null;
+    return mergeSources(<List<MatchSourceRef>>[for (final ApiMatch m in found) m.sources]);
+  }
+
+  /// Each source once, as first seen.
+  static List<MatchSourceRef> mergeSources(List<List<MatchSourceRef>> lists) {
+    final Map<String, MatchSourceRef> byKey = <String, MatchSourceRef>{};
+    for (final List<MatchSourceRef> l in lists) {
+      for (final MatchSourceRef r in l) {
+        byKey.putIfAbsent('${r.source}/${r.id}', () => r);
+      }
+    }
+    return byKey.values.toList();
+  }
+
+  Future<List<StreamInfo>> fetchMatchStreams(ApiMatch m) => fetchSourcesStreams(m.sources);
+
+  Future<List<StreamInfo>> fetchSourcesStreams(List<MatchSourceRef> refs) async {
+    final List<MatchSourceRef> sources = List<MatchSourceRef>.of(refs);
     final List<int> order = List<int>.generate(sources.length, (int i) => i)
       ..sort((int a, int b) {
         final int byRank = sourceRank(sources[a].source).compareTo(sourceRank(sources[b].source));

@@ -45,11 +45,16 @@ sub fetch(quiet as Boolean)
     m.quiet = quiet
     if m.api <> invalid then m.api.unobserveField("results")
     m.api = CreateObject("roSGNode", "ApiTask")
-    m.api.requests = {
+    requests = {
         matches: m.url
         counts: apiBase() + "/api/matches/live/popular-viewcount"
         sports: apiBase() + "/api/sports"
+        ' For each game's sources: the site's lists disagree (see mergeSources).
+        all: apiBase() + "/api/matches/all"
     }
+    live = apiBase() + "/api/matches/live"
+    if m.url <> live then requests.live = live
+    m.api.requests = requests
     m.api.observeField("results", "onLoaded")
     m.api.control = "run"
 end sub
@@ -79,7 +84,8 @@ sub onVisible()
         c.failed = failedNote(c.stream.embedUrl)
         c.lastPlayed = (c.stream.embedUrl = m.lastPlayed)
     end for
-    if m.loadedAt <> invalid and m.loadedAt.TotalSeconds() > 60 then fetch(true)
+    ' Back from the player, always: the game's sources change while it plays.
+    if m.loadedAt <> invalid then fetch(true)
 end sub
 
 sub renderTitle(count as Dynamic)
@@ -138,6 +144,9 @@ sub onLoaded()
         return
     end if
     m.loadedAt = CreateObject("roTimespan")
+    others = [ParseJson(r.all)]
+    if r.live <> invalid then others.Push(ParseJson(r.live))
+    mergeSources(matches, others)
     sports = ParseJson(r.sports)
     renameSports(sports)
     if type(sports) = "roArray" then
@@ -267,7 +276,15 @@ sub applyRefresh(matches as Object)
         end if
         m.shown = mt
     end if
-    if m.shown <> invalid then loadStreams(m.shown, m.streamItems.Count() > 0)
+    ' The same games, or the same one showing: still take their latest sources
+    ' (a source can come or go without the list changing).
+    m.matches = matches
+    if m.shown <> invalid then
+        for each mt in matches
+            if mt.id = m.shown.id then m.shown = mt
+        end for
+        loadStreams(m.shown, m.streamItems.Count() > 0)
+    end if
 end sub
 
 function sameMatches(content as Dynamic, matches as Object) as Boolean

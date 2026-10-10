@@ -17,8 +17,9 @@ final RouteObserver<ModalRoute<void>> keepFreshRoutes = RouteObserver<ModalRoute
 ///   when the notification shade is pulled down),
 /// - on desktop, when the window gets focus again, and every minute while the
 ///   mouse and keyboard are idle, since a window left open never "comes back",
-/// - when the user comes back to it (Back from the screen above), if its data
-///   is more than a few seconds old.
+/// - when the user comes back to it (Back from the screen above), every time:
+///   a game's sources come and go, and the site's lists change by the minute
+///   (until 1.0.111, only if its data was 30 s old).
 ///
 /// Only the screen that's showing refreshes; screens underneath (including
 /// everything under the player) catch up when they're next shown.
@@ -31,14 +32,10 @@ mixin KeepFresh<T extends StatefulWidget> on State<T> {
   /// Input this recent means someone is using the window; wait for the next tick.
   static const Duration _idleBefore = Duration(seconds: 10);
 
-  /// Coming back sooner than this after the last load doesn't reload again.
-  static const Duration _freshFor = Duration(seconds: 30);
-
   late final AppLifecycleListener _lifecycle;
   Timer? _timer;
-  DateTime _loadedAt = DateTime.now();
   ModalRoute<void>? _route;
-  late final _RouteWatch _routeWatch = _RouteWatch(_refreshIfStale);
+  late final _RouteWatch _routeWatch = _RouteWatch(_refreshIfShowing);
 
   /// Reload this screen's data quietly.
   void refreshInBackground();
@@ -46,7 +43,7 @@ mixin KeepFresh<T extends StatefulWidget> on State<T> {
   @override
   void initState() {
     super.initState();
-    _lifecycle = AppLifecycleListener(onShow: _refreshIfShowing, onResume: isDesktop ? _refreshIfStale : null);
+    _lifecycle = AppLifecycleListener(onShow: _refreshIfShowing, onResume: isDesktop ? _refreshIfShowing : null);
     if (isDesktop) {
       _UserActivity.ensureListening();
       _timer = Timer.periodic(_interval, (_) => _tick());
@@ -62,14 +59,7 @@ mixin KeepFresh<T extends StatefulWidget> on State<T> {
   }
 
   void _refreshIfShowing() {
-    if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
-      _loadedAt = DateTime.now();
-      refreshInBackground();
-    }
-  }
-
-  void _refreshIfStale() {
-    if (DateTime.now().difference(_loadedAt) >= _freshFor) _refreshIfShowing();
+    if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) refreshInBackground();
   }
 
   @override

@@ -670,7 +670,10 @@ end sub
 ' This game's streams as the site lists them now: its sources change (a game
 ' winding down loses them one by one), and the ones remembered with a recent
 ' game may be long gone (the old links still answer, then fail). Two steps:
-' the game's current entry from /api/matches/all, then its sources' streams.
+' the game's current entry, then its sources' streams. The sources from both
+' of the site's lists: they can disagree (2026-10-10, Oklahoma-Texas: admin on
+' the live list, only golf on the full one, so the row lost all four admin
+' streams), and 24/7 channels are only on the full one.
 ' Then `after`: "fallback" picks the next stream, "recent" moves on at once if
 ' the stream being tried isn't listed any more, "row" redraws the row. If the
 ' site can't be reached or no longer lists the game, the streams stay as they
@@ -685,19 +688,36 @@ sub refreshStreams(after as String)
     m.refreshAfter = after
     m.refreshFor = m.match.id
     m.refreshApi = CreateObject("roSGNode", "ApiTask")
-    m.refreshApi.requests = {all: apiBase() + "/api/matches/all"}
+    m.refreshApi.requests = {all: apiBase() + "/api/matches/all", live: apiBase() + "/api/matches/live"}
     m.refreshApi.observeField("results", "onRefreshAll")
     m.refreshApi.control = "run"
 end sub
 
 sub onRefreshAll()
-    list = ParseJson(m.refreshApi.results.all)
     found = invalid
-    if type(list) = "roArray" then
-        for each mt in list
-            if mt.id <> invalid and mt.id = m.refreshFor then found = mt
-        end for
-    end if
+    seen = {}
+    for each key in ["live", "all"]
+        list = ParseJson(m.refreshApi.results[key])
+        if type(list) = "roArray" then
+            for each mt in list
+                if mt.id <> invalid and mt.id = m.refreshFor and type(mt.sources) = "roArray" then
+                    if found = invalid then
+                        found = mt
+                        for each s in mt.sources
+                            seen[s.source + "/" + s.id] = true
+                        end for
+                    else
+                        for each s in mt.sources
+                            if not seen.DoesExist(s.source + "/" + s.id) then
+                                seen[s.source + "/" + s.id] = true
+                                found.sources.Push(s)
+                            end if
+                        end for
+                    end if
+                end if
+            end for
+        end if
+    end for
     if found = invalid or m.refreshFor <> m.match.id then
         afterRefresh()
         return

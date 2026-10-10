@@ -73,18 +73,29 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
   }
 
   Future<List<_SourceGroup>> _loadAllStreams() async {
+    // The sources of the list it was opened from, plus any the site's other
+    // lists give it (see currentSources); a failure fetching those extra ones
+    // just leaves them out.
+    final List<MatchSourceRef> known = widget.matchItem.sources;
+    final List<MatchSourceRef> more = (await _api.currentSources(widget.matchItem.id).catchError((Object _) => null)) ?? <MatchSourceRef>[];
+    final List<MatchSourceRef> all = StreamedApi.mergeSources(<List<MatchSourceRef>>[known, more]);
     // Best sources first, the way the website presents them. List.sort is not
     // stable, so tie-break on the original index to keep unranked sources in
     // the order the API gave them.
-    final List<int> order = List<int>.generate(widget.matchItem.sources.length, (int i) => i)
+    final List<int> order = List<int>.generate(all.length, (int i) => i)
       ..sort((int a, int b) {
-        final List<MatchSourceRef> src = widget.matchItem.sources;
-        final int byRank = sourceRank(src[a].source).compareTo(sourceRank(src[b].source));
+        final int byRank = sourceRank(all[a].source).compareTo(sourceRank(all[b].source));
         return byRank != 0 ? byRank : a.compareTo(b);
       });
-    final List<MatchSourceRef> sources = <MatchSourceRef>[for (final int i in order) widget.matchItem.sources[i]];
+    final List<MatchSourceRef> sources = <MatchSourceRef>[for (final int i in order) all[i]];
     // Fetch all sources in parallel
-    final List<List<StreamInfo>> results = await Future.wait(sources.map((s) => _api.fetchStreams(s.source, s.id)), eagerError: true);
+    final List<List<StreamInfo>> results = await Future.wait(
+      sources.map((MatchSourceRef s) {
+        final Future<List<StreamInfo>> f = _api.fetchStreams(s.source, s.id);
+        return known.contains(s) ? f : f.catchError((Object _) => <StreamInfo>[]);
+      }),
+      eagerError: true,
+    );
 
     return <_SourceGroup>[
       for (int i = 0; i < sources.length; i++)
@@ -1653,14 +1664,15 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   // This game's streams as the site lists them now (its sources change too:
   // a game winding down loses them one by one). Left as they were if the site
-  // can't be reached or no longer lists the game.
+  // can't be reached or no longer lists the game. From both of the site's
+  // lists (see currentSources): taking the full one alone, Oklahoma-Texas's
+  // row lost all four admin streams.
   Future<void> _refreshStreams() async {
     try {
-      final List<ApiMatch> current = await _api.fetchAllMatches();
       final String id = _match.id;
-      final ApiMatch? now = current.where((ApiMatch m) => m.id == id).firstOrNull;
-      if (now == null) return;
-      final List<StreamInfo> fresh = await _api.fetchMatchStreams(now);
+      final List<MatchSourceRef>? sources = await _api.currentSources(id);
+      if (sources == null) return;
+      final List<StreamInfo> fresh = await _api.fetchSourcesStreams(sources);
       if (mounted && _match.id == id) setState(() => _streams = fresh);
     } catch (_) {}
   }

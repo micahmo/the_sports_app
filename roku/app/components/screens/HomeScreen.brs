@@ -33,9 +33,10 @@ sub load(quiet = false as Boolean)
     m.api.control = "run"
 end sub
 
-' Coming back to Home after a while: refresh the counts.
+' Coming back to Home: refresh the counts, every time (until 1.0.111, only
+' after a minute).
 sub onVisible()
-    if m.top.visible and m.loadedAt <> invalid and m.loadedAt.TotalSeconds() > 60 then load(true)
+    if m.top.visible and m.loadedAt <> invalid then load(true)
 end sub
 
 sub onRefresh()

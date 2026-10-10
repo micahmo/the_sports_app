@@ -241,6 +241,35 @@ end sub
 
 ' ---- streams ---------------------------------------------------------------
 
+' Adds to each of `matches` the sources the site's other lists give the same
+' game. They disagree (2026-10-10: Alabama-Georgia had golf on the full and
+' football lists but not the live one; Oklahoma-Texas had admin only on the
+' live one), and a working source shouldn't go missing because one list left it
+' out. `others`: parsed lists, any of them invalid if they didn't load.
+sub mergeSources(matches as Object, others as Object)
+    byId = {}
+    for each mt in matches
+        if mt.id <> invalid and type(mt.sources) = "roArray" then byId[mt.id] = mt
+    end for
+    for each list in others
+        if type(list) = "roArray" then
+            for each o in list
+                mt = invalid
+                if o.id <> invalid then mt = byId[o.id]
+                if mt <> invalid and type(o.sources) = "roArray" then
+                    for each s in o.sources
+                        have = false
+                        for each t in mt.sources
+                            if t.source = s.source and t.id = s.id then have = true
+                        end for
+                        if not have then mt.sources.Push(s)
+                    end for
+                end if
+            end for
+        end if
+    end for
+end sub
+
 ' "Admin 1": a stream's source and number, as the player names streams.
 function streamName(s as Object) as String
     src = s.source

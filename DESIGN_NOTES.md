@@ -161,6 +161,15 @@ Checked 2026-09-20 against live data, which does not always match `/docs`.
   `_loadBySportFor` intersects the sport list with `/api/matches/live/popular`.
   `/api/matches/{sport}/popular` would be one request instead of two but
   includes upcoming matches, which is a different thing. Deliberate.
+- **The lists disagree about a game's sources.** On 2026-10-10 Alabama-Georgia
+  had admin and golf on `/api/matches/all` and the football list but admin only
+  on `/api/matches/live`, while Oklahoma-Texas had admin only on the live one;
+  both kept changing for the rest of the evening. Golf's stream was real (600+
+  viewers). So wherever a game's streams load (the game page, the player's row
+  and falling back), its sources are those of the list it came from plus the
+  live and full lists' (`currentSources` / `mergeSources`). The player had used
+  the full list alone and its row lost all four admin streams. On the TV the
+  merge happens when the game list loads, since one screen handles every list.
 
 ## Theming
 
@@ -229,7 +238,7 @@ the others or is added here as a deliberate gap.
 | Favorite teams | yes | yes | no |
 | Search and filters (today, popular, sport chips) | yes | yes | no: no text entry worth using on a remote |
 | Games beside the chosen game's streams | no: games, then streams | yes (wide windows) | yes |
-| Quiet background refresh | on returning to the app | every minute idle, and on returning | every minute idle, and back from a stream |
+| Quiet background refresh | on returning to the app, and on Back to any screen | every minute idle, on returning or window focus, and on Back to any screen | every minute idle, and back to Home or from a stream (until 1.0.111 these waited for data 30 s old on phone/desktop, a minute on the TV) |
 | Refresh by hand | pull down | refresh button; no pull (a trackpad's scroll counts as a drag, so scrolling past the top refreshed) | none: the quiet refresh covers it |
 | App bar while the list scrolls under it | tinted (Material's default) | stays flat: inside the inset frame a tinted bar is a floating box | n/a |
 | Streams grouped by source, best first, described | yes | yes | yes |
