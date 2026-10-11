@@ -61,6 +61,15 @@ The segments are *not* gated: they live on TikTok's image CDN as signed
 hls.js scans past the junk, most native players don't. A 4-second segment
 is ~3.6 MB (1080p60 H.264 + AAC).
 
+Not always, though: on 2026-10-10 golf's ABC HD stream served its segments from
+`lb18.strmd.st/m/…`, which refuses (403) anything without `Referer` or
+`Origin: https://embed.st` (tested with curl: either header alone gets 200).
+The phone and desktop fetch from inside the page, so they send it anyway; the
+Roku's segment downloads now send both too (TikTok's CDN doesn't mind them).
+Before that the TV stalled on every segment and took ~3 minutes of reconnects
+to fall back. A stream whose first two segments are both refused is now given
+up at once (no reconnects), so falling back takes ~10 s.
+
 ## Hiding the notice
 
 Two layers, both needed:

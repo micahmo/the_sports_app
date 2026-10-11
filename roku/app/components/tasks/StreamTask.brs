@@ -25,6 +25,11 @@ sub work()
     m.xferOf = {}
     m.served = {}
     m.fileSeq = 0
+    ' Segments the source's server refused (403) before any played: two and the
+    ' stream is given up at once (see onDownload).
+    m.refused = 0
+    m.anyServed = false
+    m.refusedOut = false
     ' A download still running this long gets a second copy (shared with the
     ' phone and desktop apps, shared/app_data.json).
     m.stuckMs = appPlayer().stuckDownloadMs
@@ -438,6 +443,11 @@ sub addTransfer(d as Object)
     x.SetUrl(d.url)
     x.SetCertificatesFile("common:/certs/ca-bundle.crt")
     x.InitClientCertificates()
+    ' As the embed page's own requests: segments on the site's own servers
+    ' (lb*.strmd.st, 2026-10-10 golf) are refused (403) without them. TikTok's
+    ' CDN, where most segments are, doesn't mind either way.
+    x.AddHeader("Referer", "https://embed.st/")
+    x.AddHeader("Origin", "https://embed.st")
     x.SetMessagePort(m.port)
     if x.AsyncGetToFile(path) then
         id = x.GetIdentity().ToStr()
@@ -503,6 +513,12 @@ sub onDownload(ev as Object)
         return
     end if
     print "[stream] segment FAILED after "; d.started.TotalMilliseconds(); " ms (error "; code; ")"
+    ' Refused, not just slow or missing: that won't change, so rather than
+    ' three reconnects over ~3 minutes, give the stream up now.
+    if code = 403 and not m.anyServed then
+        m.refused = m.refused + 1
+        if m.refused >= 2 then m.refusedOut = true
+    end if
     for each sock in d.waiters
         respond(sock, "502 Bad Gateway", "text/plain", invalid)
         sock.Close()
@@ -535,6 +551,7 @@ sub serveSegment(u as String)
     DeleteFile(d.file)
     m.dl.Delete(u)
     m.served[u] = true
+    m.anyServed = true
     if m.served.Count() > 60 then m.served = {}
 end sub
 
@@ -647,6 +664,7 @@ sub serve()
     conns = {}
     while true
         ev = wait(500, m.port)
+        if m.refusedOut then exit while
         checkPlaylist()
         checkRetries()
         if ev = invalid then
@@ -705,6 +723,7 @@ sub serve()
         r = m.minter.result
         if r <> invalid and r.sid <> invalid then closeSession(m.driver, r.sid)
     end if
+    if m.refusedOut then fail("refused: The stream's server refused it.")
 end sub
 
 ' True if the request was answered; a segment still downloading is answered

@@ -156,6 +156,11 @@ sub onError()
         m.retry.control = "start"
         return
     end if
+    ' The source's server refused it: no reconnecting, that won't change.
+    if Left(m.task.error, 9) = "refused: " then
+        failedForGood(Mid(m.task.error, 10))
+        return
+    end if
     if m.restarts > 0 then
         ' A reconnect that didn't work: try again after a longer gap.
         reconnect(m.task.error)
