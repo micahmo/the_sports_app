@@ -1466,9 +1466,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         _fallbackFrom = null;
         Recents.played(_match, _stream).then((_) => _loadRecent());
         // The title bar waits for the first quality reading, but a slow decoder
-        // may never give a believable one: let it go 10 s into playback anyway.
+        // may never give a believable one: let it go 10 s into playback anyway
+        // (if it's still this stream).
+        final StreamInfo playing = _stream;
         Timer(const Duration(seconds: 10), () {
-          if (mounted && _holdTitle) {
+          if (mounted && _holdTitle && _stream == playing) {
             _holdTitle = false;
             _peekTitle(byUser: false);
           }
@@ -1546,6 +1548,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         _fallbackFrom = null;
       }
       _tried.add(s.embedUrl);
+      // The title bar waits for the new stream's quality, as at the start.
+      _holdTitle = true;
       _stream = s;
       _quality = null;
       _bestHeight = 0;

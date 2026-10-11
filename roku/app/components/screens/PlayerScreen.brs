@@ -259,6 +259,11 @@ sub switchTo(s as Object, fallback as Boolean)
     m.stream = s
     m.restarts = 0
     m.holdBack = 0
+    ' The bar waits for the new stream's quality, as at the start (until
+    ' 1.0.113 only the first stream's).
+    m.holdBar = true
+    if m.holdTimer <> invalid then m.holdTimer.control = "stop"
+    m.barTimer.control = "stop"
     endHold()
     closeRow()
     m.note.visible = false
