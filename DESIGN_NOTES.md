@@ -379,6 +379,50 @@ by holding every third segment request for 12 s through the DevTools protocol:
 each was noticed at 4.0 s, the second copy won within 0.2 s, and playback never
 paused.
 
+**Fresh links without stopping (phone and desktop, 2026-10-11).** The
+playlist link is tied to the network it was fetched on: on 2026-10-11 every
+switch between Wi-Fi and cellular broke it (the phone's log: "levelLoadError"
+every 3 s), and the player sat through ~25 s of that, stalled and reconnected,
+a reload with its own spinner. Now two playlist failures in a row, once the
+stream has played, start `linkFailing()`: the page loads again in a hidden,
+muted frame, the first playlist it asks for is a fresh link (for the network
+the phone is on now), and a wrapper on hls.js's playlist loader
+(`relinkedLoader`, and the segment loader too) sends every request for the old
+link there. hls.js never sees a new link, so it keeps its buffer and timeline.
+Handing it the new link with `loadSource` instead restarted both: a jump back
+and a 12 s freeze. Tested on the emulator by blocking the playing link through
+the DevTools protocol: single-feed stream, fresh link in 3.1 s and playback
+never paused (the position advanced 3 s every 3 s throughout). On admin's two
+separate feeds the requests moved to the fresh server (200s), but the emulator
+couldn't hold the 8 Mbps feed long enough for a clean run. The source's
+numbering matched across links in both feeds (1080p 272,321 → 272,322; 540p
+2,209 → 2,210 a moment apart). At most once every 20 s; if it fails, the stall
+watch still reconnects as before. (The user's rule since: prefer the seamless
+fix over a quick visible one.) The Roku already did the equivalent (a new link
+found in the background while it serves the last playlist).
+
+Two more ways in, the same swap (2026-10-11):
+- **A playlist that stops moving.** No new segment for three segments' time
+  (10 s at least) while the playlist still loads: the source's server may
+  have stalled while others carry on, and a fresh link often lands on another
+  server. Tested by freezing the playing link's playlist through the DevTools
+  protocol: noticed at 10 s, a fresh link on another server in 2.9 s, and
+  playback never paused.
+- **Back online.** When the app's own check sees the network come back
+  after a dead zone, it asks the page to swap (`__appPlayer.relink()`) and
+  waits 8 s for "playing" before reloading as before. The page's own "online"
+  event is wired up too, but didn't fire on the emulator. A swap that finds no
+  link (offline) gives up after 10 s, and doesn't count toward the 20 s limit,
+  so the next failure after the network returns tries again at once.
+  On the emulator the swap fired and found a fresh link in 1.8 s, but that
+  stream was stalling on its own, so the app still reloaded after the 8 s; the
+  real test is a phone in a dead zone.
+
+**No busy loop offline.** hls.js was told to load again the moment a fatal
+network error came in; with no network at all every request failed at once, so
+it went round ~80 times a second (1,560 errors in 20 s on the emulator). Now a
+second later, and only one pending (13 errors over the same test).
+
 **Frame rate (phone and desktop, as the Roku).** Read from the video's own
 PES timestamps in the first segment (`tsFps`, the same method as the Roku's
 `tsinfo.brs`): the smallest step between frames, snapped to the nearest of 24,

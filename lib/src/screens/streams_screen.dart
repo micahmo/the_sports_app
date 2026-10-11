@@ -479,6 +479,39 @@ const String _takeoverJs = r'''
   // segment) while a fresh one comes straight back, and hls.js fetches one
   // segment at a time, so one stuck request was enough to pause playback.
   // Everything else (retries, timeouts, quality) stays hls.js's.
+  // Requests for the link hls.js was given, sent to the fresh one once that
+  // link has died (see linkFailing): hls.js never knows the link changed, so it
+  // carries on with its buffer and timeline. (Handing it the new link instead
+  // restarted both: a 12 s freeze and a jump back, tested 2026-10-11.)
+  var hlsSrc = null, linkTo = null, restartTimer = null;
+  // The newest segment the playlist has listed, and when it last grew.
+  var lastEndSN = -1, lastAdvanceAt = 0;
+  function dirOf(u) { return u.slice(0, u.lastIndexOf("/") + 1); }
+  function relinked(u) {
+    if (!linkTo || !hlsSrc) return u;
+    if (u === hlsSrc) return linkTo;
+    var from = dirOf(hlsSrc);
+    return u.indexOf(from) === 0 ? dirOf(linkTo) + u.slice(from.length) : u;
+  }
+  function relinkedLoader(Base) {
+    function Relinked(config) {
+      this.inner = new Base(config);
+      this.stats = this.inner.stats;
+      this.context = null;
+    }
+    Relinked.prototype.load = function (context, loaderConfig, callbacks) {
+      context.url = relinked(context.url);
+      this.context = context;
+      this.inner.load(context, loaderConfig, callbacks);
+      this.stats = this.inner.stats;
+    };
+    Relinked.prototype.abort = function () { this.inner.abort(); };
+    Relinked.prototype.destroy = function () { this.inner.destroy(); };
+    Relinked.prototype.getCacheAge = function () { return this.inner.getCacheAge ? this.inner.getCacheAge() : null; };
+    Relinked.prototype.getResponseHeader = function (n) { return this.inner.getResponseHeader ? this.inner.getResponseHeader(n) : null; };
+    return Relinked;
+  }
+
   function hedgedLoader(Base) {
     function Hedged(config) {
       this.config = config;
@@ -493,6 +526,7 @@ const String _takeoverJs = r'''
     Hedged.prototype.load = function (context, loaderConfig, callbacks) {
       var self = this;
       var running = 0;
+      context.url = relinked(context.url);
       self.context = context;
       self.callbacks = callbacks;
       loading.push(self);
@@ -634,7 +668,13 @@ const String _takeoverJs = r'''
 
   // Back online after a dead zone: the app reloads straight away rather than
   // waiting for its next retry.
-  window.addEventListener("online", function () { post("online"); });
+  window.addEventListener("online", function () {
+    relink("back online", true);
+    post("online");
+  });
+  // For the app, which sees the network come back more reliably than the
+  // page's "online" event does (it didn't fire on the emulator).
+  window.__appPlayer.relink = function () { relink("back online", true); };
 
   hidePage();
   // The page can replace its own <head>; keep the blanking in place until we
@@ -779,6 +819,8 @@ const String _takeoverJs = r'''
     });
 
     if (hls) { try { hls.destroy(); } catch (e) {} }
+    hlsSrc = url;
+    linkTo = null;
     // Not low-latency HLS, and these feeds carry ad discontinuities, so keep a
     // real buffer rather than hugging the edge.
     hls = new OurHls({
@@ -786,10 +828,24 @@ const String _takeoverJs = r'''
       backBufferLength: 30,
       // Segments only (playlists are small and refetched anyway).
       fLoader: hedgedLoader(OurHls.DefaultConfig.loader),
+      pLoader: relinkedLoader(OurHls.DefaultConfig.loader),
     });
     hls.loadSource(url);
     hls.attachMedia(video);
     hls.on(OurHls.Events.MANIFEST_PARSED, function () { toLiveEdge(); play(); });
+    // A playlist that loads but has nothing new for three segments' time (10 s
+    // at least): the source's server may have stalled while others carry on,
+    // and a fresh link often lands on another. (The TV's spinners on
+    // 2026-10-11 were admin's playlist standing still for 20-40 s.)
+    lastEndSN = -1;
+    lastAdvanceAt = Date.now();
+    hls.on(OurHls.Events.LEVEL_LOADED, function (_, d) {
+      var det = d.details;
+      if (!det || !det.live) return;
+      var now = Date.now();
+      if (det.endSN > lastEndSN) { lastEndSN = det.endSN; lastAdvanceAt = now; return; }
+      if (now - lastAdvanceAt > Math.max(3 * det.targetduration * 1000, 10000)) relink("playlist not moving for " + Math.round((now - lastAdvanceAt) / 1000) + " s", false);
+    });
     fragStats = [];
     lastMeasure = 0;
     streamFps = 0;
@@ -815,8 +871,16 @@ const String _takeoverJs = r'''
     });
     hls.on(OurHls.Events.ERROR, function (_, d) {
       log((d.fatal ? "fatal " : "") + d.type + " " + d.details);
+      // The playlist stops loading once the stream has played: its link has
+      // died (the phone changed networks, or the source's server dropped it).
+      if (announced && /^(level|manifest)Load/.test(d.details)) linkFailing(d.details);
       if (!d.fatal) return;
-      if (d.type === OurHls.ErrorTypes.NETWORK_ERROR) { try { hls.startLoad(); } catch (e) {} }
+      // Load again, a second later: straight away, with no network at all,
+      // every request failed at once and it went round ~80 times a second
+      // (1,560 errors in 20 s on the emulator, 2026-10-11).
+      if (d.type === OurHls.ErrorTypes.NETWORK_ERROR) {
+        if (!restartTimer) restartTimer = setTimeout(function () { restartTimer = null; try { if (hls) hls.startLoad(); } catch (e) {} }, 1000);
+      }
       else if (d.type === OurHls.ErrorTypes.MEDIA_ERROR) {
         // Once, this clears a decoding hiccup. Again soon after, it's the same
         // spot failing each time: recovering reloads from where it was, so it
@@ -927,6 +991,93 @@ const String _takeoverJs = r'''
     announced = false;
     window.__appPlayer.url = feeds[i].url;
     build(feeds[i].url);
+  }
+
+  // A dead link, swapped for a fresh one without stopping: the page loads
+  // again in a hidden frame, which fetches a new link for the same stream
+  // (good for the network the phone is on now), and the player's requests go
+  // there from then on (relinked()), playing what it has buffered meanwhile. Before this, the phone sat
+  // through ~25 s of failed playlist loads and then reconnected (2026-10-11,
+  // every switch between Wi-Fi and cellular). Two playlist failures in a row
+  // start it; at most once every 20 s. If it doesn't work, the stall watch
+  // still reconnects as before.
+  var linkErrors = [], relinking = false, relinkedAt = 0, relinkGen = 0;
+  function linkFailing(why) {
+    var now = Date.now();
+    linkErrors.push(now);
+    linkErrors = linkErrors.filter(function (t) { return now - t < 6000; });
+    if (linkErrors.length < 2) return;
+    relink("link failing (" + why + ")", false);
+  }
+
+  // force: back online, where an attempt made while offline is no use; start
+  // again now, whatever the 20 s limit says.
+  function relink(why, force) {
+    var now = Date.now();
+    if (!hls || !announced) return;
+    if (!force && (relinking || now - relinkedAt < 20000)) return;
+    var gen = ++relinkGen;
+    relinking = true;
+    relinkedAt = now;
+    lastAdvanceAt = now;
+    log(why + ": getting a fresh link");
+    freshLink().then(function (u) {
+      if (gen !== relinkGen) return;
+      // None (offline, most likely): the next playlist failure tries again,
+      // rather than waiting out the 20 s.
+      if (!u) { relinking = false; relinkedAt = 0; log("no fresh link"); return; }
+      return readFeeds(u).then(function (f) {
+        if (gen !== relinkGen) return;
+        relinking = false;
+        if (!hls) return;
+        var src;
+        if (f.aligned || f.feeds.length < 2) {
+          src = f.aligned ? f.master : f.feeds[0].url;
+        } else {
+          // The same feed as before (the list is best first, as before); the
+          // others' fresh links too, for switching later.
+          feeds = f.feeds;
+          cur = Math.min(cur, feeds.length - 1);
+          src = feeds[cur].url;
+        }
+        log("fresh link after " + (Date.now() - now) + " ms: carrying on");
+        linkErrors = [];
+        linkTo = src;
+        window.__appPlayer.url = src;
+        try { hls.startLoad(); } catch (e) {}
+      });
+    }, function () { relinking = false; });
+  }
+
+  // The first playlist the page asks for when loaded in a hidden frame, or
+  // null after 10 s (it usually takes 2-4).
+  function freshLink() {
+    return new Promise(function (res) {
+      var fr = document.createElement("iframe");
+      fr.name = "appRelink";
+      // The page's own player may start in there: never with sound.
+      fr.setAttribute("allow", "autoplay 'none'");
+      fr.style.cssText = "position:fixed;left:-10px;top:-10px;width:1px;height:1px;opacity:0;pointer-events:none;border:0";
+      var t0 = Date.now(), done = false, old = window.__appPlayer.url;
+      function finish(u) {
+        if (done) return;
+        done = true;
+        clearInterval(iv);
+        try { fr.remove(); } catch (e) {}
+        res(u);
+      }
+      var iv = setInterval(function () {
+        try {
+          var e = fr.contentWindow.performance.getEntriesByType("resource");
+          for (var i = 0; i < e.length; i++) {
+            if (e[i].name.indexOf(".m3u8") !== -1 && e[i].name !== old) return finish(e[i].name);
+          }
+        } catch (err) {}
+        if (Date.now() - t0 > 10000) finish(null);
+      }, 250);
+      fr.src = location.href;
+      document.body.appendChild(fr);
+    });
   }
 
   // The oldest segment download under way: how long it has run and what has
@@ -1291,6 +1442,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   bool _everPlayed = false;
   bool _healing = false;
   bool _offline = false;
+  DateTime? _relinkGraceUntil;
   int _healTries = 0;
   Timer? _healTimer;
 
@@ -1442,7 +1594,15 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       return;
     }
     if (message == 'online') {
-      if (_healing) _healNow();
+      // The page is getting a fresh link and carrying on (see relink()); it
+      // says "playing" when it does. Reload only if it hasn't within 8 s.
+      if (_healing) {
+        _relinkGraceUntil = DateTime.now().add(const Duration(seconds: 8));
+        _healTimer?.cancel();
+        _healTimer = Timer(const Duration(seconds: 8), () {
+          if (mounted && _healing) _healNow();
+        });
+      }
       return;
     }
     setState(() {
@@ -1781,6 +1941,22 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _healTimer?.cancel();
     final bool online = await _siteReachable();
     if (!mounted || !_healing) return;
+    // Back online after being offline: have the page swap in a fresh link and
+    // carry on (it says "playing" when it does); reload only if it hasn't
+    // within 8 s.
+    if (online && _offline) {
+      setState(() => _offline = false);
+      _relinkGraceUntil = DateTime.now().add(const Duration(seconds: 8));
+      _web.runJavaScript('window.__appPlayer && window.__appPlayer.relink && window.__appPlayer.relink()').catchError((_) {});
+    }
+    // Just back online and the page is swapping in a fresh link: not yet.
+    final DateTime? grace = _relinkGraceUntil;
+    if (online && grace != null && DateTime.now().isBefore(grace)) {
+      _healTimer = Timer(grace.difference(DateTime.now()), () {
+        if (mounted && _healing) _healNow();
+      });
+      return;
+    }
     if (online && _healTries >= 3) {
       setState(() {
         _healing = false;
