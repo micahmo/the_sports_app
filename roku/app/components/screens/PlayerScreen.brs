@@ -44,9 +44,15 @@ sub init()
     m.row = m.top.createChild("Group")
     m.row.visible = false
     m.pill = m.top.createChild("Group")
-    m.pill.visible = false
+    m.pill.id = "pill"
     m.note = m.top.createChild("Group")
-    m.note.visible = false
+    m.note.id = "note"
+    ' The bar, pill and note fade (setShown), as on the phone and desktop.
+    for each n in [m.bar, m.pill, m.note]
+        n.addField("shown", "boolean", false)
+        n.visible = false
+        n.opacity = 0
+    end for
     m.noteTimer = m.top.createChild("Timer")
     m.noteTimer.duration = appPlayer().switchedNoteMs / 1000
     m.noteTimer.observeField("fire", "onNoteTimer")
@@ -89,8 +95,8 @@ sub start()
     m.barQuality.text = barLine("")
     m.recorded = false
     if m.holdBar then
-        m.bar.visible = true
-        m.pill.visible = hasRow()
+        setShown(m.bar, true)
+        setShown(m.pill, hasRow())
     end if
     m.task = CreateObject("roSGNode", "StreamTask")
     m.task.embedUrl = m.stream.embedUrl
@@ -266,7 +272,7 @@ sub switchTo(s as Object, fallback as Boolean)
     m.barTimer.control = "stop"
     endHold()
     closeRow()
-    m.note.visible = false
+    setShown(m.note, false, 250)
     start()
 end sub
 
@@ -407,14 +413,14 @@ end sub
 ' The bar goes after a few seconds, and the pill and row with it.
 sub onBarTimer()
     if m.holdBar then return
-    m.bar.visible = false
-    m.pill.visible = false
+    setShown(m.bar, false)
+    setShown(m.pill, false)
     closeRow()
 end sub
 
 sub showBar()
-    m.bar.visible = true
-    m.pill.visible = not m.rowOpen and m.note.visible = false and hasRow()
+    setShown(m.bar, true)
+    setShown(m.pill, not m.rowOpen and not m.note.shown and hasRow())
     m.barTimer.control = "stop"
     ' Longer with the row open, to read the cards.
     if m.rowOpen then m.barTimer.duration = 8 else m.barTimer.duration = 5
@@ -471,7 +477,8 @@ sub openRow()
     m.rowFocus = -1
     renderRow()
     m.row.visible = true
-    m.pill.visible = false
+    ' At once, as the phone's: fading, it lay over the row for a moment.
+    setShown(m.pill, false, 0)
     showBar()
     ' This game's streams as they are now (pulled ones aren't offered), and
     ' which RECENT games are still on.
@@ -511,6 +518,9 @@ end sub
 sub closeRow()
     m.rowOpen = false
     m.row.visible = false
+    ' The pill back in its place at once (only the bar's own coming and going
+    ' fades it), as on the phone.
+    if m.bar.shown and not m.note.shown and hasRow() then setShown(m.pill, true, 0)
 end sub
 
 ' Cards along the bottom: THIS GAME, a divider, RECENT. All the same size, the
@@ -799,15 +809,66 @@ sub showNote(text as String)
     mkPoster(m.note, "pkg:/images/icons/" + appPlayerIcons().switched + ".png", x + 24, 1000 + 10, 36, 36, t.text)
     l.translation = [x + 24 + 36 + 12, 1000]
     m.note.appendChild(l)
-    m.note.visible = true
-    m.pill.visible = false
+    setShown(m.note, true, 250)
+    ' The note takes the pill's place at once, as on the phone.
+    setShown(m.pill, false, 0)
     m.noteTimer.control = "stop"
     m.noteTimer.control = "start"
 end sub
 
 sub onNoteTimer()
-    m.note.visible = false
-    if m.bar.visible then m.pill.visible = not m.rowOpen and hasRow()
+    setShown(m.note, false, 250)
+    if m.bar.shown then setShown(m.pill, not m.rowOpen and hasRow(), 0)
+end sub
+
+' In or out over [ms] (150, the note 250), as the phone and desktop apps'
+' AnimatedOpacity: `shown` is what's meant, and `visible` stays on until a
+' fade out has ended. The row comes and goes at once, as it does there.
+sub setShown(node as Object, on as Boolean, ms = 150 as Integer)
+    if node.shown = on then return
+    node.shown = on
+    f = fader(node)
+    f.anim.control = "stop"
+    target = 0.0
+    if on then target = 1.0
+    ' No fade: at once.
+    if ms <= 0 then
+        node.opacity = target
+        node.visible = on
+        return
+    end if
+    if on then node.visible = true
+    f.anim.duration = ms / 1000
+    f.interp.keyValue = [node.opacity, target]
+    f.anim.control = "start"
+end sub
+
+function fader(node as Object) as Object
+    if m.faders = invalid then m.faders = {}
+    f = m.faders[node.id]
+    if f = invalid then
+        a = m.top.createChild("Animation")
+        a.repeat = false
+        a.easeFunction = "linear"
+        i = a.createChild("FloatFieldInterpolator")
+        i.key = [0.0, 1.0]
+        i.fieldToInterp = node.id + ".opacity"
+        a.observeField("state", "onFadeState")
+        f = {anim: a, interp: i, node: node}
+        m.faders[node.id] = f
+    end if
+    return f
+end function
+
+' A fade out that ran to the end: off. (Stopping one part-way, to turn back,
+' also reports "stopped"; the opacity tells them apart.)
+sub onFadeState(ev as Object)
+    a = ev.getRoSGNode()
+    if a.state <> "stopped" then return
+    for each k in m.faders
+        f = m.faders[k]
+        if f.anim.isSameNode(a) and not f.node.shown and f.node.opacity < 0.01 then f.node.visible = false
+    end for
 end sub
 
 ' The Streams pill: with the title bar, bottom centre; Down opens the row.
@@ -896,8 +957,8 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
     if not press then return false
     ' Any press: the "Switched to" note has done its job, and would sit where
     ' the pill and row go.
-    if m.note.visible then
-        m.note.visible = false
+    if m.note.shown then
+        setShown(m.note, false, 250)
         m.noteTimer.control = "stop"
     end if
     if m.rowOpen then
@@ -924,7 +985,7 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
         return true
     end if
     if key = "back" then return false
-    if key = "down" and m.bar.visible then
+    if key = "down" and m.bar.shown then
         openRow()
         return true
     end if
