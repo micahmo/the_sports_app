@@ -1,17 +1,23 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
-import 'package:webview_windows/webview_windows.dart' as win;
+import 'package:webview_win_floating/webview_win_floating.dart';
 
-/// The one web view the stream player needs, on whichever platform we are.
-/// `webview_flutter` has no Windows implementation, so Windows gets WebView2
-/// through `webview_windows`; everything else keeps `webview_flutter`.
+/// The one web view the stream player needs, on whichever platform we are,
+/// through `webview_flutter`: Android's own, and on Windows WebView2 through
+/// `webview_win_floating`.
 ///
-/// Pages talk back through a JavaScript object named `AppPlayer` with a
-/// `postMessage(String)` method, the way `webview_flutter` channels work.
+/// On Windows that's a real WebView2 window floating over the app rather than
+/// one copied into a Flutter texture (`webview_windows`, until 1.0.115): the
+/// copy wasn't in step with the video, so 60 fps never looked smooth (the same
+/// game in Firefox was "night and day", 2026-10-11). The cost: Flutter can't
+/// draw over it, so the player's overlays are drawn by the page itself on
+/// Windows (see the player's _overlay()).
+///
+/// Pages talk back through a JavaScript channel named `AppPlayer`, with a
+/// `postMessage(String)` method.
 abstract class PlayerWebView {
   factory PlayerWebView({
     required Uri url,
@@ -20,8 +26,7 @@ abstract class PlayerWebView {
     required VoidCallback onPageStarted,
     required VoidCallback onPageFinished,
   }) {
-    final _Callbacks cb = _Callbacks(url, isAllowed, onMessage, onPageStarted, onPageFinished);
-    return Platform.isWindows ? _WindowsPlayerWebView(cb) : _FlutterPlayerWebView(cb);
+    return _FlutterPlayerWebView(_Callbacks(url, isAllowed, onMessage, onPageStarted, onPageFinished));
   }
 
   Widget build(BuildContext context);
@@ -61,6 +66,7 @@ class _FlutterPlayerWebView implements PlayerWebView {
         NavigationDelegate(
           onPageStarted: (_) => _cb.onPageStarted(),
           onPageFinished: (_) => _cb.onPageFinished(),
+          // Ads open new windows and leave the site; nothing we want does.
           onNavigationRequest: (NavigationRequest req) => _cb.isAllowed(Uri.parse(req.url)) ? NavigationDecision.navigate : NavigationDecision.prevent,
           onUrlChange: (UrlChange change) {
             final String? u = change.url;
@@ -73,11 +79,21 @@ class _FlutterPlayerWebView implements PlayerWebView {
       (_controller.platform as AndroidWebViewController).setMediaPlaybackRequiresUserGesture(false);
     }
 
+    // WebView2's status bubble (a link's address, bottom left) has nothing to
+    // say over a video.
+    _win?.setStatusBar(false);
+
     _controller.loadRequest(_cb.url);
   }
 
   final _Callbacks _cb;
   late final WebViewController _controller;
+
+  // The native window on Windows; null elsewhere.
+  WinWebViewController? get _win {
+    final Object p = _controller.platform;
+    return p is WindowsPlatformWebViewController ? p.controller : null;
+  }
 
   @override
   Widget build(BuildContext context) => WebViewWidget(controller: _controller);
@@ -98,103 +114,9 @@ class _FlutterPlayerWebView implements PlayerWebView {
   }
 
   @override
-  void dispose() {}
-}
-
-class _WindowsPlayerWebView implements PlayerWebView {
-  _WindowsPlayerWebView(this._cb) {
-    _init();
-  }
-
-  final _Callbacks _cb;
-  final win.WebviewController _controller = win.WebviewController();
-  final ValueNotifier<bool> _initialized = ValueNotifier<bool>(false);
-  final List<StreamSubscription<dynamic>> _subs = <StreamSubscription<dynamic>>[];
-  bool _disposed = false;
-
-  // WebView2's environment is per process and can only be set up once.
-  static Future<void>? _environment;
-
-  // Gives every document the same `AppPlayer.postMessage` that webview_flutter's
-  // channel provides, backed by WebView2's own message port.
-  static const String _bridgeJs = '''
-window.AppPlayer = { postMessage: function (m) { try { window.chrome.webview.postMessage(String(m)); } catch (e) {} } };
-''';
-
-  Future<void> _init() async {
-    // Chromium refuses to autoplay with sound until the page itself is
-    // clicked, and the user's click lands on Flutter rather than the page.
-    _environment ??= win.WebviewController.initializeEnvironment(additionalArguments: '--autoplay-policy=no-user-gesture-required').catchError((_) {});
-    await _environment;
-    await _controller.initialize();
-    if (_disposed) return;
-
-    await _controller.setBackgroundColor(Colors.black);
-    // Ads open new windows; nothing we want lives in one.
-    await _controller.setPopupWindowPolicy(win.WebviewPopupWindowPolicy.deny);
-    await _controller.addScriptToExecuteOnDocumentCreated(_bridgeJs);
-
-    _subs.add(_controller.webMessage.listen((dynamic m) => _cb.onMessage('$m'), onError: (_) {}));
-    _subs.add(
-      _controller.loadingState.listen((win.LoadingState s) {
-        if (s == win.LoadingState.loading) _cb.onPageStarted();
-        if (s == win.LoadingState.navigationCompleted) _cb.onPageFinished();
-      }),
-    );
-    // WebView2 navigations cannot be vetoed from here, so undo them instead,
-    // as onUrlChange does on Android.
-    _subs.add(
-      _controller.url.listen((String u) {
-        final Uri? dest = Uri.tryParse(u);
-        // about:blank and the like come and go while loading; only real pages count.
-        final bool web = dest != null && (dest.isScheme('http') || dest.isScheme('https'));
-        if (web && !_cb.isAllowed(dest)) _controller.loadUrl(_cb.url.toString());
-      }),
-    );
-
-    await _controller.loadUrl(_cb.url.toString());
-    if (!_disposed) _initialized.value = true;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: _initialized,
-      builder: (BuildContext _, bool ready, Widget? __) => ready
-          // The window may be scaled (WindowScale): render at its real resolution.
-          ? win.Webview(_controller, scaleFactor: MediaQuery.devicePixelRatioOf(context))
-          : const SizedBox.expand(),
-    );
-  }
-
-  @override
-  Future<void> runJavaScript(String js) async {
-    if (_initialized.value) await _controller.executeScript(js);
-  }
-
-  @override
-  Future<Object?> runJavaScriptReturningResult(String js) async {
-    return _initialized.value ? await _controller.executeScript(js) : null;
-  }
-
-  @override
-  Future<void> reload() async {
-    if (_initialized.value) await _controller.reload();
-  }
-
-  @override
-  Future<void> load(Uri url) async {
-    _cb.url = url;
-    if (_initialized.value) await _controller.loadUrl(url.toString());
-  }
-
-  @override
   void dispose() {
-    _disposed = true;
-    for (final StreamSubscription<dynamic> s in _subs) {
-      s.cancel();
-    }
-    _controller.dispose();
-    _initialized.dispose();
+    // Leaving the player only hides a native window: close it, or the stream
+    // plays on, sound and all, until it's garbage-collected.
+    _win?.dispose();
   }
 }

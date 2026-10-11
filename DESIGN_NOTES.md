@@ -276,11 +276,67 @@ the others or is added here as a deliberate gap.
 
 ## Windows
 
-`webview_flutter` has no Windows implementation, so `lib/src/player/player_webview.dart`
-wraps two backends behind one small interface: `webview_flutter` everywhere else,
-WebView2 via `webview_windows` on Windows. The takeover script is shared; on
-Windows a document-created script defines `window.AppPlayer.postMessage` on top of
-WebView2's `chrome.webview.postMessage`, so the page side is identical.
+The player's web view is `webview_flutter` on every platform: Android's own,
+and on Windows WebView2 through `webview_win_floating`, which implements the
+same interface (since 1.0.115; before that `webview_windows`). The takeover
+script and the `AppPlayer.postMessage` channel are shared.
+
+### Native desktop player (1.0.115)
+
+**Why.** `webview_windows` drew WebView2 off-screen and copied each frame into
+a Flutter texture (Windows.Graphics.Capture), out of step with the video, so
+60 fps never looked smooth: nothing was dropped (CPU under 30%, the Iris Xe
+decoding at ~24%, the video element's counter clean apart from small bursts),
+but frames were held unevenly. The same game in Firefox on dprec11 was "night
+and day" (user, 2026-10-11), and so was a test build with `webview_win_floating`,
+which puts a real WebView2 window over the app.
+
+**The cost: Flutter can't draw over it,** so on Windows the page draws what sits
+over a playing video (title bar, Streams pill and row, notes, menu): the app
+keeps all the logic and sends what to
+show after every build (`_overlay()` → `__appOverlay.render`), and the page
+sends clicks back (`ui:pill`, `ui:stream:<i>`, ...). Sizes are the app's logical
+pixels scaled as WindowScale scales (window width / 1360); colours from
+app_data.json; the app's fonts (Barlow Semi Condensed 600/700, Material Icons)
+are handed to the page as data URLs. Matching Flutter, measured against the old
+app on dprec11:
+- The menu's hamburger is drawn at 22 × 32/56 ≈ 12.6: flutter_speed_dial makes
+  a 56 px button and shrinks it to 32, icon and all (13 × 8 px of lines in a
+  45 px circle at 1.41x). Its icon stays a hamburger when open (no ✕), and the
+  children scale in one after the other (Interval(i/n, 1), 150 ms).
+- An icon alone in a round button sits 0.12 em lower than the browser puts it
+  (it was 2 px above centre); beside text (the pill) it already matches.
+- InkWell's ripple and the 150 ms fades are CSS; the hand cursor over buttons
+  is Flutter's own desktop default too.
+- In a shadow root, so the site's styles (in force until build() replaces its
+  page) can't reach it: they centred the title for a moment.
+
+**Waiting shows only the app's own screen, as on the TV.** Whenever the player
+waits (a page loading, from the first stream to a switch, a fallback, Refresh
+or a reconnect; a stall; a quality switch; "unavailable"), the web view sits
+off-screen and the app's own spinner, text and Retry show, as on the phone and
+the TV (where the app always draws its own spinner). It moves into place once
+our script has the page and the stream plays (`_reveal()`). The page never
+draws a spinner, so nothing hands over: an earlier version drew one in the page
+too, and the handover from the app's showed as a flicker, a frozen spinner and
+text jumping a pixel or two. Off-screen rather than hidden: a hidden WebView2
+drops its picture and shows a moment of black when shown again; off-screen it
+keeps drawing, so the picture is there when it moves in. The plugin only places its window when it's laid
+out, so the move changes the constraints too (loose off-screen, tight in place),
+in one widget shape so the view isn't rebuilt. Found on the way:
+- The page-open animation snapshots the new page on Windows, so its spinner sat
+  frozen until it ended: the player's route has `allowSnapshotting: false`.
+- The site's ad scripts add a transparent full-window layer (`div#dontfoid`,
+  z-index max) that ate the first click on the overlay. Once build() has the
+  page, everything but our video, overlay and relink frame is hidden.
+- WebView2's status bubble (a link's address, bottom left) is turned off.
+- Leaving the player: the page fades to black (150 ms), the window moves
+  off-screen, then the route pops, so the app's black player screen animates
+  out as on a phone (the native window can't take part in the animation).
+- Leaving also disposes the native window; otherwise it only hides, and the
+  stream plays on, sound and all, until it's garbage-collected.
+- The page keeps its last 300 log lines in `window.__appLog`, for reading over
+  the debug port (desktop has no log to read).
 
 Things that differ from Android and were each found the hard way:
 
@@ -300,14 +356,15 @@ Things that differ from Android and were each found the hard way:
     the first, the master, and picks the best feed itself (see below).
 
 - **Autoplay with sound is refused** unless the page itself was clicked, and the
-  click lands on Flutter. The WebView2 environment is created with
-  `--autoplay-policy=no-user-gesture-required`.
+  click lands on Flutter. The Windows runner (main.cpp) adds
+  `--autoplay-policy=no-user-gesture-required` to
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` before the app starts, keeping anything
+  already there (a debug port).
 - **Keyboard focus.** Once the video is clicked, WebView2 holds keyboard focus
   and Flutter never sees keys, so the page forwards Esc/M/F as `key:<name>`
   messages.
-- **Navigation can't be vetoed** from `webview_windows`; off-site navigations are
-  undone by reloading the embed URL (as `onUrlChange` does on Android), and
-  popups are denied outright.
+- **Navigation:** off-site navigations and new windows (ads) are refused by
+  the same NavigationDelegate as on Android.
 
 ### Playlists and segment downloads (phone and desktop)
 

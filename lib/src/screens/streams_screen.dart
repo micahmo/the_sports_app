@@ -107,7 +107,9 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     // Set before navigating so it shows even if user backs out
     setState(() => _lastPlayedUrl = s.embedUrl);
     final List<StreamInfo> all = <StreamInfo>[for (final _SourceGroup g in groups) ...g.streams];
-    await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => StreamPlayerScreen(stream: s, match: widget.matchItem, streams: all)));
+    // Not snapshotted while it opens: the page animation otherwise moves a
+    // still picture of the player, so its spinner sat frozen until it ended.
+    await Navigator.push(context, MaterialPageRoute<void>(allowSnapshotting: false, builder: (_) => StreamPlayerScreen(stream: s, match: widget.matchItem, streams: all)));
     // The player measured it; show that on its row. And if another of this
     // game's streams was picked in the player (or fallen back to), that's the
     // one last played now.
@@ -456,6 +458,202 @@ const String _takeoverJs = r'''
     post("playing");
   }
 
+  // The player's overlays, drawn here on Windows, where the web view is a
+  // native window the app can't draw over (see PlayerWebView). The app keeps
+  // all the logic and sends what to show (render()); this only draws it, in
+  // the app's own sizes, fonts and colours, and sends clicks back ("ui:...").
+  // Sizes are the app's logical pixels, scaled up with the window as the app
+  // scales (WindowScale: the window's width over 1360).
+  window.__appOverlay = (function () {
+    var root = null, state = null, fontsCss = null, last = {};
+    var CSS =
+      ".r{position:fixed;left:0;top:0;transform-origin:0 0;pointer-events:none;" +
+      "font-family:'Segoe UI',sans-serif;color:#fff;-webkit-font-smoothing:antialiased;user-select:none}" +
+      "*{box-sizing:border-box;visibility:visible!important}" +
+      ".f{transition:opacity 150ms}" +
+      ".off{opacity:0;pointer-events:none!important}" +
+      ".hit{pointer-events:auto;cursor:pointer;overflow:hidden}" +
+      ".rip{position:absolute;border-radius:50%;background:rgba(255,255,255,.16);transform:scale(0);pointer-events:none;transition:transform 225ms cubic-bezier(.4,0,.2,1),opacity 200ms linear}" +
+      ".ic{font-family:'MaterialIcons';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}" +
+      // Alone in a round button the browser sets a glyph 0.12 em higher than
+      // Flutter centres it (measured: the hamburger 2 px above its circle's
+      // centre). Beside text (the pill, notes) it already lines up as Flutter's.
+      ".ao-btn .ic{transform:translateY(.12em)}" +
+      ".cd{font-family:'BarlowSemiCondensed',sans-serif;line-height:1.15}" +
+      ".ao-bar{position:absolute;left:0;right:0;top:0;background:rgba(0,0,0,__OVERLAY__);padding:10px 16px}" +
+      ".ao-bar .t{font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+      ".ao-bar .s{font-size:12px;color:rgba(255,255,255,.7);margin-top:2px}" +
+      ".ao-pill{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,__OVERLAY__);border-radius:999px;padding:7px 16px 7px 12px;display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap}" +
+      ".ao-pill:hover,.ao-btn:hover{background-color:rgba(40,40,40,.85)}" +
+      ".ao-note{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,__OVERLAY__);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:13px;white-space:nowrap;transition:opacity 250ms}" +
+      ".ao-row{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,__OVERLAY__);padding:10px 0 12px;pointer-events:auto;overflow-x:auto;scrollbar-width:none}" +
+      ".ao-row::-webkit-scrollbar{display:none}" +
+      ".ao-rowin{display:flex;align-items:flex-start;padding:0 12px;width:max-content}" +
+      ".ao-sec .l{font-size:11px;letter-spacing:.8px;color:rgba(255,255,255,.6);height:14px;line-height:14px;margin:0 0 6px 2px}" +
+      ".ao-cards{display:flex;gap:8px}" +
+      ".ao-div{width:1px;height:96px;background:rgba(255,255,255,.24);margin:20px 12px 0}" +
+      ".ao-card{width:150px;height:96px;border-radius:10px;background:rgba(43,47,54,.94);padding:9px;display:flex;flex-direction:column;border:1.5px solid transparent}" +
+      ".ao-card:hover{border-color:#fff}" +
+      ".ao-card .top{height:24px;display:flex;align-items:center}" +
+      ".ao-card .tag{padding:1px 6px;border-radius:5px;font-size:14px;font-weight:700;letter-spacing:.5px;color:#000}" +
+      ".ao-card .nm{margin-top:5px;font-size:15px;font-weight:600;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical}" +
+      ".ao-card .dt{margin-top:auto;font-size:11px;line-height:1.3;color:rgba(255,255,255,.7);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical}" +
+      ".ao-disc{width:24px;height:24px;border-radius:50%;background:#E6E8EE;padding:3px;display:flex;align-items:center;justify-content:center;overflow:hidden}" +
+      ".ao-disc img{max-width:100%;max-height:100%}" +
+      ".ao-disc.poster{padding:0}.ao-disc.poster img{width:100%;height:100%;max-width:none;max-height:none;object-fit:cover}" +
+      ".ao-fab{position:absolute;right:16px;bottom:16px;display:flex;flex-direction:column-reverse;align-items:center;gap:5px}" +
+      ".ao-btn{width:32px;height:32px;border-radius:50%;background:#000;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 5px -1px rgba(0,0,0,.2),0 6px 10px 0 rgba(0,0,0,.14),0 1px 18px 0 rgba(0,0,0,.12)}" +
+      ".ao-fab .c{transform:scale(0);pointer-events:none!important}" +
+      ".ao-fab .c0{transition:transform 150ms ease}.ao-fab .c1{transition:transform 75ms ease}" +
+      ".ao-fab.open .c{transform:scale(1);pointer-events:auto!important}.ao-fab.open .c1{transition-delay:75ms}";
+
+    // Nothing of the site's may sit over the player: its ad scripts add a
+    // transparent full-window layer (seen: div#dontfoid, z-index 2147483647)
+    // that ate the first click on the overlay (to open an ad; blocked). Once
+    // build() has the page, all it should hold is our video, this overlay and
+    // the hidden frame that fetches fresh links.
+    // Only once build() has run: before that the site's own player has to
+    // run, to fetch the stream's link.
+    var KEEP_OUT = "body>*:not(#appPlayer):not(#appOverlay):not(iframe[name=appRelink]),html>*:not(head):not(body){display:none!important;pointer-events:none!important}";
+    function keepOut() { return window.__appPlayer && window.__appPlayer.built ? KEEP_OUT : ""; }
+
+    function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+    function icon(cp, size, color) { return "<span class='ic' style='font-size:" + size + "px;color:" + (color || "#fff") + "'>" + String.fromCharCode(cp) + "</span>"; }
+
+    // In a shadow root, so the site's own styles (in force until build()
+    // replaces its page) can't reach it: they centred the title for a moment.
+    // Fonts are declared page-level (an @font-face in a shadow root isn't used).
+    var host = null;
+    function ensure() {
+      if (root && host && host.isConnected) return;
+      var ft = document.getElementById("appOverlayFonts");
+      if (!ft) {
+        ft = document.createElement("style");
+        ft.id = "appOverlayFonts";
+        ft.textContent = keepOut() + (fontsCss || "");
+        (document.head || document.documentElement).appendChild(ft);
+      }
+      host = document.createElement("div");
+      host.id = "appOverlay";
+      host.style.cssText = "all:initial!important;position:fixed!important;left:0!important;top:0!important;width:0!important;height:0!important;" +
+        "z-index:2147483647!important;visibility:visible!important;pointer-events:none!important;display:block!important";
+      var sr = host.attachShadow({ mode: "open" });
+      var st = document.createElement("style");
+      st.textContent = CSS;
+      sr.appendChild(st);
+      root = document.createElement("div");
+      root.className = "r";
+      sr.appendChild(root);
+      (document.body || document.documentElement).appendChild(host);
+      root.addEventListener("pointerdown", function (e) {
+        var t = e.target.closest ? e.target.closest(".hit") : null;
+        if (!t) return;
+        var r = t.getBoundingClientRect(), z = r.width / t.offsetWidth || 1;
+        var x = (e.clientX - r.left) / z, y = (e.clientY - r.top) / z;
+        var w = t.offsetWidth, h = t.offsetHeight;
+        var d = 2 * Math.sqrt(Math.max(x, w - x) * Math.max(x, w - x) + Math.max(y, h - y) * Math.max(y, h - y));
+        var rip = document.createElement("span");
+        rip.className = "rip";
+        rip.style.cssText = "left:" + (x - d / 2) + "px;top:" + (y - d / 2) + "px;width:" + d + "px;height:" + d + "px";
+        if (getComputedStyle(t).position === "static") t.style.position = "relative";
+        t.appendChild(rip);
+        requestAnimationFrame(function () { rip.style.transform = "scale(1)"; });
+        function done() {
+          window.removeEventListener("pointerup", done, true);
+          setTimeout(function () { rip.style.opacity = "0"; setTimeout(function () { rip.remove(); }, 220); }, 120);
+        }
+        window.addEventListener("pointerup", done, true);
+      });
+      root.addEventListener("click", function (e) {
+        var t = e.target.closest ? e.target.closest("[data-ui]") : null;
+        if (t) { e.stopPropagation(); post("ui:" + t.getAttribute("data-ui")); }
+      });
+      last = {};
+      fit();
+    }
+
+    // As the app's WindowScale: lay out at most 1360 wide, scaled up to fill.
+    function fit() {
+      if (!root) return;
+      var w = window.innerWidth, h = window.innerHeight, s = Math.max(1, w / 1360);
+      root.style.width = (w / s) + "px";
+      root.style.height = (h / s) + "px";
+      root.style.transform = "scale(" + s + ")";
+    }
+    window.addEventListener("resize", fit);
+
+    // One part of the overlay: rebuilt only when what it shows changes.
+    function part(id, html, cls) {
+      var el = root.querySelector("#" + id);
+      if (!el) { el = document.createElement("div"); el.id = id; root.appendChild(el); }
+      if (last[id] !== html) { el.innerHTML = html; last[id] = html; }
+      if (cls !== undefined && el.className !== cls) el.className = cls;
+      return el;
+    }
+
+    function card(c, i, kind) {
+      var top = c.tag
+        ? "<span class='tag cd' style='background:" + c.tagColor + "'>" + esc(c.tag) + "</span>"
+        : (c.badges ? c.badges.map(function (b, k) { return "<span class='ao-disc' style='" + (k ? "margin-left:-6px" : "") + "'>" + (b ? "<img src='" + esc(b) + "'>" : icon(c.sportIcon, 15, "#55585F")) + "</span>"; }).join("")
+          : (c.poster ? "<span class='ao-disc poster'><img src='" + esc(c.poster) + "'></span>" : "<span class='ao-disc'>" + icon(c.sportIcon, 15, "#55585F") + "</span>"));
+      var lines = c.detailLines || 1;
+      var detail = (c.warning ? "<span style='color:" + c.warningColor + "'>" + esc(c.warning) + "</span>" + (c.detail ? " · " : "") : "") + esc(c.detail);
+      return "<div class='ao-card hit' data-ui='" + kind + ":" + i + "'><div class='top'>" + top + "</div>" +
+        "<div class='nm cd' style='-webkit-line-clamp:" + (lines > 1 ? 1 : 2) + "'>" + esc(c.title) + "</div>" +
+        "<div class='dt' style='-webkit-line-clamp:" + lines + "'>" + detail + "</div></div>";
+    }
+
+    function draw() {
+      if (!state) return;
+      ensure();
+      var s = state;
+      // Spinners, status and "unavailable" are the app's own: the page is
+      // only in place over a playing stream (see _reveal), so this draws only
+      // what sits over a video.
+      part("aoBar", "<div class='ao-bar'><div class='t cd'>" + esc(s.title) + "</div><div class='s'>" + esc(s.subtitle) + "</div></div>", "f" + (s.chrome ? "" : " off"));
+      part("aoPill", s.pill ? "<div class='ao-pill hit' data-ui='pill'>" + icon(s.icons.pill, 17) + "<span>" + esc(s.pillLabel) + "</span></div>" : "", "f" + (s.chrome ? "" : " off"));
+      part("aoNote", s.note ? "<div class='ao-note'>" + icon(s.note.icon, 16) + "<span>" + esc(s.note.text) + "</span></div>" : "");
+      var row = "";
+      if (s.row) {
+        var secs = [];
+        if (s.row.streams.length) secs.push("<div class='ao-sec'><div class='l'>" + esc(s.row.thisLabel) + "</div><div class='ao-cards'>" + s.row.streams.map(function (c, i) { return card(c, i, "stream"); }).join("") + "</div></div>");
+        if (s.row.streams.length && s.row.recent.length) secs.push("<div class='ao-div'></div>");
+        if (s.row.recent.length) secs.push("<div class='ao-sec'><div class='l'>" + esc(s.row.recentLabel) + "</div><div class='ao-cards'>" + s.row.recent.map(function (c, i) { return card(c, i, "recent"); }).join("") + "</div></div>");
+        row = "<div class='ao-row'><div class='ao-rowin'>" + secs.join("") + "</div></div>";
+      }
+      part("aoRow", row);
+      var fab = "";
+      if (s.menu) {
+        // The hamburger at the size the app's SpeedDial really draws it: a
+        // 56 px button shrunk to 32, its 22 px icon with it (measured on the
+        // old desktop app: 13 x 8 px of lines in a 45 px circle at 1.41x).
+        fab = "<div class='ao-fab'><div class='ao-btn hit' data-ui='menu'>" + icon(s.icons.menu, 22 * 32 / 56) + "</div>" +
+          "<div class='ao-btn hit c c0' data-ui='mute'>" + icon(s.menu.muted ? s.icons.volumeOff : s.icons.volumeOn, 18) + "</div>" +
+          "<div class='ao-btn hit c c1' data-ui='refresh'>" + icon(s.icons.refresh, 18) + "</div></div>";
+      }
+      var fabEl = part("aoFab", fab, "f" + (s.chrome ? "" : " off"));
+      if (fabEl.firstChild) fabEl.firstChild.classList.toggle("open", !!(s.menu && s.menu.open));
+      document.documentElement.style.cursor = s.hideCursor ? "none" : "";
+    }
+
+    return {
+      render: function (s) { state = s; draw(); },
+      // The app's fonts (Barlow Semi Condensed, Material Icons), once per page.
+      fonts: function (css) { fontsCss = css; var ft = document.getElementById("appOverlayFonts"); if (ft) ft.textContent = keepOut() + css; draw(); },
+      // After build() replaced the document: everything again.
+      redraw: function () { root = null; host = null; draw(); },
+      // A click on the overlay isn't a click on the video.
+      owns: function (e) {
+        var path = e.composedPath ? e.composedPath() : [];
+        for (var i = 0; i < path.length; i++) {
+          var c = path[i].classList;
+          if (c && (c.contains("hit") || c.contains("ao-row"))) return true;
+        }
+        return false;
+      }
+    };
+  })();
+
   function post(msg) {
     // The app puts its spinner up for these; say when it plays on (watch()).
     if (msg === "stalled" || msg === "fatal") { toldStuck = true; goodTicks = 0; }
@@ -467,7 +665,12 @@ const String _takeoverJs = r'''
 
   // What the player does about trouble, for the app's log (adb logcat), and
   // the page's console (desktop has no log to read; see DESIGN_NOTES Debugging).
+  // The last few hundred lines, in memory, for looking back over the debug
+  // port on desktop (it has no log to read; see DESIGN_NOTES Debugging).
+  var history = window.__appLog = [];
   function log(msg) {
+    history.push(new Date().toISOString().slice(11, 23) + " " + msg);
+    if (history.length > 300) history.shift();
     post("log:" + msg);
     try { console.log("[player] " + msg); } catch (e) {}
   }
@@ -656,7 +859,10 @@ const String _takeoverJs = r'''
     post("pointer");
   }
   window.addEventListener("pointermove", function (e) { if (e.pointerType === "mouse") pointer(); }, true);
-  window.addEventListener("pointerdown", function () { post("pointer:down"); }, true);
+  window.addEventListener("pointerdown", function (e) {
+    if (window.__appOverlay && window.__appOverlay.owns(e)) return;
+    post("pointer:down");
+  }, true);
 
   // On desktop the web view keeps keyboard focus once clicked, so the app
   // never sees its shortcuts; pass them on.
@@ -903,6 +1109,7 @@ const String _takeoverJs = r'''
     loading = [];
     play();
     window.__appPlayer.built = true;
+    window.__appOverlay.redraw();
   }
 
   // A master playlist lists a source's qualities. On some sources they are
@@ -1506,10 +1713,18 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       isAllowed: _isAllowedDestination,
       onMessage: _onPlayerMessage,
       onPageStarted: () {
+        // Windows: the native window hides until our script has taken the
+        // page over (the app's spinner shows meanwhile), then the page draws
+        // the overlays (_overlay()).
+        _parkNative();
+        _overlaySent = null;
         _cover();
         _inject();
       },
-      onPageFinished: _inject,
+      onPageFinished: () {
+        _inject();
+        if (Platform.isWindows) _pageTakenOver();
+      },
     );
     _openPage(_stream, initial: true);
 
@@ -1557,6 +1772,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     }
     if (message == 'pointer') {
       _peekTitle();
+      return;
+    }
+    if (message.startsWith('ui:')) {
+      _onOverlayClick(message.substring(3));
       return;
     }
     // A tap or click on the video: shows the title bar, or closes the streams
@@ -1743,6 +1962,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     }
     if (initial && page.toString() == s.embedUrl) return;
     _allowedUri = page;
+    _parkNative();
     _web.load(page).catchError((_) {});
   }
 
@@ -2039,7 +2259,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         .replaceAll('__DOWN_PCT__', '${PlayerTuning.downPercent}')
         .replaceAll('__UP_PCT__', '${PlayerTuning.upPercent}')
         .replaceAll('__SLOW_START_MS__', '${PlayerTuning.slowStartMs}')
-        .replaceAll('__START_FEED__', '$_startFeed');
+        .replaceAll('__START_FEED__', '$_startFeed')
+        .replaceAll('__OVERLAY__', '${PlayerTuning.overlayPercent / 100}');
     _web.runJavaScript(js).catchError((_) {});
   }
 
@@ -2075,6 +2296,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   Future<void> _refresh() async {
     _cover();
     try {
+      _parkNative();
       await _web.reload();
     } catch (_) {}
   }
@@ -2139,13 +2361,209 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       final bool jumped = res == true;
       if (!jumped) {
         // If the page didn't expose seekable ranges, refresh to reattach at live
+        _parkNative();
         await _web.reload();
       }
     } catch (_) {
       // If JS failed (cross-origin restrictions, etc.), just reload
       try {
+        _parkNative();
         await _web.reload();
       } catch (_) {}
+    }
+  }
+
+  // ---- The overlays on Windows -------------------------------------------
+  // The player's web view is a native window there, which the app can't draw
+  // over (see PlayerWebView), so the page draws the overlays: this says what
+  // they show, the same as the widgets in build(), and the page sends clicks
+  // back (_onOverlayClick). The widgets still build underneath; they show
+  // while the native window is hidden (a page loading).
+
+  // What the page was last sent, to send only changes; null after a new page.
+  String? _overlaySent;
+
+  // Windows: the native web view sits off-screen while a page loads (the
+  // app's spinner shows meanwhile) and moves into place once our script has
+  // the page. Off-screen rather than hidden: a hidden WebView2 drops its
+  // picture and shows a moment of black when shown again; off-screen it keeps
+  // drawing, so its spinner is already there when it arrives.
+  bool _nativeShown = false;
+
+  // Windows: off-screen as a page starts to go (a switch, a reload), so the
+  // app's spinner shows alone until the new page is ready, as at the start;
+  // otherwise the old page's overlay showed, then nothing as it went, then the
+  // new one's.
+  void _parkNative() {
+    _pageReady = false;
+    if (Platform.isWindows && _nativeShown && mounted) setState(() => _nativeShown = false);
+  }
+
+  // Our script has the current page (see _reveal).
+  bool _pageReady = false;
+
+
+  // Windows, leaving the player: the native window can't take part in the
+  // route's animation (it would vanish at once over the sliding list), so
+  // the page fades to black, the window moves off-screen, and then the route
+  // pops with the app's own black player screen animating out as on a phone.
+  bool _leaving = false;
+
+
+  Future<void> _leave() async {
+    if (_leaving) return;
+    _leaving = true;
+    try {
+      await _web.runJavaScript(
+        "document.documentElement.style.transition='opacity 150ms';document.documentElement.style.opacity='0'",
+      );
+    } catch (_) {}
+    await Future<void>.delayed(const Duration(milliseconds: 160));
+    if (!mounted) return;
+    setState(() => _nativeShown = false);
+    // Moved before the route starts to animate (the plugin places it a frame later).
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  // The app's fonts for the page, once per run: Barlow Semi Condensed as the
+  // app uses it (600 for names, 700 for the HD/SD tags) and Material Icons.
+  static Future<String>? _overlayFonts;
+
+  static Future<String> _loadOverlayFonts() async {
+    Future<String> face(String family, String asset, String weight) async {
+      final ByteData d = await rootBundle.load(asset);
+      final String b64 = base64Encode(d.buffer.asUint8List(d.offsetInBytes, d.lengthInBytes));
+      return "@font-face{font-family:'$family';font-weight:$weight;src:url(data:font/ttf;base64,$b64)}";
+    }
+
+    final List<String> faces = await Future.wait(<Future<String>>[
+      face(kCondensedFont, 'assets/fonts/BarlowSemiCondensed-SemiBold.ttf', '600'),
+      face(kCondensedFont, 'assets/fonts/BarlowSemiCondensed-Bold.ttf', '700'),
+      face('MaterialIcons', 'fonts/MaterialIcons-Regular.otf', 'normal'),
+    ]);
+    return faces.join();
+  }
+
+  // Our script has the page: give it the fonts and the overlay, then show it
+  // once the stream plays (_reveal).
+  Future<void> _pageTakenOver() async {
+    try {
+      final String css = await (_overlayFonts ??= _loadOverlayFonts());
+      await _web.runJavaScript('window.__appOverlay && window.__appOverlay.fonts(${jsonEncode(css)})');
+    } catch (_) {}
+    if (!mounted) return;
+    _overlaySent = null;
+    _sendOverlay(kDebugMode || _holdTitle || _menuOpen || _peek || _rowOpen);
+    _pageReady = true;
+    _reveal();
+  }
+
+  // Into place once the page is ours and the stream plays: until then, and
+  // whenever it waits again, the app's own spinner and text (a fallback's
+  // "stopped working / Trying …") show, and the window arrives with the
+  // picture. The page never draws a spinner, so nothing hands over.
+  bool _revealing = false;
+  Future<void> _reveal() async {
+    bool playing() => _pageReady && _ready && !_healing && !_failed && !_leaving;
+    if (!Platform.isWindows || !playing() || _nativeShown || _revealing) return;
+    _revealing = true;
+    // A moment for the page to draw its overlay off-screen first.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    _revealing = false;
+    if (mounted && playing() && !_nativeShown) setState(() => _nativeShown = true);
+  }
+
+  void _sendOverlay(bool chrome) {
+    if (!mounted) return;
+    final String json = jsonEncode(_overlay(chrome));
+    if (json == _overlaySent) return;
+    _overlaySent = json;
+    _web.runJavaScript('window.__appOverlay && window.__appOverlay.render($json)').catchError((_) {});
+  }
+
+  String _hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+
+  Map<String, Object?> _overlay(bool chrome) {
+    Map<String, Object?> streamCard(StreamInfo s) {
+      final StreamQuality? q = _qualities[s.embedUrl];
+      final DateTime? failedAt = _failures[s.embedUrl];
+      return <String, Object?>{
+        'tag': s.hd ? 'HD' : 'SD',
+        'tagColor': _hex(s.hd ? AppPalette.hd : AppPalette.sd),
+        'title': s.name,
+        'warning': failedAt == null ? null : StreamFailures.note(failedAt),
+        'warningColor': _hex(AppPalette.failed),
+        'detail': <String>[if (failedAt == null) q?.label ?? PlayerText.notPlayed, if (s.language.isNotEmpty) s.language].join(' · '),
+        'detailLines': 2,
+      };
+    }
+
+    Map<String, Object?> recentCard(RecentGame r) {
+      final StreamQuality? q = _qualities[r.stream.embedUrl];
+      final List<TeamInfo>? teams = orderedTeams(r.match);
+      final String poster = StreamedApi.posterUrlFromMatch(r.match);
+      String? badge(TeamInfo t) => (t.badge == null || t.badge!.isEmpty) ? null : StreamedApi.badgeUrl(t.badge!);
+      return <String, Object?>{
+        'badges': teams == null ? null : <String?>[badge(teams[0]), badge(teams[1])],
+        'poster': teams == null && poster.isNotEmpty ? poster : null,
+        'sportIcon': sportIcon(r.match.category).codePoint,
+        'title': r.match.title,
+        'detail': q == null ? r.stream.name : '${q.resolution} · ${r.stream.name}',
+        'detailLines': 1,
+      };
+    }
+
+    return <String, Object?>{
+      'chrome': chrome && !_inPip,
+      'title': _match.title,
+      'subtitle': <String>[if (_quality != null) _quality!.label, sourceLabel(_stream.source), 'Stream ${_stream.streamNo}'].join(' · '),
+      'pill': _hasRow && !_rowOpen && _switchedNote == null,
+      'pillLabel': PlayerText.streamsPill,
+      'note': _switchedNote != null && !_rowOpen ? <String, Object?>{'text': _switchedNote, 'icon': _noteIcon.codePoint} : null,
+      'row': _rowOpen
+          ? <String, Object?>{
+              'thisLabel': PlayerText.thisGame,
+              'recentLabel': PlayerText.recent,
+              'streams': <Map<String, Object?>>[for (final StreamInfo s in _rowStreams) streamCard(s)],
+              'recent': <Map<String, Object?>>[for (final RecentGame r in _rowRecent) recentCard(r)],
+            }
+          : null,
+      'menu': _rowOpen ? null : <String, Object?>{'open': _menuOpen, 'muted': _muted},
+      'hideCursor': _fullscreen && !chrome,
+      'icons': <String, int>{
+        'pill': PlayerIcons.streamsPill.codePoint,
+        'menu': Icons.menu.codePoint,
+        'close': Icons.close.codePoint,
+        'volumeOn': Icons.volume_up.codePoint,
+        'volumeOff': Icons.volume_off.codePoint,
+        'refresh': Icons.refresh.codePoint,
+      },
+    };
+  }
+
+  void _onOverlayClick(String what) {
+    final List<String> part = what.split(':');
+    final int? i = part.length > 1 ? int.tryParse(part[1]) : null;
+    switch (part[0]) {
+      case 'pill':
+        _openRow();
+      case 'stream':
+        final List<StreamInfo> l = _rowStreams;
+        if (i != null && i < l.length) _switchTo(l[i]);
+      case 'recent':
+        final List<RecentGame> l = _rowRecent;
+        if (i != null && i < l.length) _playRecent(l[i]);
+      case 'menu':
+        setState(() => _menuOpen = !_menuOpen);
+        _peekTitle();
+      case 'mute':
+        setState(() => _menuOpen = false);
+        _toggleMute();
+        _peekTitle();
+      case 'refresh':
+        setState(() => _menuOpen = false);
+        _refresh();
     }
   }
 
@@ -2166,6 +2584,18 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     // The title bar and the menu: up together, or hidden together. Debug builds
     // keep them up, so the quality can be read and screenshots taken any time.
     final bool chrome = kDebugMode || _holdTitle || _menuOpen || _peek || _rowOpen;
+    if (Platform.isWindows) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _sendOverlay(chrome);
+        // Waiting (loading, a stall, a quality switch, unavailable): the app's
+        // own spinner and text, as on the phone and the TV; back on playing.
+        if (_failed || !_ready || _healing) {
+          if (_nativeShown) setState(() => _nativeShown = false);
+        } else {
+          _reveal();
+        }
+      });
+    }
 
     // Desktop has no system back button: Esc leaves the player, M mutes and F
     // goes fullscreen. (The page forwards these too, for when the web view has
@@ -2173,9 +2603,14 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     // Back (the phone's gesture or button) closes the streams row first, as
     // Back does on the Roku.
     return PopScope(
-      canPop: !_rowOpen,
+      canPop: !_rowOpen && (!Platform.isWindows || _leaving),
       onPopInvokedWithResult: (bool didPop, Object? _) {
-        if (!didPop) _closeRow();
+        if (didPop) return;
+        if (_rowOpen) {
+          _closeRow();
+        } else if (Platform.isWindows) {
+          _leave();
+        }
       },
       child: CallbackShortcuts(
         bindings: <ShortcutActivator, VoidCallback>{
@@ -2201,7 +2636,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                 child: Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
-                    const SizedBox.expand(child: _WebViewHolder()),
+                    SizedBox.expand(child: _WebViewHolder(shown: _nativeShown)),
                     if (_failed)
                       ColoredBox(
                         color: Colors.black,
@@ -2211,15 +2646,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                             children: <Widget>[
                               const Icon(Icons.videocam_off, color: Colors.white54, size: 40),
                               const SizedBox(height: 12),
-                              const Text(
-                                'This stream is unavailable.',
-                                style: TextStyle(color: Colors.white),
-                              ),
+                              const Text('This stream is unavailable.', style: TextStyle(color: Colors.white)),
                               const SizedBox(height: 4),
-                              const Text(
-                                'Try another stream or source.',
-                                style: TextStyle(color: Colors.white54, fontSize: 12),
-                              ),
+                              const Text('Try another stream or source.', style: TextStyle(color: Colors.white54, fontSize: 12)),
                               const SizedBox(height: 16),
                               TextButton(onPressed: _refresh, child: const Text('Retry')),
                             ],
@@ -2253,145 +2682,148 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                               else if (_healing)
                                 Transform.translate(
                                   offset: const Offset(0, 44),
-                                  child: Text(
-                                    _offline ? 'Waiting for connection…' : 'Reconnecting…',
-                                    style: const TextStyle(color: Colors.white70),
-                                  ),
+                                  child: Text(_offline ? 'Waiting for connection…' : 'Reconnecting…', style: const TextStyle(color: Colors.white70)),
                                 )
                               else if (_waitText != null)
                                 Transform.translate(
                                   offset: const Offset(0, 44),
-                                  child: Text(_waitText!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                                  child: Text(
+                                    _waitText!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: Colors.white70),
+                                  ),
                                 ),
                             ],
                           ),
                         ),
                       ),
-                    // Over the loading / unavailable screens the page can't see
-                    // taps or the mouse, so the app listens: the title bar (what's
-                    // being tried) and the Streams pill come up as over video, so
-                    // another stream can be picked without waiting out a fallback.
-                    // Translucent: Retry still gets its tap.
-                    if (_failed || !_ready || _healing)
-                      Positioned.fill(
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.translucent,
-                          onTap: _tapVideo,
-                          child: MouseRegion(onHover: (_) => _peekTitle()),
+                    // On Windows the rest is drawn by the page (_overlay()): the
+                    // app's own would show only while a page loads, and swapping
+                    // between the two looked like the whole UI flickering.
+                    if (!Platform.isWindows) ...<Widget>[
+                      // Over the loading / unavailable screens the page can't see
+                      // taps or the mouse, so the app listens: the title bar (what's
+                      // being tried) and the Streams pill come up as over video, so
+                      // another stream can be picked without waiting out a fallback.
+                      // Translucent: Retry still gets its tap.
+                      if (_failed || !_ready || _healing)
+                        Positioned.fill(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: _tapVideo,
+                            child: MouseRegion(onHover: (_) => _peekTitle()),
+                          ),
                         ),
-                      ),
-                    // Desktop fullscreen: the pointer hides with the title bar, so
-                    // it isn't left sitting on the picture. Over the page it's the
-                    // page's cursor, and webview_windows shows any it doesn't know
-                    // (CSS cursor: none included) as the arrow, so a layer of our
-                    // own covers the video meanwhile; moving the mouse over it
-                    // brings everything back.
-                    if (_fullscreen && !chrome)
-                      Positioned.fill(
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.none,
-                          onHover: (_) => _peekTitle(),
+                      // Desktop fullscreen: the pointer hides with the title bar, so
+                      // it isn't left sitting on the picture. Over the page it's the
+                      // page's cursor, and webview_windows shows any it doesn't know
+                      // (CSS cursor: none included) as the arrow, so a layer of our
+                      // own covers the video meanwhile; moving the mouse over it
+                      // brings everything back.
+                      if (_fullscreen && !chrome)
+                        Positioned.fill(
+                          child: MouseRegion(cursor: SystemMouseCursors.none, onHover: (_) => _peekTitle()),
                         ),
-                      ),
-                    // The game and what's playing, while the menu is open or for a
-                    // moment after the mouse moves or the video is tapped. In
-                    // fullscreen too, where it's the only way to see them.
-                    if (!_inPip)
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: IgnorePointer(
-                          ignoring: !chrome,
-                          child: AnimatedOpacity(
-                            opacity: chrome ? 1 : 0,
-                            duration: const Duration(milliseconds: 150),
-                            // The page can't see the mouse over the bar itself, so resting on
-                            // it keeps it up.
-                            child: MouseRegion(
-                              onHover: (_) => _peekTitle(),
-                              child: Container(
-                                color: Colors.black.withValues(alpha: PlayerTuning.overlayPercent / 100),
-                                padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 16, 10),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: <Widget>[
-                                    Text(_match.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: condensed(19, FontWeight.w600, color: Colors.white)),
-                                    // What you glance for first: quality, then which stream.
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: Text(
-                                        <String>[if (_quality != null) _quality!.label, sourceLabel(_stream.source), 'Stream ${_stream.streamNo}'].join(' · '),
-                                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                      // The game and what's playing, while the menu is open or for a
+                      // moment after the mouse moves or the video is tapped. In
+                      // fullscreen too, where it's the only way to see them.
+                      if (!_inPip)
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: IgnorePointer(
+                            ignoring: !chrome,
+                            child: AnimatedOpacity(
+                              opacity: chrome ? 1 : 0,
+                              duration: const Duration(milliseconds: 150),
+                              // The page can't see the mouse over the bar itself, so resting on
+                              // it keeps it up.
+                              child: MouseRegion(
+                                onHover: (_) => _peekTitle(),
+                                child: Container(
+                                  color: Colors.black.withValues(alpha: PlayerTuning.overlayPercent / 100),
+                                  padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 16, 10),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Text(
+                                        _match.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: condensed(19, FontWeight.w600, color: Colors.white),
                                       ),
-                                    ),
-                                  ],
+                                      // What you glance for first: quality, then which stream.
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: Text(
+                                          <String>[if (_quality != null) _quality!.label, sourceLabel(_stream.source), 'Stream ${_stream.streamNo}'].join(' · '),
+                                          style: const TextStyle(fontSize: 12, color: Colors.white70),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    // The Streams pill, with the title bar; it opens the row. It
-                    // steps aside while the "Switched to" note has its spot.
-                    if (!_inPip && _hasRow && !_rowOpen && _switchedNote == null)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 16 + MediaQuery.paddingOf(context).bottom,
-                        child: IgnorePointer(
-                          ignoring: !chrome,
-                          child: AnimatedOpacity(
-                            opacity: chrome ? 1 : 0,
-                            duration: const Duration(milliseconds: 150),
-                            child: Center(child: StreamsPill(onOpen: _openRow)),
+                      // The Streams pill, with the title bar; it opens the row. It
+                      // steps aside while the "Switched to" note has its spot.
+                      if (!_inPip && _hasRow && !_rowOpen && _switchedNote == null)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 16 + MediaQuery.paddingOf(context).bottom,
+                          child: IgnorePointer(
+                            ignoring: !chrome,
+                            child: AnimatedOpacity(
+                              opacity: chrome ? 1 : 0,
+                              duration: const Duration(milliseconds: 150),
+                              child: Center(child: StreamsPill(onOpen: _openRow)),
+                            ),
                           ),
                         ),
-                      ),
-                    // The streams row: this game's other streams, recent games.
-                    if (!_inPip && _rowOpen)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: StreamsRow(
-                          thisGame: _rowStreams,
-                          recent: _rowRecent,
-                          qualities: _qualities,
-                          failures: _failures,
-                          onStream: _switchTo,
-                          onRecent: _playRecent,
-                          onActivity: _peekTitle,
+                      // The streams row: this game's other streams, recent games.
+                      if (!_inPip && _rowOpen)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: StreamsRow(thisGame: _rowStreams, recent: _rowRecent, qualities: _qualities, failures: _failures, onStream: _switchTo, onRecent: _playRecent, onActivity: _peekTitle),
                         ),
-                      ),
-                    // After falling back: which stream took over, briefly.
-                    if (!_inPip)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 24 + MediaQuery.paddingOf(context).bottom,
-                        child: IgnorePointer(
-                          child: AnimatedOpacity(
-                            opacity: _switchedNote != null && !_rowOpen ? 1 : 0,
-                            duration: const Duration(milliseconds: 250),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: PlayerTuning.overlayPercent / 100), borderRadius: BorderRadius.circular(8)),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: <Widget>[
-                                    Icon(_noteIcon, color: Colors.white, size: 16),
-                                    const SizedBox(width: 8),
-                                    Text(_switchedNote ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                                  ],
+                      // After falling back: which stream took over, briefly.
+                      if (!_inPip)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 24 + MediaQuery.paddingOf(context).bottom,
+                          child: IgnorePointer(
+                            child: AnimatedOpacity(
+                              opacity: _switchedNote != null && !_rowOpen ? 1 : 0,
+                              duration: const Duration(milliseconds: 250),
+                              child: Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: PlayerTuning.overlayPercent / 100),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Icon(_noteIcon, color: Colors.white, size: 16),
+                                      const SizedBox(width: 8),
+                                      Text(_switchedNote ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
+                    ],
                   ],
                 ),
               ),
@@ -2399,7 +2831,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
               // brings both back), fullscreen included, so nothing sits on the
               // picture meanwhile. None in PiP, or while the streams row is open
               // (it would sit on the row's last card).
-              floatingActionButton: _inPip || _rowOpen
+              floatingActionButton: Platform.isWindows || _inPip || _rowOpen
                   ? null
                   : IgnorePointer(
                       ignoring: !chrome,
@@ -2434,9 +2866,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                             children: [
                               SpeedDialChild(
                                 shape: const CircleBorder(),
-                                child: Center(
-                                  child: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white, size: 18),
-                                ),
+                                child: Center(child: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white, size: 18)),
                                 backgroundColor: Colors.black,
                                 onTap: _toggleMute,
                               ),
@@ -2471,13 +2901,42 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
 // Simple holder so Scaffold rebuilds don’t recreate controller widget unnecessarily
 class _WebViewHolder extends StatelessWidget {
-  const _WebViewHolder();
+  // Windows: whether the native web view is in place (see _nativeShown); a
+  // field rather than read from the state, so the holder rebuilds when it changes.
+  const _WebViewHolder({required this.shown});
+  final bool shown;
 
   @override
   Widget build(BuildContext context) {
     // This widget is intentionally empty; the actual WebView is inserted by the parent state.
     // But WebViewWidget must still be in the tree, so we find the state's controller via context.
     final _StreamPlayerScreenState? s = context.findAncestorStateOfType<_StreamPlayerScreenState>();
-    return s == null ? const SizedBox.shrink() : s._web.build(context);
+    if (s == null) return const SizedBox.shrink();
+    final Widget view = s._web.build(context);
+    if (!Platform.isWindows) return view;
+    // Off-screen until shown (see _nativeShown), the same size either way so
+    // WebView2 needn't redraw. The plugin places its window only when laid
+    // out, so the constraints change with the move (loose off-screen, tight
+    // on) to make it lay out again.
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints c) {
+        final Size size = c.biggest;
+        final bool on = shown;
+        // One shape in both states, or the web view's widget would be rebuilt.
+        return Transform.translate(
+          offset: on ? Offset.zero : Offset(-size.width - 10000, 0),
+          child: OverflowBox(
+            alignment: Alignment.topLeft,
+            minWidth: on ? size.width : 0,
+            minHeight: on ? size.height : 0,
+            maxWidth: size.width,
+            maxHeight: size.height,
+            // Loose or tight, it fills the same space; the change reaches
+            // the plugin's own layout, which is what moves its window.
+            child: view,
+          ),
+        );
+      },
+    );
   }
 }
