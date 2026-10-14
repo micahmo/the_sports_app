@@ -21,21 +21,32 @@ class StreamsPill extends StatelessWidget {
   final VoidCallback onOpen;
 
   @override
+  Widget build(BuildContext context) => PlayerPill(icon: PlayerIcons.streamsPill, label: PlayerText.streamsPill, onTap: onOpen);
+}
+
+/// A pill over the player (the Streams pill, the better quality on offer).
+class PlayerPill extends StatelessWidget {
+  const PlayerPill({super.key, required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.black.withValues(alpha: PlayerTuning.overlayPercent / 100),
       shape: const StadiumBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onOpen,
-        child: const Padding(
-          padding: EdgeInsets.fromLTRB(12, 7, 16, 7),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 7, 16, 7),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(PlayerIcons.streamsPill, color: Colors.white, size: 17),
-              SizedBox(width: 6),
-              Text(PlayerText.streamsPill, style: TextStyle(color: Colors.white, fontSize: 13)),
+              Icon(icon, color: Colors.white, size: 17),
+              const SizedBox(width: 6),
+              Text(label, style: const TextStyle(color: Colors.white, fontSize: 13)),
             ],
           ),
         ),

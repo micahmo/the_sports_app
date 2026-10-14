@@ -36,7 +36,7 @@ end function
 
 ' Player numbers both apps follow (see the JSON for what each is).
 function appPlayer() as Object
-    return {rowThisGame: 3, rowRecent: 3, recentsKept: 12, stuckDownloadMs: 4000, switchedNoteMs: 4000, overlayPercent: 70, upHoldMs: 60000, downPercent: 110, upPercent: 150, slowStartMs: 20000, failedForMinutes: 60}
+    return {rowThisGame: 3, rowRecent: 3, recentsKept: 12, stuckDownloadMs: 4000, switchedNoteMs: 4000, overlayPercent: 70, downPercent: 110, upPercent: 150, upHoldMs: 60000, upOfferMs: 8000, slowStartMs: 20000, failedForMinutes: 60}
 end function
 
 ' Screen spacing, in pixels of the 1920-wide screen (see the JSON).
@@ -51,10 +51,10 @@ end function
 
 ' The player's wording, the same on every app; {stream} is filled in.
 function appPlayerText() as Object
-    return {"streamsPill": "Streams", "thisGame": "THIS GAME", "recent": "RECENT", "notPlayed": "Not played yet", "failedJustNow": "Failed just now", "failedMinutesAgo": "Failed {n} min ago", "failedHoursAgo": "Failed {n} hr ago", "stoppedWorking": "{stream} stopped working", "trying": "Trying {stream}…", "switchedTo": "Switched to {stream}", "switchingDown": "Weak connection · Switching to {quality}…", "switchingUp": "Connection improved · Switching to {quality}…", "weakConnection": "Weak connection", "slowConnection": "Still loading · your connection is slow", "slowSource": "Still loading · the stream is slow to respond"}
+    return {"streamsPill": "Streams", "thisGame": "THIS GAME", "recent": "RECENT", "notPlayed": "Not played yet", "failedJustNow": "Failed just now", "failedMinutesAgo": "Failed {n} min ago", "failedHoursAgo": "Failed {n} hr ago", "stoppedWorking": "{stream} stopped working", "trying": "Trying {stream}…", "switchedTo": "Switched to {stream}", "switchingDown": "Weak connection · Switching to {quality}…", "switchingUp": "Switching to {quality}…", "upAvailable": "{quality} available", "weakConnection": "Weak connection", "slowConnection": "Still loading · your connection is slow", "slowSource": "Still loading · the stream is slow to respond"}
 end function
 
 ' The player's icons (Material icon names; images/icons/<name>.png).
 function appPlayerIcons() as Object
-    return {"streamsPill": "view_carousel", "switched": "swap_horiz", "weakConnection": "network_check"}
+    return {"streamsPill": "view_carousel", "switched": "swap_horiz", "weakConnection": "network_check", "qualityUp": "upgrade"}
 end function

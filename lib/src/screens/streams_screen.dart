@@ -419,11 +419,10 @@ const String _takeoverJs = r'''
   var cur = 0;
   var ownSwitching = false;
   var startedAt = 0;
-  var switchedAt = 0;
-  var lastUpAt = 0;
-  var upHold = __UP_HOLD_MS__;
-  var upOkSince = 0;
   var slowRun = 0;
+  // Offering the better feed (see adapt()): since when it's looked good
+  // enough, how long it must, and when the last switch up was.
+  var upOkSince = 0, upHold = __UP_HOLD_MS__, lastUpAt = 0, switchedAt = 0, offering = false;
   var weakToldAt = 0;
   var slowStartTold = false;
   // How many times faster than it plays the last segment came (0: none yet).
@@ -487,6 +486,7 @@ const String _takeoverJs = r'''
       ".ao-bar .s{font-size:12px;color:rgba(255,255,255,.7);margin-top:2px}" +
       ".ao-pill{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,__OVERLAY__);border-radius:999px;padding:7px 16px 7px 12px;display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap}" +
       ".ao-pill:hover,.ao-btn:hover{background-color:rgba(40,40,40,.85)}" +
+      "#aoUp .ao-pill{transform:translateX(-100%)}#aoUp.mid .ao-pill{transform:translateX(-50%)}" +
       ".ao-note{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,__OVERLAY__);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:13px;white-space:nowrap;transition:opacity 250ms}" +
       ".ao-row{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,__OVERLAY__);padding:10px 0 12px;pointer-events:auto;overflow-x:auto;scrollbar-width:none}" +
       ".ao-row::-webkit-scrollbar{display:none}" +
@@ -614,6 +614,12 @@ const String _takeoverJs = r'''
       // what sits over a video.
       part("aoBar", "<div class='ao-bar'><div class='t cd'>" + esc(s.title) + "</div><div class='s'>" + esc(s.subtitle) + "</div></div>", "f" + (s.chrome ? "" : " off"));
       part("aoPill", s.pill ? "<div class='ao-pill hit' data-ui='pill'>" + icon(s.icons.pill, 17) + "<span>" + esc(s.pillLabel) + "</span></div>" : "", "f" + (s.chrome ? "" : " off"));
+      // The better feed on offer: left of the Streams pill, which stays put;
+      // the first time, "1080p available" by itself where the notes go.
+      var up = part("aoUp", s.up ? "<div class='ao-pill hit' data-ui='up'>" + icon(s.icons.up, 17) + "<span>" + esc(s.up.label) + "</span></div>" : "", "f" + (s.up && s.up.shown ? "" : " off") + (s.pill ? "" : " mid"));
+      var pillEl = s.pill ? root.querySelector("#aoPill .ao-pill") : null, upEl = up.firstChild;
+      if (upEl) upEl.style.left = pillEl ? "calc(50% - " + (pillEl.offsetWidth / 2 + 8) + "px)" : "50%";
+      part("aoUpNote", s.up && !s.up.shown ? "<div class='ao-pill hit' data-ui='up'>" + icon(s.icons.up, 17) + "<span>" + esc(s.up.long) + "</span></div>" : "", "f" + (s.up && s.up.popup ? "" : " off"));
       part("aoNote", s.note ? "<div class='ao-note'>" + icon(s.note.icon, 16) + "<span>" + esc(s.note.text) + "</span></div>" : "");
       var row = "";
       if (s.row) {
@@ -1107,6 +1113,7 @@ const String _takeoverJs = r'''
     startedAt = Date.now();
     slowRun = 0;
     upOkSince = 0;
+    offering = false;
     slowStartTold = false;
     lastRatio = 0;
     loading = [];
@@ -1171,24 +1178,38 @@ const String _takeoverJs = r'''
   }
 
   // A segment came `ratio` times faster than it plays, at `bps` once it was
-  // coming. Down a feed after two in a row that barely kept up; up once, for
-  // upHold straight, the connection has been well above what the better feed
-  // needs. An up that doesn't hold (down again within upHold) doubles the
-  // wait, so it can't flap.
+  // coming. Down a feed after two in a row that barely kept up. Never back up
+  // by itself: a switch loads the other feed afresh, a gap in a stream that's
+  // playing fine, and on a connection that swings it went up and down over
+  // and over (2026-10-14). Instead, once for upHold straight the connection
+  // has been well above what the better feed needs, the app offers it (a
+  // button, "1080p available"), for as long as that holds. An up that
+  // doesn't hold (down again within upHold) doubles the wait.
   function adapt(ratio, bps) {
     if (!ownSwitching) return;
     if (ratio * 100 < __DOWN_PCT__) {
       upOkSince = 0;
+      offer(false);
       if (++slowRun >= 2 && cur < feeds.length - 1) switchFeed(cur + 1);
       return;
     }
     slowRun = 0;
     if (cur === 0) return;
     var better = feeds[cur - 1].bw;
-    if (!better || bps * 100 < better * __UP_PCT__) { upOkSince = 0; return; }
+    if (!better || bps * 100 < better * __UP_PCT__) { upOkSince = 0; offer(false); return; }
     if (!upOkSince) upOkSince = Date.now();
-    if (Date.now() - upOkSince >= upHold && Date.now() - switchedAt >= upHold) switchFeed(cur - 1);
+    if (Date.now() - upOkSince >= upHold && Date.now() - switchedAt >= upHold) offer(true);
   }
+
+  function offer(on) {
+    if (on === offering) return;
+    offering = on;
+    var b = feeds[cur - 1];
+    post("canup:" + (on && b ? (b.h ? b.h + "p" : "a higher quality") : ""));
+  }
+
+  // The app's button.
+  window.__appPlayer.up = function () { if (offering && cur > 0) switchFeed(cur - 1); };
 
   function switchFeed(i) {
     var dir = i > cur ? "down" : "up";
@@ -1211,9 +1232,10 @@ const String _takeoverJs = r'''
   // every switch between Wi-Fi and cellular). Two playlist failures in a row
   // start it; at most once every 20 s. If it doesn't work, the stall watch
   // still reconnects as before.
-  var linkErrors = [], relinking = false, relinkedAt = 0, relinkGen = 0;
+  var linkErrors = [], lastLinkErrorAt = 0, relinking = false, relinkedAt = 0, relinkGen = 0;
   function linkFailing(why) {
     var now = Date.now();
+    lastLinkErrorAt = now;
     linkErrors.push(now);
     linkErrors = linkErrors.filter(function (t) { return now - t < 6000; });
     if (linkErrors.length < 2) return;
@@ -1316,10 +1338,15 @@ const String _takeoverJs = r'''
   // Every half second. Slow to start, or stuck while playing, on a download
   // that's coming in slower than the feed needs: the connection. Go down a
   // feed if there is one; otherwise say so (once a minute at most), and at a
-  // slow start say which it is.
+  // slow start say which it is. Stuck with nothing coming at all (a dead
+  // zone: a segment download that has brought nothing, or the playlist
+  // failing to load) says so too, as the freeze starts: going down a feed
+  // can't help there. (Before, only a slow download did, so in a dead zone the
+  // note came as the signal trickled back, 2026-10-14.)
   function checkConnection() {
     var f = inflight(), need = needBps();
     var slow = !!f && f.ms > 2000 && f.bytes > 0 && need > 0 && f.bytes * 8000 / f.ms < need;
+    var dead = (!!f && f.ms > 3000 && f.bytes === 0) || Date.now() - lastLinkErrorAt < 20000;
     var canDown = ownSwitching && cur < feeds.length - 1;
     if (!announced) {
       if (slow && canDown && Date.now() - startedAt > 6000) { switchFeed(cur + 1); return; }
@@ -1333,8 +1360,8 @@ const String _takeoverJs = r'''
     }
     // Stuck right now (not just resuming: the last progress reading lags a
     // moment behind, and the note came up just as the stream came back).
-    if (!slow || Date.now() - lastProgressAt < 3000 || video.readyState >= 3) return;
-    if (canDown) { switchFeed(cur + 1); return; }
+    if (!(slow || dead) || Date.now() - lastProgressAt < 3000 || video.readyState >= 3) return;
+    if (slow && canDown) { switchFeed(cur + 1); return; }
     if (Date.now() - weakToldAt > 60000) {
       weakToldAt = Date.now();
       post("weak");
@@ -1610,6 +1637,13 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // Under the spinner: changing quality ("Weak connection · Switching to
   // 540p…"), or why it's slow to start. Cleared when it plays.
   String? _waitText;
+  // The source's better feed, on offer (e.g. "1080p"; see adapt() in the
+  // page): a button by the Streams pill while the title bar is up, and the
+  // first time for a stream (_upOfferedFor) by itself for a while (_upNote).
+  String? _upTo;
+  bool _upNote = false;
+  String? _upOfferedFor;
+  Timer? _upTimer;
   // Which of the source's feeds the page plays from (0: the best). A step
   // down on a weak connection is kept when the page loads again (a
   // reconnect); another stream starts from the best.
@@ -1653,6 +1687,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   bool _everPlayed = false;
   bool _healing = false;
+  // When playing resumed after healing, for the "Weak connection" note.
+  DateTime? _healedAt;
   bool _offline = false;
   DateTime? _relinkGraceUntil;
   int _healTries = 0;
@@ -1796,8 +1832,28 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       final String q = part.length > 2 && part[2].isNotEmpty ? part[2] : (down ? 'a lower quality' : 'a higher quality');
       setState(() {
         _ready = false;
+        _upTo = null;
+        _upNote = false;
         _waitText = (down ? PlayerText.switchingDown : PlayerText.switchingUp).replaceAll('{quality}', q);
       });
+      return;
+    }
+    if (message.startsWith('canup:')) {
+      final String q = message.substring(6);
+      setState(() {
+        _upTo = q.isEmpty ? null : q;
+        if (_upTo == null) _upNote = false;
+      });
+      // The first time for this stream it comes up over the video by itself
+      // for a while; after that it's with the title bar only.
+      if (_upTo != null && _upOfferedFor != _stream.embedUrl) {
+        _upOfferedFor = _stream.embedUrl;
+        setState(() => _upNote = true);
+        _upTimer?.cancel();
+        _upTimer = Timer(const Duration(milliseconds: PlayerTuning.upOfferMs), () {
+          if (mounted) setState(() => _upNote = false);
+        });
+      }
       return;
     }
     if (message.startsWith('slowstart:')) {
@@ -1810,6 +1866,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       return;
     }
     if (message == 'weak') {
+      // Not over the reconnecting spinner, which says so itself, nor in the
+      // half minute after it: by then the connection is back, and the note
+      // only came as it recovered.
+      final DateTime? back = _healedAt;
+      if (_healing || (back != null && DateTime.now().difference(back) < const Duration(seconds: 30))) return;
       _showNote(PlayerText.weakConnection, PlayerIcons.weakConnection);
       return;
     }
@@ -1837,6 +1898,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         _waitText = null;
         _failed = false;
         _everPlayed = true;
+        if (_healing) _healedAt = DateTime.now();
         // It works after all: no longer "Failed … ago".
         _failures.remove(_stream.embedUrl);
         StreamFailures.clear(_stream.embedUrl);
@@ -1950,6 +2012,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _healTries = 0;
       _rowOpen = false;
       _switchedNote = null;
+      _upTo = null;
+      _upNote = false;
     });
     _openPage(s);
   }
@@ -2133,6 +2197,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _noteTimer?.cancel();
       setState(() => _switchedNote = null);
     }
+    // The button that came up by itself now goes with the title bar.
+    if (byUser && _upNote) setState(() => _upNote = false);
     _peekTimer?.cancel();
     // Longer with the streams row open, to read the cards; the row goes with
     // the title bar.
@@ -2339,6 +2405,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _healTimer?.cancel();
     _peekTimer?.cancel();
     _noteTimer?.cancel();
+    _upTimer?.cancel();
     _saveQuality();
     // Leaving the player gives the window back its title bar.
     if (_fullscreen) _leaveFullscreen().catchError((_) {});
@@ -2540,6 +2607,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       'subtitle': <String>[if (_quality != null) _quality!.label, sourceLabel(_stream.source), 'Stream ${_stream.streamNo}'].join(' · '),
       'pill': _hasRow && !_rowOpen && _switchedNote == null,
       'pillLabel': PlayerText.streamsPill,
+      'up': _upTo != null && !_rowOpen && _switchedNote == null
+          ? <String, Object?>{'label': _upTo, 'long': PlayerText.upAvailable.replaceAll('{quality}', _upTo!), 'shown': chrome, 'popup': _upNote && !chrome}
+          : null,
       'note': _switchedNote != null && !_rowOpen ? <String, Object?>{'text': _switchedNote, 'icon': _noteIcon.codePoint} : null,
       'row': _rowOpen
           ? <String, Object?>{
@@ -2554,6 +2624,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       'hideCursor': _fullscreen && !chrome,
       'icons': <String, int>{
         'pill': PlayerIcons.streamsPill.codePoint,
+        'up': PlayerIcons.qualityUp.codePoint,
         'menu': Icons.menu.codePoint,
         'close': Icons.close.codePoint,
         'volumeOn': Icons.volume_up.codePoint,
@@ -2563,12 +2634,19 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     };
   }
 
+  void _switchUp() {
+    setState(() => _upNote = false);
+    _web.runJavaScript('window.__appPlayer && window.__appPlayer.up && window.__appPlayer.up()').catchError((_) {});
+  }
+
   void _onOverlayClick(String what) {
     final List<String> part = what.split(':');
     final int? i = part.length > 1 ? int.tryParse(part[1]) : null;
     switch (part[0]) {
       case 'pill':
         _openRow();
+      case 'up':
+        _switchUp();
       case 'stream':
         final List<StreamInfo> l = _rowStreams;
         if (i != null && i < l.length) _switchTo(l[i]);
@@ -2605,6 +2683,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     // The title bar and the menu: up together, or hidden together. Debug builds
     // keep them up, so the quality can be read and screenshots taken any time.
     final bool chrome = kDebugMode || _holdTitle || _menuOpen || _peek || (_rowOpen && !_rowFading);
+    final bool upPopup = _upNote && !chrome && !_rowOpen && _switchedNote == null;
     if (Platform.isWindows) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _sendOverlay(chrome);
@@ -2792,17 +2871,55 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                         ),
                       // The Streams pill, with the title bar; it opens the row. It
                       // steps aside while the "Switched to" note has its spot.
-                      if (!_inPip && _hasRow && !_rowOpen && _switchedNote == null)
+                      // The better feed on offer ("1080p") sits to its left,
+                      // where there's room (the menu is to its right), or
+                      // centred without one.
+                      if (!_inPip && !_rowOpen && _switchedNote == null && (_hasRow || _upTo != null))
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 16 + MediaQuery.paddingOf(context).bottom,
+                          child: Builder(
+                            builder: (BuildContext context) {
+                              Widget fade(Widget child) => IgnorePointer(
+                                ignoring: !chrome,
+                                child: AnimatedOpacity(opacity: chrome ? 1 : 0, duration: const Duration(milliseconds: 150), child: child),
+                              );
+                              final Widget? up = _upTo == null ? null : fade(PlayerPill(icon: PlayerIcons.qualityUp, label: _upTo!, onTap: _switchUp));
+                              if (!_hasRow) return Center(child: up);
+                              return Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: up == null ? null : Padding(padding: const EdgeInsets.only(right: 8), child: up),
+                                    ),
+                                  ),
+                                  fade(StreamsPill(onOpen: _openRow)),
+                                  const Spacer(),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      // The first time it's on offer for a stream: "1080p
+                      // available" by itself over the video for a while, where
+                      // the notes go. It goes at once when the title bar comes
+                      // (which has the button), so the two never overlap; by
+                      // itself it fades.
+                      if (!_inPip && _upTo != null && !chrome)
                         Positioned(
                           left: 0,
                           right: 0,
                           bottom: 16 + MediaQuery.paddingOf(context).bottom,
                           child: IgnorePointer(
-                            ignoring: !chrome,
+                            ignoring: !upPopup,
                             child: AnimatedOpacity(
-                              opacity: chrome ? 1 : 0,
-                              duration: const Duration(milliseconds: 150),
-                              child: Center(child: StreamsPill(onOpen: _openRow)),
+                              opacity: upPopup ? 1 : 0,
+                              duration: const Duration(milliseconds: 250),
+                              child: Center(
+                                child: PlayerPill(icon: PlayerIcons.qualityUp, label: PlayerText.upAvailable.replaceAll('{quality}', _upTo!), onTap: _switchUp),
+                              ),
                             ),
                           ),
                         ),

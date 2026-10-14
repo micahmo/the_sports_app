@@ -94,9 +94,10 @@ abstract final class PlayerTuning {
   static const int stuckDownloadMs = 4000;
   static const int switchedNoteMs = 4000;
   static const int overlayPercent = 70;
-  static const int upHoldMs = 60000;
   static const int downPercent = 110;
   static const int upPercent = 150;
+  static const int upHoldMs = 60000;
+  static const int upOfferMs = 8000;
   static const int slowStartMs = 20000;
   static const int failedForMinutes = 60;
 }
@@ -127,7 +128,8 @@ abstract final class PlayerText {
   static const String trying = 'Trying {stream}…';
   static const String switchedTo = 'Switched to {stream}';
   static const String switchingDown = 'Weak connection · Switching to {quality}…';
-  static const String switchingUp = 'Connection improved · Switching to {quality}…';
+  static const String switchingUp = 'Switching to {quality}…';
+  static const String upAvailable = '{quality} available';
   static const String weakConnection = 'Weak connection';
   static const String slowConnection = 'Still loading · your connection is slow';
   static const String slowSource = 'Still loading · the stream is slow to respond';
@@ -138,4 +140,5 @@ abstract final class PlayerIcons {
   static const IconData streamsPill = Icons.view_carousel;
   static const IconData switched = Icons.swap_horiz;
   static const IconData weakConnection = Icons.network_check;
+  static const IconData qualityUp = Icons.upgrade;
 }

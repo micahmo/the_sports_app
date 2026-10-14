@@ -259,7 +259,7 @@ the others or is added here as a deliberate gap.
 | Title bar, Streams pill and note fade in and out | 150 ms (the note 250); the row fades too when it goes by itself with the title bar, and goes at once when closed by hand | same | same, since 1.0.116 (before, they appeared and vanished); the row's fade since 1.0.117 |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
-| Quality on a weak connection | steps down a source's separate feeds and back up (or hls.js switching where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |
+| Quality on a weak connection | steps down a source's separate feeds; back up only from a "1080p" button offered once the connection holds (hls.js switches both ways where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |
 | A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides) |
 | No pause (live streams only; a pause would just fall behind live) | no pause control | no pause control | Play/Pause shows the title bar like the other buttons |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
@@ -390,16 +390,43 @@ the master and each feed's playlist once (`readFeeds()`):
   other feed afresh at live, which can't land on the wrong stretch. Down after
   two segments in a row that came in under 110% of real time
   (`player.downPercent`), or at once when a download under way is slower than
-  the feed needs while starting (after 6 s) or stalled for 3 s. Up once, for a
-  minute straight (`upHoldMs`), every segment has come in at 150% of what the
-  better feed needs (`upPercent`), measured from first byte to last (the wait
-  for the first byte swamps a small 540p segment). An up that doesn't hold
-  doubles the wait (up to 10 min). Each switch is a brief spinner saying why
-  ("Weak connection · Switching to 540p…", "Connection improved · Switching to
-  1080p…"). A reconnect keeps the feed it had stepped down to (the app passes
-  it in); another stream starts from the best.
+  the feed needs while starting (after 6 s) or stalled for 3 s. Each switch is
+  a brief spinner saying why ("Weak connection · Switching to 540p…"). A
+  reconnect keeps the feed it had stepped down to (the app passes it in);
+  opening the stream again, or another, starts from the best.
+- **Never back up by itself (1.0.118).** It used to go up once segments had
+  come in at 150% of what the better feed needs for a minute straight
+  (doubling the wait after an up that didn't hold). But a switch loads the
+  feed afresh: a gap in a stream that's playing fine, maybe at a moment that
+  matters, and on a phone connection that swings it went 1080 → 540 → 1080
+  over and over, a restart each time (2026-10-14, "a lot more buffering than
+  normal"). Going down replaces something already failing; going up
+  interrupts something that works. A seamless up (the better feed warmed in a
+  second player, swapped in once playing) is parked.
+- **Offered instead (1.0.118).** Under the same rule the old auto-up used
+  (segments in at 150% of what the better feed needs for `upHoldMs` straight,
+  doubled after an up that didn't hold) the page tells the app `canup:1080p`,
+  and `canup:` when it no longer holds. The first time for a stream, "1080p
+  available" comes up by itself where the notes go, for `upOfferMs` (8 s),
+  and fades; after that a "⬆ 1080p" button sits left of the Streams pill
+  (centred without one) whenever the title bar is up and the offer holds. A
+  tap switches up (the brief "Switching to 1080p…" spinner). The pop-up goes
+  at once when the title bar comes, so the two never overlap. Left of the
+  pill because on a phone the right side runs into the menu button: the
+  first build put "1080p available" there, which overflowed into it and drew
+  garbled, and the emulator's GPU crashed on it every time (exit 139).
+  Desktop draws the same in the page (`aoUp`, `aoUpNote`). Tested: down to
+  540p at 4 Mbps; the offer about 70 s after the throttle lifted; a tap
+  played 1080p in 2 s.
 - **Nowhere lower to go** (one feed, or already the lowest) and stalled on a
-  slow download: a "Weak connection" note, once a minute at most. A stall while
+  slow download: a "Weak connection" note, once a minute at most. Since
+  1.0.118 also when stuck with nothing coming at all, a dead zone (a segment
+  download with nothing after 3 s, or the playlist failing to load in the
+  last 20 s), as the freeze starts: before, only a slow download counted, so
+  in a dead zone the note came as the signal trickled back (2026-10-14).
+  Never over the reconnecting spinner, nor in the 30 s after it lifts. Tested
+  by holding the web view's requests for 30 s: the note 4 s into the freeze,
+  none once it recovered. A stall while
   video is still arriving, however slowly, waits rather than reconnecting
   (starting again only threw away what was coming).
 - **Slow to start:** after 20 s (`slowStartMs`) the spinner says why: "Still
