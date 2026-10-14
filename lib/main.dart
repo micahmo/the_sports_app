@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
+import 'src/car.dart';
 import 'src/desktop/updater.dart';
 import 'src/desktop/window_scale.dart';
 import 'src/desktop/window_state.dart';
@@ -19,6 +20,7 @@ Future<void> main() async {
     await WindowState.restore();
   }
   await loadThemeMode();
+  await loadCarScreen();
   runApp(const SportsApp());
   // Desktop: a newer release? Asked a little after startup, so it doesn't hold
   // up the first screen, then again later on Home (see Updater.checkAutomatically).
@@ -35,9 +37,11 @@ class SportsApp extends StatelessWidget {
   const SportsApp({super.key});
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeModeNotifier,
-      builder: (BuildContext context, ThemeMode mode, Widget? _) {
+    return ListenableBuilder(
+      listenable: Listenable.merge(<Listenable>[themeModeNotifier, onCarScreen]),
+      builder: (BuildContext context, Widget? _) {
+        // Always dark on a car's screen, whatever the phone is set to.
+        final ThemeMode mode = onCarScreen.value ? ThemeMode.dark : themeModeNotifier.value;
         return MaterialApp(
           title: 'sports',
           theme: buildLightTheme(),

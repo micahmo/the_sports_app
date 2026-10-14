@@ -266,14 +266,82 @@ the others or is added here as a deliberate gap.
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
 | A source's server dropping the stream mid-game | reload after 20 s (a visible restart) | reload after 20 s (a visible restart) | fresh link in the background, usually unnoticed; see "Servers that drop a stream" |
 | First link doesn't answer | "unavailable" | "unavailable" | two more fresh sessions first |
-| Picture-in-picture, now-playing notification | yes | no | no |
+| Picture-in-picture, now-playing notification | yes (no picture-in-picture on a car's screen) | no | no |
+| On a car's screen (Android Auto) | yes, the whole app, moving between the phone and the car as it plays (see Android Auto) | n/a | n/a |
 | Fullscreen, keyboard shortcuts, remembered window | no | yes | no |
-| Light and dark themes | yes | yes | dark only |
+| Light and dark themes | yes; always dark on a car's screen | yes | dark only |
 | Version in Settings | yes | yes | yes |
 | Updates | through Obtainium | checks only on Home: at start, when the window gets focus, and on coming back to Home, at most hourly (`updates.checkEveryMinutes`); a version you said "Not now" to waits for the next start; installs itself and restarts | checks at start and hourly, says one is available; installing is up to the user |
 | Asks before exiting on Back | no | no | yes: TV convention |
 | Needs the Chrome stream server | no | no | yes (see Roku) |
 | `golf` streams | play (inner page opened directly) | play | play |
+
+## Android Auto (1.0.119)
+
+The phone app runs on a car's screen, the whole app as it is, not a car
+version: Android Auto starts `MainActivity` on a display of its own. The way
+in is the one AA Browser uses (github.com/kododake/AABrowser), and it needs
+Android Auto's developer settings with **Unknown sources** on; no AAAD.
+
+- **Manifest:** the activity's launcher filter adds `CAR_LAUNCHER` and
+  `androidx.car.app.category.NAVIGATION`; `distractionOptimized` on the app
+  and the activity; `com.google.android.gms.car.application` pointing at
+  `automotive_app_desc.xml` (`media`); `minCarApiLevel` 7; the
+  `ACCESS_SURFACE` and `MAP_TEMPLATES` permissions; `resizeableActivity`.
+- **`android:appCategory="game"` is what gets it in.** Without a category
+  Android Auto's validator logs `Package DENIED; Not allowed native app -1`,
+  and with `video` (what Google's parked video apps declare) `... app 2`.
+  As a game it's listed. Android Auto then keeps it to parked use by itself,
+  despite `distractionOptimized`: once the car is moving it takes the app
+  off the screen (back to its home screen; the sound stops, as in the
+  background) and won't open it, and once parked it opens again, back on the
+  stream at live. Tested with the DHU's `restrict all` / `speed`.
+- **One app on one screen.** It's a single activity, so it's on the phone
+  or the car, never both. Opening it on the phone moves the activity there
+  (a configuration change; it keeps running). Opening it on the car is a
+  fresh activity, because Android Auto clears the task, so the app's state
+  lives in a cached `FlutterEngine` (`provideFlutterEngine`,
+  `shouldDestroyEngineWithHost` false) that the new activity picks up: a
+  stream playing on the phone carries on in the car, and back again, with no
+  buttons for it.
+- **Ending the app.** A finishing activity ends the engine 3 s later unless
+  another one has taken it, and only if it's the one using it (the one the
+  car replaces is destroyed after its replacement starts; ending the engine
+  then crashed the app on the next configuration change, in
+  `FlutterJNI.updateDisplayMetrics`). Unplugging closes the activity on the
+  car (its display is gone by `onDestroy`): then the engine waits 30 minutes,
+  stopped as in the background, so opening the app on the phone returns to
+  the stream at live.
+- **The video after a move** stayed at the old screen's size, in a corner,
+  so the player's web view is rebuilt (keyed on `onCarScreen`) when it moves;
+  the page and the stream carry on.
+- **The `car` channel** tells the app which screen it's on (`isOnCar`,
+  `onCarChanged` from `onConfigurationChanged`, `attached` when a new
+  activity takes the engine). On the car it's always dark and has no
+  picture-in-picture.
+- In the background, as on any phone, the stream stops (the web view
+  pauses); returning jumps to live.
+
+### Testing it
+
+The desktop head unit (DHU) on the PC, with the Pixel's real Android Auto
+over wireless debugging. The emulator's Android Auto is a stub and its
+Google APIs image has no Play Store to update it (the Pixel's Play Store needs
+API 34).
+
+- DHU **2.1** (`desktop-head-unit-windows-x64_r02.1.zip` from
+  dl.google.com/android/repository; it's on the SDK's preview channel).
+  2.0, the one `sdkmanager` offers, sat at "Waiting for phone…".
+- On the phone: Android Auto settings, ⋮, Start head unit server (developer
+  mode first). Then `adb forward tcp:5277 tcp:5277` and
+  `desktop-head-unit.exe -c config/default_720p.ini`. The first time, accept
+  the new car on the phone.
+- The DHU's console takes `tap x y` and `screenshot <file>` (in the car's
+  1280×720), so it can be driven from a script with a file piped to stdin.
+- After reinstalling, opening it on the car can say "This can't be accessed
+  on your Android Auto at this time"; OK, and open it again.
+- Install the development flavor on the phone (`com.micahmo.sports.dev`):
+  debug builds can't replace the released app.
 
 ## Windows
 

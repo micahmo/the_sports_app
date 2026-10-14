@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
+import '../car.dart';
 import '../desktop/window_state.dart';
 import '../generated/app_data.dart';
 import '../player/player_webview.dart';
@@ -3016,7 +3017,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                                 onTap: _toggleMute,
                               ),
                               // Picture-in-picture is Android's; a desktop window can just be resized.
-                              if (Platform.isAndroid)
+                              // A car's screen (Android Auto) has none.
+                              if (Platform.isAndroid && !onCarScreen.value)
                                 SpeedDialChild(
                                   shape: const CircleBorder(),
                                   child: const Center(child: Icon(Icons.picture_in_picture, color: Colors.white, size: 15)),
@@ -3057,6 +3059,15 @@ class _WebViewHolder extends StatelessWidget {
     // But WebViewWidget must still be in the tree, so we find the state's controller via context.
     final _StreamPlayerScreenState? s = context.findAncestorStateOfType<_StreamPlayerScreenState>();
     if (s == null) return const SizedBox.shrink();
+    // Android: moving between the phone and a car's screen (Android Auto) left
+    // the video drawn at the old screen's size, so the view is made afresh on
+    // the move. The page, and the stream, carry on underneath.
+    if (Platform.isAndroid) {
+      return ValueListenableBuilder<bool>(
+        valueListenable: onCarScreen,
+        builder: (BuildContext context, bool car, Widget? _) => KeyedSubtree(key: ValueKey<bool>(car), child: s._web.build(context)),
+      );
+    }
     final Widget view = s._web.build(context);
     if (!Platform.isWindows) return view;
     // Off-screen until shown (see _nativeShown), the same size either way so

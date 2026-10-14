@@ -1,10 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Android Auto runs MainActivity on the car's screen, listed as a
+         navigation app (the way AA Browser does): Auto only gives a navigation
+         app's screen to an app that isn't one of its templates, and lets it
+         stay while driving. -->
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE"/>
+    <uses-permission android:name="androidx.car.app.MAP_TEMPLATES"/>
     <application
         android:label="sports"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:appCategory="game">
+        <meta-data android:name="distractionOptimized" android:value="true"/>
+        <meta-data android:name="androidx.car.app.minCarApiLevel" android:value="7"/>
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -15,7 +27,9 @@
             android:hardwareAccelerated="true"
             android:screenOrientation="fullSensor"
             android:windowSoftInputMode="adjustResize"
-            android:supportsPictureInPicture="true">
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true">
+            <meta-data android:name="distractionOptimized" android:value="true"/>
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
@@ -23,6 +37,8 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+                <category android:name="android.intent.category.CAR_LAUNCHER"/>
+                <category android:name="androidx.car.app.category.NAVIGATION"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

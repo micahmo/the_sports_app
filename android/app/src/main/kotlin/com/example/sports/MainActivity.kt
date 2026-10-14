@@ -8,23 +8,70 @@ import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Rational
+import android.view.Display
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterEngineCache
+import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
+    // ---- One app across the phone and the car ----
+    // Android Auto opens the app on the car with a fresh activity (it clears
+    // the task), so the app's state lives in an engine that outlives the
+    // activity: open it on the car while it plays on the phone and it carries
+    // on there. Opening it on the phone just moves the activity back.
+    companion object {
+        private const val ENGINE_ID = "main"
+        private val handler = Handler(Looper.getMainLooper())
+        private var pendingDestroy: Runnable? = null
+        // The activity using the engine now. The one the car replaces is
+        // destroyed after its replacement starts, and mustn't end the app.
+        private var host: MainActivity? = null
+        // Unplugging closes the activity on the car. The app waits this long
+        // (stopped, as when sent to the background) for the phone to open it,
+        // which picks the stream up at live; leaving it ends it at once.
+        private const val UNPLUGGED_KEEP_MS = 30 * 60 * 1000L
+    }
+
+    private var engineReused = false
+
+    override fun provideFlutterEngine(context: Context): FlutterEngine {
+        host = this
+        pendingDestroy?.let { handler.removeCallbacks(it) }
+        pendingDestroy = null
+        FlutterEngineCache.getInstance().get(ENGINE_ID)?.let {
+            engineReused = true
+            return it
+        }
+        val engine = FlutterEngine(context.applicationContext)
+        engine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
+        FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
+        return engine
+    }
+
+    override fun shouldDestroyEngineWithHost(): Boolean = false
+
     // ---- Channels ----
     private val pipChannelName = "pip"
     private val nowPlayingChannelName = "nowplaying"
+    private val carChannelName = "car"
 
     private lateinit var pipChannel: MethodChannel
     private lateinit var nowPlayingChannel: MethodChannel
+    private lateinit var carChannel: MethodChannel
+
+    // ---- Android Auto: on the car's screen rather than the phone's ----
+    private var onCar: Boolean? = null
 
     // ---- PiP state ----
     private var autoPipEnabled: Boolean = false
@@ -82,6 +129,45 @@ class MainActivity : FlutterActivity() {
         }
 
         ensureNowPlayingChannel()
+
+        // ------ Car channel: which screen the app is on ------
+        carChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, carChannelName)
+        carChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isOnCar" -> result.success(isOnCar())
+                else -> result.notImplemented()
+            }
+        }
+        // The app carried over from the other screen: tell it where it is now.
+        if (engineReused) carChannel.invokeMethod("attached", isOnCar())
+    }
+
+    // The car's display this activity is on, if it is (see onDestroy).
+    private var carDisplayId: Int? = null
+
+    private fun carDisplayGone(id: Int): Boolean =
+        (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager).getDisplay(id) == null
+
+    // Android Auto runs this activity on its own display, not the phone's.
+    private fun isOnCar(): Boolean {
+        val d = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display else @Suppress("DEPRECATION") windowManager.defaultDisplay
+        val car = d != null && d.displayId != Display.DEFAULT_DISPLAY
+        if (car) carDisplayId = d!!.displayId
+        return car
+    }
+
+    // Moving between the phone and the car is a configuration change (the
+    // activity keeps running), so tell the app here.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val now = isOnCar()
+        // Opened on the phone while the car is still there: no longer on it.
+        // (Unplugging moves it here too, but by then the car's display is gone.)
+        if (!now) carDisplayId?.let { if (!carDisplayGone(it)) carDisplayId = null }
+        if (now != onCar && ::carChannel.isInitialized) {
+            onCar = now
+            carChannel.invokeMethod("onCarChanged", now)
+        }
     }
 
     // ---- PiP helpers ----
@@ -105,7 +191,8 @@ class MainActivity : FlutterActivity() {
     // Auto-enter PiP ONLY if the player screen asked for it.
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && autoPipEnabled && !isInPictureInPictureMode) {
+        // Not on a car's screen: Android Auto has no picture-in-picture.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && autoPipEnabled && !isInPictureInPictureMode && !isOnCar()) {
             enterPip(16, 9)
         }
     }
@@ -171,5 +258,19 @@ class MainActivity : FlutterActivity() {
         // Safety: remove if app/engine is being destroyed
         hideNowPlaying()
         super.onDestroy()
+        // Leaving the app (back, or swiped away) ends it as before. Moving to
+        // the car finishes this activity too, but a new one takes the engine
+        // straight away, which calls this off.
+        if (isFinishing && host === this) {
+            host = null
+            val unplugged = carDisplayId?.let { carDisplayGone(it) } == true
+            val r = Runnable {
+                pendingDestroy = null
+                FlutterEngineCache.getInstance().get(ENGINE_ID)?.destroy()
+                FlutterEngineCache.getInstance().remove(ENGINE_ID)
+            }
+            pendingDestroy = r
+            handler.postDelayed(r, if (unplugged) UNPLUGGED_KEEP_MS else 3000)
+        }
     }
 }
