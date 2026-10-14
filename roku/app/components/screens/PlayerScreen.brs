@@ -42,13 +42,13 @@ sub init()
     ' The streams row (this game's other streams, recent games), its pill, and
     ' the note after falling back. See the phone app's streams_row.dart.
     m.row = m.top.createChild("Group")
-    m.row.visible = false
+    m.row.id = "row"
     m.pill = m.top.createChild("Group")
     m.pill.id = "pill"
     m.note = m.top.createChild("Group")
     m.note.id = "note"
-    ' The bar, pill and note fade (setShown), as on the phone and desktop.
-    for each n in [m.bar, m.pill, m.note]
+    ' The bar, pill, note and row fade (setShown), as on the phone and desktop.
+    for each n in [m.bar, m.pill, m.note, m.row]
         n.addField("shown", "boolean", false)
         n.visible = false
         n.opacity = 0
@@ -415,7 +415,9 @@ sub onBarTimer()
     if m.holdBar then return
     setShown(m.bar, false)
     setShown(m.pill, false)
-    closeRow()
+    ' Going by itself, the row fades with the bar (closed by hand, at once).
+    m.rowOpen = false
+    setShown(m.row, false)
 end sub
 
 sub showBar()
@@ -476,7 +478,7 @@ sub openRow()
     m.rowOpen = true
     m.rowFocus = -1
     renderRow()
-    m.row.visible = true
+    setShown(m.row, true, 0)
     ' At once, as the phone's: fading, it lay over the row for a moment.
     setShown(m.pill, false, 0)
     showBar()
@@ -517,7 +519,7 @@ end sub
 
 sub closeRow()
     m.rowOpen = false
-    m.row.visible = false
+    setShown(m.row, false, 0)
     ' The pill back in its place at once (only the bar's own coming and going
     ' fades it), as on the phone.
     if m.bar.shown and not m.note.shown and hasRow() then setShown(m.pill, true, 0)

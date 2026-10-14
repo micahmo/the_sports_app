@@ -471,7 +471,9 @@ const String _takeoverJs = r'''
       "font-family:'Segoe UI',sans-serif;color:#fff;-webkit-font-smoothing:antialiased;user-select:none}" +
       "*{box-sizing:border-box;visibility:visible!important}" +
       ".f{transition:opacity 150ms}" +
-      ".off{opacity:0;pointer-events:none!important}" +
+      // Hidden things can't be clicked, their buttons included (a parent's
+      // pointer-events doesn't reach a child that sets its own).
+      ".off,.off *{pointer-events:none!important}.off{opacity:0}" +
       ".hit{pointer-events:auto;cursor:pointer;overflow:hidden}" +
       ".rip{position:absolute;border-radius:50%;background:rgba(255,255,255,.16);transform:scale(0);pointer-events:none;transition:transform 225ms cubic-bezier(.4,0,.2,1),opacity 200ms linear}" +
       ".ic{font-family:'MaterialIcons';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}" +
@@ -621,7 +623,8 @@ const String _takeoverJs = r'''
         if (s.row.recent.length) secs.push("<div class='ao-sec'><div class='l'>" + esc(s.row.recentLabel) + "</div><div class='ao-cards'>" + s.row.recent.map(function (c, i) { return card(c, i, "recent"); }).join("") + "</div></div>");
         row = "<div class='ao-row'><div class='ao-rowin'>" + secs.join("") + "</div></div>";
       }
-      part("aoRow", row);
+      // Fading out with the title bar when it goes by itself (rowFading).
+      part("aoRow", row, "f" + (s.rowFading ? " off" : ""));
       var fab = "";
       if (s.menu) {
         // The hamburger at the size the app's SpeedDial really draws it: a
@@ -1585,6 +1588,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   // The streams row (see streams_row.dart): open or not, and what it shows.
   bool _rowOpen = false;
+  // The row going by itself: fading out with the title bar (see _peekTitle).
+  bool _rowFading = false;
   List<RecentGame> _recent = <RecentGame>[];
   Map<String, StreamQuality> _qualities = <String, StreamQuality>{};
   Set<String>? _currentIds;
@@ -2118,6 +2123,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   void _peekTitle({bool byUser = true}) {
     if (!mounted) return;
     if (!_peek) setState(() => _peek = true);
+    // Activity while the row was fading out: it stays.
+    if (_rowFading) setState(() => _rowFading = false);
     // Any tap or mouse movement: the "Switched to" note has done its job, and
     // would sit where the pill and row go. (Not when the app brings the bar
     // up itself, as when the first quality reading arrives: that wiped a
@@ -2133,7 +2140,17 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       if (!mounted) return;
       setState(() {
         _peek = false;
-        _rowOpen = false;
+        // Going by itself, the row fades with the title bar (closed by hand,
+        // it goes at once, as the pill does).
+        if (_rowOpen) _rowFading = true;
+      });
+      Timer(const Duration(milliseconds: 150), () {
+        if (mounted && _rowFading) {
+          setState(() {
+            _rowOpen = false;
+            _rowFading = false;
+          });
+        }
       });
     });
   }
@@ -2146,7 +2163,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   void _closeRow() {
     if (!mounted || !_rowOpen) return;
-    setState(() => _rowOpen = false);
+    setState(() {
+      _rowOpen = false;
+      _rowFading = false;
+    });
     // The title bar stays a moment, with the pill to open the row again.
     _peekTitle();
   }
@@ -2454,7 +2474,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     } catch (_) {}
     if (!mounted) return;
     _overlaySent = null;
-    _sendOverlay(kDebugMode || _holdTitle || _menuOpen || _peek || _rowOpen);
+    _sendOverlay(kDebugMode || _holdTitle || _menuOpen || _peek || (_rowOpen && !_rowFading));
     _pageReady = true;
     _reveal();
   }
@@ -2529,6 +2549,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
               'recent': <Map<String, Object?>>[for (final RecentGame r in _rowRecent) recentCard(r)],
             }
           : null,
+      'rowFading': _rowFading,
       'menu': _rowOpen ? null : <String, Object?>{'open': _menuOpen, 'muted': _muted},
       'hideCursor': _fullscreen && !chrome,
       'icons': <String, int>{
@@ -2583,7 +2604,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
     // The title bar and the menu: up together, or hidden together. Debug builds
     // keep them up, so the quality can be read and screenshots taken any time.
-    final bool chrome = kDebugMode || _holdTitle || _menuOpen || _peek || _rowOpen;
+    final bool chrome = kDebugMode || _holdTitle || _menuOpen || _peek || (_rowOpen && !_rowFading);
     if (Platform.isWindows) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _sendOverlay(chrome);
@@ -2791,7 +2812,14 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                           left: 0,
                           right: 0,
                           bottom: 0,
-                          child: StreamsRow(thisGame: _rowStreams, recent: _rowRecent, qualities: _qualities, failures: _failures, onStream: _switchTo, onRecent: _playRecent, onActivity: _peekTitle),
+                          child: IgnorePointer(
+                            ignoring: _rowFading,
+                            child: AnimatedOpacity(
+                              opacity: _rowFading ? 0 : 1,
+                              duration: const Duration(milliseconds: 150),
+                              child: StreamsRow(thisGame: _rowStreams, recent: _rowRecent, qualities: _qualities, failures: _failures, onStream: _switchTo, onRecent: _playRecent, onActivity: _peekTitle),
+                            ),
+                          ),
                         ),
                       // After falling back: which stream took over, briefly.
                       if (!_inPip)
