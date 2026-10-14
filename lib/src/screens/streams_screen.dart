@@ -1781,8 +1781,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       ),
     );
 
-    // Go edge-to-edge but keep bars visible
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // Go edge-to-edge but keep bars visible (fullscreen on a car's screen).
+    applySystemUi();
 
     WidgetsBinding.instance.addObserver(this);
   }
@@ -2844,23 +2844,37 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                                 onHover: (_) => _peekTitle(),
                                 child: Container(
                                   color: Colors.black.withValues(alpha: PlayerTuning.overlayPercent / 100),
-                                  padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 16, 10),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
+                                  padding: EdgeInsets.fromLTRB(onCarScreen.value ? 4 : 16, MediaQuery.paddingOf(context).top + 10, 16, 10),
+                                  child: Row(
                                     children: <Widget>[
-                                      Text(
-                                        _match.title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: condensed(19, FontWeight.w600, color: Colors.white),
-                                      ),
-                                      // What you glance for first: quality, then which stream.
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 2),
-                                        child: Text(
-                                          <String>[if (_quality != null) _quality!.label, sourceLabel(_stream.source), 'Stream ${_stream.streamNo}'].join(' · '),
-                                          style: const TextStyle(fontSize: 12, color: Colors.white70),
+                                      // On a car's screen the app is fullscreen, with no
+                                      // system back, so the title bar has its own.
+                                      if (onCarScreen.value)
+                                        IconButton(
+                                          tooltip: 'Back',
+                                          icon: const Icon(Icons.arrow_back, color: Colors.white),
+                                          onPressed: () => Navigator.of(context).maybePop(),
+                                        ),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: <Widget>[
+                                            Text(
+                                              _match.title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: condensed(19, FontWeight.w600, color: Colors.white),
+                                            ),
+                                            // What you glance for first: quality, then which stream.
+                                            Padding(
+                                              padding: const EdgeInsets.only(top: 2),
+                                              child: Text(
+                                                <String>[if (_quality != null) _quality!.label, sourceLabel(_stream.source), 'Stream ${_stream.streamNo}'].join(' · '),
+                                                style: const TextStyle(fontSize: 12, color: Colors.white70),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ],

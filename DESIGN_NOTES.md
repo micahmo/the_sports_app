@@ -319,6 +319,17 @@ Android Auto's developer settings with **Unknown sources** on; no AAAD.
   `onCarChanged` from `onConfigurationChanged`, `attached` when a new
   activity takes the engine). On the car it's always dark and has no
   picture-in-picture.
+- **Fullscreen on the car (1.0.120).** Android Auto gives an app like this
+  (its own screen, not templates) only a small bar of its own, a back arrow
+  and the app grid; the full bar Maps shows (media, time, notifications)
+  isn't on offer. Where the car puts that bar at the bottom (the user's
+  Chevy, and the DHU's `default_6in.ini`), it sat over the bottom of the
+  video, and the list screens showed two back arrows, ours and Auto's. So on
+  the car the app hides the system bars (`immersiveSticky`, re-applied on
+  every move, since each is a new window; a swipe from the edge still shows
+  Auto's bar), and every screen has our own back: the lists' as before, a ←
+  in the player's title bar, and on Home an exit back to Android Auto. The
+  phone is unchanged (edge to edge, system back).
 - In the background, as on any phone, the stream stops (the web view
   pauses); returning jumps to live.
 
@@ -337,7 +348,13 @@ API 34).
   `desktop-head-unit.exe -c config/default_720p.ini`. The first time, accept
   the new car on the phone.
 - The DHU's console takes `tap x y` and `screenshot <file>` (in the car's
-  1280×720), so it can be driven from a script with a file piped to stdin.
+  resolution), so it can be driven from a script with a file piped to stdin.
+  Check a screenshot after every tap: blind taps landed in Maps and started
+  navigation once. `default_6in.ini` (800×480) has the bar along the bottom,
+  as in the user's car; `default_720p.ini` has it down the left. Connecting
+  often fails every other try ("Waiting for phone…"); start it again.
+- The released app and the dev build are both "sports" in the car's
+  launcher; check which one opened with `dumpsys activity activities`.
 - After reinstalling, opening it on the car can say "This can't be accessed
   on your Android Auto at this time"; OK, and open it again.
 - Install the development flavor on the phone (`com.micahmo.sports.dev`):

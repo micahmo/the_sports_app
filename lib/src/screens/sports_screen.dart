@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
+import '../car.dart';
 import '../theme.dart';
 import '../generated/app_data.dart' show TvLayout;
 import '../widgets/match_widgets.dart';
@@ -92,6 +94,9 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
       child: Scaffold(
         appBar: AppBar(
           actionsPadding: wide ? const EdgeInsets.only(right: 4) : null,
+          // On a car's screen the app is fullscreen, with no system back, so
+          // Home has a way out, back to Android Auto.
+          leading: onCarScreen.value ? IconButton(tooltip: 'Exit', icon: const Icon(Icons.arrow_back), onPressed: SystemNavigator.pop) : null,
           title: const ScreenTitle('Sports'),
           actions: <Widget>[
             // Phones pull to refresh; a mouse can't, so desktop gets the button
