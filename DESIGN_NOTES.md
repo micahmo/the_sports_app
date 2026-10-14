@@ -520,6 +520,19 @@ the master and each feed's playlist once (`readFeeds()`):
   arriving; "Waiting for connection…" if the site can't be reached). It keeps
   loading; nothing gives up. The old 15 s "never started" restart no longer
   fires while a download is coming in.
+- **Nothing at all at the start (1.0.121):** after 10 s with not a byte, the
+  stream's lowest feed is tried (ours, or hls.js's lowest level where the feeds
+  line up, back to its own choice once a segment is in), once, before the 15 s
+  "never started" gives up on the stream and falls back to another. Before,
+  1080p that couldn't get anything through on a weak connection went straight
+  to another source's SD stream, marked the HD one "Failed", and left nothing
+  better to offer later (2026-10-14, in the car). Now it stays on the stream,
+  and the "1080p" button can take it back up. A true dead spot costs ~10 s
+  more before the fallback. Tested with a proxy on the PC that holds the
+  segment host's connections open (`settings put global http_proxy`):
+  nothing for 10 s, then 540p, playing 2 s later. (A way back to the stream a
+  fallback left was considered and dropped: it should only follow a fallback
+  the app made, not one the user picked, which got complicated.)
 - Tested on the emulator by throttling the web view's own downloads (DevTools
   `Network.emulateNetworkConditions`, re-applied every 2 s so a reload can't
   drop it; the emulator's `network speed` stalls downloads outright rather

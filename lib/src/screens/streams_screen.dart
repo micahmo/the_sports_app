@@ -1212,6 +1212,22 @@ const String _takeoverJs = r'''
   // The app's button.
   window.__appPlayer.up = function () { if (offering && cur > 0) switchFeed(cur - 1); };
 
+  // To the lowest feed, if not there already: ours, or hls.js's where the
+  // feeds line up (back to its own choice once something has come in).
+  function stepToLowest() {
+    if (ownSwitching) {
+      if (cur >= feeds.length - 1) return false;
+      log("nothing coming in: lowest feed");
+      switchFeed(feeds.length - 1);
+      return true;
+    }
+    if (!hls || !hls.levels || hls.levels.length < 2 || hls.loadLevel === 0) return false;
+    log("nothing coming in: lowest level");
+    hls.currentLevel = 0;
+    hls.once(OurHls.Events.FRAG_LOADED, function () { try { hls.currentLevel = -1; } catch (e) {} });
+    return true;
+  }
+
   function switchFeed(i) {
     var dir = i > cur ? "down" : "up";
     if (dir === "down" && lastUpAt && Date.now() - lastUpAt < upHold) upHold = Math.min(upHold * 2, 600000);
@@ -1544,7 +1560,7 @@ const String _takeoverJs = r'''
 
   var tries = 0;
   var settled = false;
-  var deadFor = 0;
+  var deadFor = 0, deadStepped = false;
   setInterval(function () {
     if (window.__appPlayer.built) {
       watch();
@@ -1555,10 +1571,16 @@ const String _takeoverJs = r'''
       // (Not while a download is coming in, however slowly: on a weak
       // connection the first segment can take longer than that, and starting
       // again only started the wait over.)
+      // Nothing at all for 10 s: the stream's lowest feed first, once, before
+      // giving up on the stream (and falling back to another source). A
+      // connection too weak for 1080p could leave the first request with
+      // nothing, and the fallback then went to another source's SD stream,
+      // which has no better feed to offer later (2026-10-14, in the car).
       if (video && video.readyState === 0 && !settled) {
         var f = inflight();
         if (f && f.bytes > 0) deadFor = 0;
-        else if (++deadFor > 30) { settled = true; post("fatal"); }
+        else if (++deadFor === 20 && !deadStepped && stepToLowest()) { deadStepped = true; deadFor = 0; }
+        else if (deadFor > 30) { settled = true; post("fatal"); }
       } else {
         deadFor = 0;
       }
