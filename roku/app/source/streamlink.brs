@@ -38,7 +38,7 @@ function playerPageUrl(embedUrl as String) as String
     inner = ba.ToAsciiString()
     prefix = "https://" + host + "/embed/"
     if Left(inner, Len(prefix)) <> prefix then return embedUrl
-    print "[stream] nested source: playing "; inner
+    print logTime(); "[stream] nested source: playing "; inner
     return inner
 end function
 
@@ -161,7 +161,7 @@ function pickMedia() as Boolean
     end for
     if best = "" then return false
     m.playlistUrl = resolve(m.playlistUrl, best)
-    print "[stream] master playlist: using "; bestBw; " bps rendition"
+    print logTime(); "[stream] master playlist: using "; bestBw; " bps rendition"
     return fetchInPage(m.playlistUrl) <> invalid
 end function
 
@@ -186,7 +186,7 @@ end function
 function fetchInPage(url as String) as Dynamic
     text = fetchInPageOnce(url)
     if text = invalid and not m.quitting then
-        print "[stream] retrying playlist fetch"
+        print logTime(); "[stream] retrying playlist fetch"
         text = fetchInPageOnce(url)
     end if
     return text
@@ -204,13 +204,13 @@ function fetchInPageOnce(url as String) as Dynamic
     v = wd(m.driver, "POST", "/session/" + m.sid + "/execute/async", {script: js, args: [url]}, 8000)
     if not isString(v) then
         ' Log what the server said (e.g. the page navigated away, session gone).
-        if v = invalid then print "[stream] playlist fetch: no reply from the server" else print "[stream] playlist fetch: "; Left(FormatJson(v), 200)
+        if v = invalid then print logTime(); "[stream] playlist fetch: no reply from the server" else print logTime(); "[stream] playlist fetch: "; Left(FormatJson(v), 200)
         return invalid
     end if
     nl = Instr(1, v, Chr(10))
     body = Mid(v, nl + 1)
     if nl = 0 or Left(v, nl - 1) <> "200" or Left(body, 7) <> "#EXTM3U" then
-        print "[stream] playlist fetch: "; Left(v, 60)
+        print logTime(); "[stream] playlist fetch: "; Left(v, 60)
         return invalid
     end if
     return body

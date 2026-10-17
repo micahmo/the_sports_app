@@ -14,10 +14,15 @@
     <field id="quit" type="boolean" alwaysNotify="true" />
     <!-- What's playing: {height, fps, mbps} (see measure()). -->
     <field id="quality" type="assocarray" />
+    <!-- Seconds of video the player has been given so far. -->
+    <field id="servedSecs" type="float" />
+    <!-- The player is starting again: list only the newest few (longerWindow). -->
+    <field id="trim" type="boolean" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/webdriver.brs" />
   <script type="text/brightscript" uri="pkg:/source/streamlink.brs" />
   <script type="text/brightscript" uri="pkg:/source/tsinfo.brs" />
+  <script type="text/brightscript" uri="pkg:/source/logtime.brs" />
   <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
   <script type="text/brightscript" uri="pkg:/components/tasks/StreamTask.brs" />
 </component>

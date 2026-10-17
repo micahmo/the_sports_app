@@ -260,7 +260,7 @@ the others or is added here as a deliberate gap.
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
 | Quality on a weak connection | steps down a source's separate feeds; back up only from a "1080p" button offered once the connection holds (hls.js switches both ways where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |
-| A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides) |
+| A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides); stuck after the source skips ahead, the player starts again at live (see "Stuck after the source skips ahead") |
 | No pause (live streams only; a pause would just fall behind live) | no pause control | no pause control | Play/Pause shows the title bar like the other buttons |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
@@ -897,6 +897,37 @@ in StreamTask): the player gets the source's newest if it comes within 1.5 s
 with a build that held one playlist fetch in ten for 9 s: segments were served
 all through each hold, no buffering. Phone and desktop already fetch playlists
 in the background (hls.js).
+
+### Stuck after the source skips ahead (1.0.122)
+
+After the source stalls it sometimes comes back having skipped part of the
+game, its segment numbering unbroken but the picture's own clock (the
+segments' timestamps) 6 to 32 s further on, sometimes with a few segments
+missed too. A player still playing goes straight over the jump. One that ran
+dry in the stall doesn't: it takes segment after segment (18–21 s of video)
+without playing until the 20 s stall reconnects, then the 12 s hold back:
+~45 s of spinner for a ~15 s outage, several times on 2026-10-15.
+
+- **Restart, not reconnect** (`onStuck` in PlayerScreen): buffering, and given
+  15 s of video since the spinner came (`servedSecs` from StreamTask; a
+  healthy start plays after ~12), the player is stopped and started again on
+  the same proxy, which lists only its newest 3 segments for it (`trim`) so
+  it starts at live. No new browser session, no hold back; once per spell of
+  buffering, and the 20 s stall still reconnects if it didn't help. Seen
+  working 2026-10-16: stuck 16 s after a 32 s jump, playing 1.2 s after the
+  restart, ~20 s sooner than the old way.
+- **Tried and dropped:** marking the jump in the player's list
+  (`#EXT-X-DISCONTINUITY`): the Roku's player went back to the top of the
+  list, replayed it, then played garbled, fast and silent, and froze. Listing
+  a segment only once its clock had been checked (to mark it in time).
+  Counting downloaded segments not yet asked for as "stuck": some the player
+  never asks for, and it restarted 3 s into a plain source stall.
+- **Logged:** `checkClock` reads each segment's first timestamp as its
+  download finishes and logs "picture clock jumps ahead N s" (comparing with
+  the segment just before it in time, as downloads finish out of order), and
+  every line of the debug console starts with the time of day (`logTime()`),
+  which is what showed which step of a slow start or a long spinner took the
+  time.
 
 ## Debugging recipe
 

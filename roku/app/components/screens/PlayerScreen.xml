@@ -9,6 +9,7 @@
     <field id="params" type="assocarray" onChange="onParams" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/common.brs" />
+  <script type="text/brightscript" uri="pkg:/source/logtime.brs" />
   <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
   <script type="text/brightscript" uri="pkg:/components/screens/PlayerScreen.brs" />
   <children>
@@ -20,6 +21,8 @@
     <Label id="status" translation="[160, 440]" width="1600" height="200" horizAlign="center" vertAlign="center" wrap="true" />
     <!-- Buffering this long means the stream has stalled: start it again. -->
     <Timer id="stall" duration="20" />
+    <!-- While buffering, each second: stuck with segments in hand? -->
+    <Timer id="stuck" duration="1" repeat="true" />
     <!-- The next try while reconnecting. -->
     <Timer id="retry" />
     <!-- Our own title bar: the game and what's playing, full width, for a few

@@ -11,6 +11,10 @@ sub init()
     m.video.retrievingBarVisibilityAuto = false
     m.stall = m.top.findNode("stall")
     m.stall.observeField("fire", "onStall")
+    m.stuck = m.top.findNode("stuck")
+    m.stuck.observeField("fire", "onStuck")
+    m.restarted = false
+    m.servedAtBuffering = 0
     m.retry = m.top.findNode("retry")
     m.retry.observeField("fire", "onRetry")
 
@@ -245,6 +249,7 @@ sub switchTo(s as Object, fallback as Boolean)
     m.best = invalid
     m.savedAt = invalid
     m.stall.control = "stop"
+    m.stuck.control = "stop"
     m.retry.control = "stop"
     m.video.control = "stop"
     m.video.content = invalid
@@ -282,18 +287,22 @@ sub onRetry()
 end sub
 
 sub onStreamUrl()
+    m.video.content = streamContent(m.task.streamUrl)
+    ' Our spinner and the last status stay up until it plays (onVideoState).
+    m.video.control = "play"
+end sub
+
+function streamContent(url as String) as Object
     content = CreateObject("roSGNode", "ContentNode")
-    content.url = m.task.streamUrl
+    content.url = url
     content.streamFormat = "hls"
     content.live = true
     ' Our bar shows the title (full width, and with the quality), so the
     ' player's own bar doesn't. Set here, before playback: changing the content
     ' once it's playing stalls the stream (see onQuality).
     content.title = ""
-    m.video.content = content
-    ' Our spinner and the last status stay up until it plays (onVideoState).
-    m.video.control = "play"
-end sub
+    return content
+end function
 
 ' What's playing, in our title bar and remembered for the streams list. (Not in
 ' the player's own title: changing the Video's content, even just its title,
@@ -335,7 +344,7 @@ end sub
 
 sub onVideoState()
     st = m.video.state
-    print "[player] "; st; " "; m.video.errorMsg
+    print logTime(); "[player] "; st; " "; m.video.errorMsg
     if st = "playing" and m.holdPending then
         ' Reconnected: wait a little longer behind the spinner, paused, while
         ' the source publishes on. Its segments stay listed (StreamTask keeps
@@ -347,12 +356,14 @@ sub onVideoState()
         m.video.control = "pause"
         m.holdTimerBack.duration = m.holdBack
         m.holdTimerBack.control = "start"
-        print "[player] holding back "; m.holdBack; " s after reconnecting"
+        print logTime(); "[player] holding back "; m.holdBack; " s after reconnecting"
         return
     end if
     if st = "playing" then
         hideStatus()
         m.stall.control = "stop"
+        m.stuck.control = "stop"
+        m.restarted = false
         m.restarts = 0
         if not m.recorded then
             m.recorded = true
@@ -380,6 +391,10 @@ sub onVideoState()
         m.spinner.control = "start"
         m.stall.control = "stop"
         m.stall.control = "start"
+        ' Mid-game only: while starting, segments in hand are normal. Once per
+        ' spell of buffering (a restart buffers too).
+        if m.task <> invalid then m.servedAtBuffering = m.task.servedSecs
+        if m.recorded and not m.restarted then m.stuck.control = "start"
     else if st = "paused" and (m.holding or m.status.visible) then
         ' (holding back after a reconnect, or paused for something else)
     else if st = "paused" then
@@ -890,8 +905,36 @@ sub renderPill()
     m.pill.appendChild(l)
 end sub
 
+' Buffering while the video keeps coming: the player is stuck, not waiting.
+' Seen after the source stalled and came back with a jump in the picture's
+' clock (6 to 16 s): the player took segment after segment without playing
+' until the 20 s stall reconnected, then held back 12 s (~45 s of spinner,
+' 2026-10-15). Starting the player again on the newest segments plays in a
+' moment, with no new browser session and no hold back. Stuck means it has
+' been given 15 s of video since the spinner came (stuck it took 18-21 s; a
+' healthy start plays after ~12). (Segments downloaded and not asked for
+' don't say it: some it never asks for, and counting them restarted it 3 s
+' into a plain source stall, which helped nothing.) Once per spell of buffering; if that doesn't help,
+' the stall reconnects as before.
+sub onStuck()
+    if m.video.state <> "buffering" or m.task = invalid then
+        m.stuck.control = "stop"
+        return
+    end if
+    took = m.task.servedSecs - m.servedAtBuffering
+    if took < 15 then return
+    m.stuck.control = "stop"
+    m.restarted = true
+    print logTime(); "[player] stuck: "; Int(took); " s of video taken without playing; starting the player again"
+    url = m.video.content.url
+    m.task.trim = true
+    m.video.control = "stop"
+    m.video.content = streamContent(url)
+    m.video.control = "play"
+end sub
+
 sub onStall()
-    print "[player] stalled for "; m.stall.duration; "s"
+    print logTime(); "[player] stalled for "; m.stall.duration; "s"
     reconnect("The stream stalled")
 end sub
 
@@ -905,6 +948,7 @@ end sub
 sub reconnect(reason as String)
     endHold()
     m.stall.control = "stop"
+    m.stuck.control = "stop"
     m.retry.control = "stop"
     m.video.control = "stop"
     ' And let go of it, so none of the player's own UI (its buffering spinner)
@@ -919,12 +963,12 @@ sub reconnect(reason as String)
         m.task = invalid
     end if
     if m.restarts >= 3 then
-        print "[player] giving up: "; reason
+        print logTime(); "[player] giving up: "; reason
         failedForGood(reason)
         return
     end if
     m.restarts = m.restarts + 1
-    print "[player] reconnecting ("; m.restarts; "): "; reason
+    print logTime(); "[player] reconnecting ("; m.restarts; "): "; reason
     ' A stream that hung this long hangs again: start it further behind live,
     ' keeping the cushion the hang would have left.
     m.holdBack = 12
@@ -943,6 +987,7 @@ sub onClosing()
     endHold()
     saveBest()
     m.stall.control = "stop"
+    m.stuck.control = "stop"
     m.retry.control = "stop"
     m.video.control = "stop"
     if m.task <> invalid then m.task.quit = true

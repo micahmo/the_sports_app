@@ -15,7 +15,7 @@ sub work()
                 m.top.result = {sid: m.sid, url: m.playlistUrl}
                 return
             end if
-            print "[stream] new link didn't answer: "; Left(m.playlistUrl, 30)
+            print logTime(); "[stream] new link didn't answer: "; Left(m.playlistUrl, 30)
         end if
         wd(m.driver, "DELETE", "/session/" + m.sid, invalid, 5000)
         if quitRequested() then exit for

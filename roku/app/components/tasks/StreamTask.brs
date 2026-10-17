@@ -3,12 +3,12 @@ sub init()
 end sub
 
 sub say(s as String)
-    print "[stream] "; s
+    print logTime(); "[stream] "; s
     m.top.status = s
 end sub
 
 sub fail(s as String)
-    print "[stream] error: "; s
+    print logTime(); "[stream] error: "; s
     m.top.error = s
 end sub
 
@@ -25,6 +25,8 @@ sub work()
     m.xferOf = {}
     m.served = {}
     m.fileSeq = 0
+    ' The last few segments' picture clocks (checkClock).
+    m.stamps = []
     ' Segments the source's server refused (403) before any played: two and the
     ' stream is given up at once (see onDownload).
     m.refused = 0
@@ -64,7 +66,7 @@ sub work()
     ' No internet (the server on the LAN may still answer): the player waits
     ' and tries again rather than counting this as the stream failing.
     if not siteReachable() then
-        print "[stream] streamed.pk unreachable"
+        print logTime(); "[stream] streamed.pk unreachable"
         m.top.error = "offline"
         return
     end if
@@ -93,7 +95,7 @@ sub work()
             if not m.quitting then fail("This stream is unavailable. Try another stream or source.")
             return
         end if
-        print "[stream] the link didn't answer: trying a fresh session"
+        print logTime(); "[stream] the link didn't answer: trying a fresh session"
     end for
     serve()
     cleanup()
@@ -218,11 +220,11 @@ function longerWindow(lines as Object) as Object
     if w <> invalid then
         last = w.lastSrc
         if seq + items.Count() - 1 < last - 100 or seq > last + 100 then
-            print "[stream] playlist numbering restarted: starting the list over"
+            print logTime(); "[stream] playlist numbering restarted: starting the list over"
             w = invalid
         else if seq > last + 1 then
             missed = seq - last - 1
-            print "[stream] playlist: missed "; missed; " segment(s) while the source was slow"
+            print logTime(); "[stream] playlist: missed "; missed; " segment(s) while the source was slow"
             w.offset = w.offset - missed
         end if
     end if
@@ -236,6 +238,15 @@ function longerWindow(lines as Object) as Object
             w.lastSrc = src
         end if
     end for
+    ' The player is starting again (stuck, see PlayerScreen's onStuck): only the
+    ' newest few, so it starts at live rather than at the top of the list
+    ' (where it replayed the stream's first segments, 2026-10-15).
+    if m.top.trim then
+        m.top.trim = false
+        while w.items.Count() > 3
+            w.items.Shift()
+        end while
+    end if
     total = 0
     for each it in w.items
         if it.dur <> invalid then total = total + it.dur
@@ -295,7 +306,7 @@ sub checkPlaylist()
     f = m.plFetch
     if f <> invalid and f.started.TotalMilliseconds() > 8000 then
         f.x.AsyncCancel()
-        print "[stream] playlist fetch: no reply from the server"
+        print logTime(); "[stream] playlist fetch: no reply from the server"
         playlistFetched(f, invalid)
         return
     end if
@@ -305,7 +316,7 @@ sub checkPlaylist()
         if w.at <> invalid and w.at.TotalMilliseconds() > 1500 then
             if f <> invalid and not f.slow then
                 f.slow = true
-                print "[stream] playlist slow: serving the last one meanwhile"
+                print logTime(); "[stream] playlist slow: serving the last one meanwhile"
             end if
             answerPlaylist(w.sock, m.lastPlaylist)
         else
@@ -324,12 +335,12 @@ sub onPlaylistEvent(ev as Object)
     v = invalid
     if json <> invalid then v = json.value
     if not isString(v) then
-        if v = invalid then print "[stream] playlist fetch: no reply from the server" else print "[stream] playlist fetch: "; Left(FormatJson(v), 200)
+        if v = invalid then print logTime(); "[stream] playlist fetch: no reply from the server" else print logTime(); "[stream] playlist fetch: "; Left(FormatJson(v), 200)
     else
         nl = Instr(1, v, Chr(10))
         body = Mid(v, nl + 1)
         if nl = 0 or Left(v, nl - 1) <> "200" or Left(body, 7) <> "#EXTM3U" then
-            print "[stream] playlist fetch: "; Left(v, 60)
+            print logTime(); "[stream] playlist fetch: "; Left(v, 60)
         else
             text = body
         end if
@@ -347,16 +358,16 @@ sub playlistFetched(f as Object, text as Dynamic)
     end if
     if text = invalid then
         if not f.retry then
-            print "[stream] retrying playlist fetch"
+            print logTime(); "[stream] retrying playlist fetch"
             startPlaylistFetch(true)
             return
         end if
         startMint()
-        if m.lastPlaylist <> invalid then print "[stream] serving the last playlist while a new link is found"
+        if m.lastPlaylist <> invalid then print logTime(); "[stream] serving the last playlist while a new link is found"
         result = m.lastPlaylist
     else
         result = rewritePlaylist(f.url, text)
-        print "[stream] playlist "; f.started.TotalMilliseconds(); " ms"
+        print logTime(); "[stream] playlist "; f.started.TotalMilliseconds(); " ms"
     end if
     for each w in m.plWaiters
         answerPlaylist(w.sock, result)
@@ -381,7 +392,7 @@ sub startMint()
     if m.minter <> invalid or quitRequested() then return
     if m.mintTry <> invalid and m.mintTry.TotalSeconds() < 10 then return
     m.mintTry = CreateObject("roTimespan")
-    print "[stream] the link stopped working: finding a new one"
+    print logTime(); "[stream] the link stopped working: finding a new one"
     m.minter = CreateObject("roSGNode", "MintTask")
     m.minter.driver = m.driver
     ' The page this session plays (for a nested source, the inner one already
@@ -395,7 +406,7 @@ end sub
 sub onMinted(r as Object)
     m.minter = invalid
     if r = invalid or r.sid = invalid then
-        print "[stream] couldn't find a new link"
+        print logTime(); "[stream] couldn't find a new link"
         return
     end if
     old = m.sid
@@ -403,7 +414,7 @@ sub onMinted(r as Object)
     m.playlistUrl = r.url
     rememberSession(m.driver, m.sid)
     closeSession(m.driver, old)
-    print "[stream] switched to a new link after "; m.mintTry.TotalMilliseconds(); " ms: "; Left(m.playlistUrl, 40)
+    print logTime(); "[stream] switched to a new link after "; m.mintTry.TotalMilliseconds(); " ms: "; Left(m.playlistUrl, 40)
 end sub
 
 ' ---- segments ---------------------------------------------------------------
@@ -489,10 +500,11 @@ sub onDownload(ev as Object)
                 DeleteFile(t.path)
             end if
         end for
+        checkClock(u, mine.path)
         if d.hedged then
             which = "first"
             if mine.id <> d.xfers[0].id then which = "second"
-            print "[stream] segment: the "; which; " copy won"
+            print logTime(); "[stream] segment: the "; which; " copy won"
         end if
         if d.waiters.Count() > 0 then serveSegment(u)
         return
@@ -509,10 +521,10 @@ sub onDownload(ev as Object)
         d.retryIn = delays[d.retries]
         d.retries = d.retries + 1
         d.since = CreateObject("roTimespan")
-        print "[stream] segment error "; code; ": trying again in "; d.retryIn; " ms"
+        print logTime(); "[stream] segment error "; code; ": trying again in "; d.retryIn; " ms"
         return
     end if
-    print "[stream] segment FAILED after "; d.started.TotalMilliseconds(); " ms (error "; code; ")"
+    print logTime(); "[stream] segment FAILED after "; d.started.TotalMilliseconds(); " ms (error "; code; ")"
     ' Refused, not just slow or missing: that won't change, so rather than
     ' three reconnects over ~3 minutes, give the stream up now.
     if code = 403 and not m.anyServed then
@@ -524,6 +536,58 @@ sub onDownload(ev as Object)
         sock.Close()
     end for
     m.dl.Delete(u)
+end sub
+
+' Whether the picture's own clock carries on from the segment before, logged
+' when it doesn't. After the source stalls it sometimes comes back having
+' skipped some of the game (6.7 s, 2026-10-15) with its numbering unbroken,
+' and the player sat at the jump with the next segments in hand until it
+' reconnected 20 s later (see PlayerScreen's onStuck). Marking the jump for the
+' player (#EXT-X-DISCONTINUITY) was tried: the Roku's player went back to the
+' top of the list and replayed it. Segments can finish out of order (two at
+' once, or a second copy), so each is compared with the one just before it in
+' time, and only a jump of more than a segment counts.
+sub checkClock(u as String, path as String)
+    head = CreateObject("roByteArray")
+    head.ReadFile(path, 0, 2048 + 188 * 200)
+    off = -1
+    for i = 0 to 2048 - 377
+        if i + 376 < head.Count() and head[i] = &h47 and head[i + 188] = &h47 and head[i + 376] = &h47 then
+            off = i
+            exit for
+        end if
+    end for
+    if off < 0 then return
+    ts = CreateObject("roByteArray")
+    for i = off to head.Count() - 1
+        ts.Push(head[i])
+    end for
+    st = tsFirstStamp(ts)
+    if st < 0 then return
+    d = m.segDur[u]
+    if d = invalid then d = 0
+    pred = invalid
+    for each r in m.stamps
+        if r.st < st and (pred = invalid or r.st > pred.st) then pred = r
+    end for
+    if pred <> invalid then
+        gap = (st - pred.st) / 90000 - pred.d
+        if gap > pred.d + 0.5 then
+            print logTime(); "[stream] picture clock jumps ahead "; Int(gap * 10) / 10; " s at this segment"
+        end if
+    else if m.stamps.Count() > 0 then
+        ' Earlier than every recent one: the first segments finishing out of
+        ' order, unless it's well back (the source's clock starting over).
+        low = m.stamps[0].st
+        for each r in m.stamps
+            if r.st < low then low = r.st
+        end for
+        if (low - st) / 90000 > 10 then
+            print logTime(); "[stream] picture clock goes back at this segment"
+        end if
+    end if
+    m.stamps.Push({st: st, d: d})
+    if m.stamps.Count() > 6 then m.stamps.Shift()
 end sub
 
 ' Send a downloaded segment to whoever asked for it, then forget it.
@@ -539,17 +603,18 @@ sub serveSegment(u as String)
         sock.Close()
     end for
     if ba = invalid then
-        print "[stream] segment FAILED (not MPEG-TS)"
+        print logTime(); "[stream] segment FAILED (not MPEG-TS)"
     else
         ' How long the download took, and whether it was ready when the player
         ' asked (prefetched) or the player waited for it.
         how = "ready"
         if d.asked <> invalid then how = "waited " + d.asked.TotalMilliseconds().ToStr() + " ms"
-        print "[stream] segment  "; ba.Count(); " bytes  "; d.took; " ms ("; how; ")"
+        print logTime(); "[stream] segment  "; ba.Count(); " bytes  "; d.took; " ms ("; how; ")"
         measure(u, ba)
     end if
     DeleteFile(d.file)
     m.dl.Delete(u)
+    if ba <> invalid and m.segDur[u] <> invalid then m.top.servedSecs = m.top.servedSecs + m.segDur[u]
     m.served[u] = true
     m.anyServed = true
     if m.served.Count() > 60 then m.served = {}
@@ -590,7 +655,7 @@ sub tick()
         d = m.dl[u]
         if not d.done and not d.hedged and d.active > 0 and d.started.TotalMilliseconds() > m.stuckMs then
             d.hedged = true
-            print "[stream] segment slow after "; d.started.TotalMilliseconds(); " ms: starting a second copy"
+            print logTime(); "[stream] segment slow after "; d.started.TotalMilliseconds(); " ms: starting a second copy"
             addTransfer(d)
         end if
         ' Prefetched but never asked for (the player moved on): drop it.
@@ -659,7 +724,7 @@ sub serve()
     end if
     srv.SetMessagePort(m.port)
     srv.NotifyReadable(true)
-    print "[stream] serving on port "; portNum
+    print logTime(); "[stream] serving on port "; portNum
     m.top.streamUrl = "http://127.0.0.1:" + portNum.ToStr() + "/live.m3u8"
     conns = {}
     while true
@@ -743,7 +808,7 @@ function handle(sock as Object, req as String) as Boolean
             ba.FromAsciiString(text)
             respond(sock, "200 OK", "application/vnd.apple.mpegurl", ba)
         end if
-        print "[stream] playlist "; t.TotalMilliseconds(); " ms"
+        print logTime(); "[stream] playlist "; t.TotalMilliseconds(); " ms"
     else if Left(path, 7) = "/seg?u=" then
         return askSegment(sock, esc.Unescape(Mid(path, 8)))
     else
@@ -771,7 +836,7 @@ sub measure(u as String, ba as Object)
         info = tsVideoInfo(ba)
         if info.height > 0 then m.height = info.height
         if info.fps > m.fps then m.fps = info.fps
-        print "[stream] video "; info.width; "x"; info.height; " @ "; info.fps; " fps (read in "; took.TotalMilliseconds(); " ms)"
+        print logTime(); "[stream] video "; info.width; "x"; info.height; " @ "; info.fps; " fps (read in "; took.TotalMilliseconds(); " ms)"
     end if
     m.top.quality = {height: m.height, fps: m.fps, mbps: total / m.bitrates.Count() / 1000000}
 end sub

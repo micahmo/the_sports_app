@@ -216,3 +216,23 @@ function se(r as Object) as Double
     if Int(k) mod 2 = 1 then return (k + 1) / 2
     return -k / 2
 end function
+
+' The first video frame's decode time in a segment (presentation time when
+' there's no decode time), in 90 kHz ticks, or -1. A few packets in.
+function tsFirstStamp(ba as Object) as Double
+    n = ba.Count()
+    i = 0
+    while i + 188 <= n and i < 188 * 200
+        if ba[i] = &h47 and (ba[i + 1] and &h40) <> 0 then
+            p = i + 4
+            if (ba[i + 3] and &h20) <> 0 then p = p + 1 + ba[i + 4]
+            if p + 18 < i + 188 and ba[p] = 0 and ba[p + 1] = 0 and ba[p + 2] = 1 and ba[p + 3] >= &hE0 and ba[p + 3] <= &hEF then
+                flags = Int(ba[p + 7] / 64)
+                if flags = 3 then return timestamp(ba, p + 14)
+                if flags = 2 then return timestamp(ba, p + 9)
+            end if
+        end if
+        i = i + 188
+    end while
+    return -1
+end function

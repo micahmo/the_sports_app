@@ -12,6 +12,7 @@
   </interface>
   <script type="text/brightscript" uri="pkg:/source/webdriver.brs" />
   <script type="text/brightscript" uri="pkg:/source/streamlink.brs" />
+  <script type="text/brightscript" uri="pkg:/source/logtime.brs" />
   <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />
   <script type="text/brightscript" uri="pkg:/components/tasks/MintTask.brs" />
 </component>
