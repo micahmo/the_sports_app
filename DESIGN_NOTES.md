@@ -114,16 +114,25 @@ is rendered *inside* the inner frame, not the top document — checking
 
 **Golf plays (2026-09-30), on all three apps.** The inner page is an ordinary
 embed.st player page, and opened directly (not framed) it requests its playlist
-like any other source's; the notice only appears because it's framed. So for a
-source marked `nested` in `shared/app_data.json`, the apps fetch the embed page,
-follow its first cross-site `<iframe>` (the middle page, fetched with the embed
-page as Referer), decode the inner address from its `atob("…")`, and play that
-page instead: `StreamedApi.innerPlayerUrl` on phone/desktop (the player loads
-it in place, `_openPage`), `playerPageUrl` in `streamlink.brs` on the Roku (the
-server's Chrome opens it; the background link-refresher reuses it). The stream
-keeps its golf embed URL everywhere else (quality, recents, fallback). If the
-chain doesn't match, they fall back to the embed page, and `hasForeignPlayer()`
-still reports `blocked` as before.
+like any other source's; the notice only appears because it's framed. The apps
+follow the embed page's first cross-site `<iframe>` (the middle page, fetched
+with the embed page as Referer), decode the inner address from its
+`atob("…")`, and play that page instead: `StreamedApi.innerPlayerUrl` on
+phone/desktop (`_playInner` loads it in place), `playerPageUrl` in
+`streamlink.brs` on the Roku (the server's Chrome opens it; the background
+link-refresher reuses it). The stream keeps its golf embed URL everywhere else
+(quality, recents, fallback).
+
+**By what the page does, not by source (1.0.124).** Until then only sources
+marked `nested` in `shared/app_data.json` (golf) were looked into, before the
+page loaded. Now any page that has no playlist after 2 s and puts a player
+(not its 1x1 `/ad.html`) in a frame from another site gets the same treatment:
+the page script posts `nested` and the app plays the inner page
+(phone/desktop); `findPlaylist` checks the frame and navigates to it (Roku).
+So a source that starts nesting is covered, and the `nested` list is gone.
+Golf starts ~2 s later than before (tested 2026-10-16: the phone played ~8 s
+after "nested", the TV 8 s after loading the embed page). If no inner page is
+found, the page still reports `blocked` after 10 s as before.
 
 The earlier notes here said the inner pages were "gated too" and parked golf as
 hard; that was a guess from the notice showing inside the frames, never tried.

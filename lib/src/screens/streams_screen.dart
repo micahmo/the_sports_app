@@ -1560,6 +1560,7 @@ const String _takeoverJs = r'''
 
   var tries = 0;
   var settled = false;
+  var nestTold = false;
   var deadFor = 0, deadStepped = false;
   setInterval(function () {
     if (window.__appPlayer.built) {
@@ -1592,17 +1593,17 @@ const String _takeoverJs = r'''
     var u = findUrl();
     if (u) { takeOver(u); return; }
     if (settled) return;
+    // No playlist after 2 s and the player sits in another site's frame: tell
+    // the app, which looks for the real player page inside and plays that
+    // (StreamedApi.innerPlayerUrl). Any source, by what the page does.
+    if (!nestTold && tries >= 4 && hasForeignPlayer()) { nestTold = true; post("nested"); }
     // Give the page ~10s to produce a playlist before judging it.
     if (++tries < 20) return;
     // Nothing watchable: the Flutter side puts its own message up, so leave
     // the page blanked rather than flashing the notice.
     if (pageGaveUp()) { settled = true; post("blocked"); return; }
-    // A big cross-origin iframe means the real player is nested somewhere we
-    // cannot reach (e.g. the golf source, which goes embed.st -> rockystream.st
-    // -> embed.st again). Those inner pages are gated too and render the same
-    // red notice, which we cannot read or hide from out here -- so stay blanked
-    // and show our own message instead. If a nested source ever does work, this
-    // is the branch to relax.
+    // Still in another site's frame (the app found no player page inside):
+    // nothing we can reach, so stay blanked and show our own message.
     if (hasForeignPlayer()) { settled = true; post("blocked"); return; }
     if (tries > 40) { settled = true; post("no-stream"); }
   }, 500);
@@ -1944,6 +1945,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
             _peekTitle(byUser: false);
           }
         });
+      } else if (message == 'nested') {
+        _playInner(_stream);
       } else if (message == 'muted') {
         _muted = true;
       } else if (message == 'unmuted') {
@@ -2041,21 +2044,29 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _openPage(s);
   }
 
-  // Load the page that plays [s]: its embed page, or for a nested source
-  // (golf) the real player page inside it (StreamedApi.innerPlayerUrl), which
-  // the takeover can reach. `initial`: the web view is already loading the
-  // embed page, so only a nested source needs anything done.
+  // Load the page that plays [s], its embed page. `initial`: the web view is
+  // already loading it.
   Future<void> _openPage(StreamInfo s, {bool initial = false}) async {
-    Uri page = Uri.parse(s.embedUrl);
-    if (nestedSources.contains(s.source.toLowerCase())) {
-      page = Uri.parse(await _api.innerPlayerUrl(s.embedUrl));
-      if (!mounted || _stream.embedUrl != s.embedUrl) return;
-      if (page.toString() != s.embedUrl) debugPrint('[player] nested source: playing $page');
-    }
-    if (initial && page.toString() == s.embedUrl) return;
+    if (initial) return;
+    _loadPage(Uri.parse(s.embedUrl));
+  }
+
+  void _loadPage(Uri page) {
     _allowedUri = page;
     _parkNative();
     _web.load(page).catchError((_) {});
+  }
+
+  // The page's player sits in another site's frame, out of the takeover's
+  // reach (golf: embed.st -> rockystream.st -> embed.st again): play the real
+  // player page inside it, if there is one (StreamedApi.innerPlayerUrl). By
+  // what the page does, not by source, so a source that starts nesting is
+  // covered. If there's none, the page says "blocked" as before.
+  Future<void> _playInner(StreamInfo s) async {
+    final String inner = await _api.innerPlayerUrl(s.embedUrl);
+    if (!mounted || _stream.embedUrl != s.embedUrl || inner == s.embedUrl) return;
+    debugPrint("[player] player in another site's frame: playing $inner");
+    _loadPage(Uri.parse(inner));
   }
 
   // A recent game's stream: that game becomes the one playing, and its other

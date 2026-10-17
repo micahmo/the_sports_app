@@ -112,9 +112,9 @@ class StreamedApi {
     return <StreamInfo>[for (final List<StreamInfo> r in results) ...r];
   }
 
-  /// The page to play for a stream of a nested source (golf; see
-  /// `nestedSources`): its embed page frames another site's page, which frames
-  /// an ordinary embed.st player page, its address in base64 (`atob("…")`).
+  /// The page to play when a stream's embed page puts its player in another
+  /// site's frame (golf): that page frames an ordinary embed.st player page,
+  /// its address in base64 (`atob("…")`).
   /// Opened directly, that page plays like any other source's. The embed URL
   /// itself if anything along the way doesn't match. (The Roku does the same:
   /// playerPageUrl in roku/app/source/streamlink.brs.)

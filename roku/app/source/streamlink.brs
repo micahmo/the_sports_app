@@ -3,27 +3,19 @@
 ' playlist fetches made by that page (only a Chrome handshake gets them). Both
 ' tasks have the fields these use: driver, embedUrl, quit.
 
-' The page to load: the embed page, or for a nested source (golf) the real
-' player page inside it (playerPageUrl). Worked out once per task.
+' The page to load: the embed page, or once findPlaylist has found its player
+' in another site's frame, the real player page inside it (playerPageUrl).
 function pageUrl() as String
-    if m.pageUrl = invalid then m.pageUrl = playerPageUrl(m.top.embedUrl)
+    if m.pageUrl = invalid then m.pageUrl = m.top.embedUrl
     return m.pageUrl
 end function
 
-' A nested source's real player page (the same steps as the phone app's
-' StreamedApi.innerPlayerUrl): its embed page frames another site's page,
-' which frames an ordinary embed.st player page, its address in base64
-' (atob("...")). Opened directly, that page plays like any other source's. The
-' embed URL itself for other sources, or if anything along the way doesn't
-' match.
+' The real player page when an embed page puts its player in another site's
+' frame (the same steps as the phone app's StreamedApi.innerPlayerUrl): that
+' page frames an ordinary embed.st player page, its address in base64
+' (atob("...")). Opened directly, it plays like any other source's (golf). The
+' embed URL itself if anything along the way doesn't match.
 function playerPageUrl(embedUrl as String) as String
-    at = Instr(1, embedUrl, "/embed/")
-    if at = 0 then return embedUrl
-    rest = Mid(embedUrl, at + 7)
-    slash = Instr(1, rest, "/")
-    source = rest
-    if slash > 0 then source = Left(rest, slash - 1)
-    if not appNestedSources().DoesExist(LCase(source)) then return embedUrl
     host = hostOf(embedUrl)
     middle = foreignFrame(pageText(embedUrl, ""), host)
     if middle = "" then return embedUrl
@@ -38,7 +30,6 @@ function playerPageUrl(embedUrl as String) as String
     inner = ba.ToAsciiString()
     prefix = "https://" + host + "/embed/"
     if Left(inner, Len(prefix)) <> prefix then return embedUrl
-    print logTime(); "[stream] nested source: playing "; inner
     return inner
 end function
 
@@ -116,12 +107,28 @@ end function
 function findPlaylist() as Boolean
     wd(m.driver, "POST", "/session/" + m.sid + "/url", {url: pageUrl()})
     js = "var e=performance.getEntriesByType('resource');for(var i=0;i<e.length;i++)if(e[i].name.indexOf('.m3u8')!==-1)return e[i].name;return null;"
+    ' A player big enough to watch in a frame from another site (not the
+    ' page's own 1x1 /ad.html).
+    framed = "var f=document.querySelectorAll('iframe[src]');for(var i=0;i<f.length;i++){var u=f[i].src;if(u.indexOf('/ad.html')!==-1)continue;if(u.indexOf(location.origin+'/')===0)continue;if(f[i].clientWidth>100&&f[i].clientHeight>100)return true}return false;"
     found = invalid
+    tried = false
     for i = 1 to 40
         v = exec(js)
         if isString(v) and v <> "" then
             found = v
             exit for
+        end if
+        ' No playlist after 2 s and the player sits in another site's frame:
+        ' play the real player page inside it, if there is one. By what the
+        ' page does, not by source, so a source that starts nesting is covered.
+        if i = 4 and not tried and exec(framed) = true then
+            tried = true
+            inner = playerPageUrl(m.top.embedUrl)
+            if inner <> m.top.embedUrl then
+                print logTime(); "[stream] player in another site's frame: playing "; inner
+                m.pageUrl = inner
+                wd(m.driver, "POST", "/session/" + m.sid + "/url", {url: inner})
+            end if
         end if
         ' Leaving the player while it loads: stop now rather than wait it out.
         if quitRequested() then return false
