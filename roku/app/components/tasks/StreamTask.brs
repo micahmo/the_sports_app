@@ -27,6 +27,8 @@ sub work()
     m.fileSeq = 0
     ' The last few segments' picture clocks (checkClock).
     m.stamps = []
+    ' Each connection's start of the player (startedAgain when it connected).
+    m.sockGen = {}
     ' Segments the source's server refused (403) before any played: two and the
     ' stream is given up at once (see onDownload).
     m.refused = 0
@@ -603,6 +605,10 @@ sub checkClock(u as String, path as String)
     if st < 0 then return
     d = m.segDur[u]
     if d = invalid then d = 0
+    ' Downloaded again (the player started over on segments it had): checked.
+    for each r in m.stamps
+        if r.st = st then return
+    end for
     pred = invalid
     for each r in m.stamps
         if r.st < st and (pred = invalid or r.st > pred.st) then pred = r
@@ -611,6 +617,10 @@ sub checkClock(u as String, path as String)
         gap = (st - pred.st) / 90000 - pred.d
         if gap > pred.d + 0.5 then
             print logTime(); "[stream] picture clock jumps ahead "; Int(gap * 10) / 10; " s at this segment"
+            ' Far enough that the player won't play over it: it raced through what
+            ' it had, stuck, then asked again for segments it had played (an 80 s
+            ' jump after an outage, 2026-10-17). See PlayerScreen's onJumped.
+            if gap >= 30 then m.top.jumped = gap
         end if
     else if m.stamps.Count() > 0 and m.top.servedSecs > 30 then
         ' Earlier than every recent one: the first segments finishing out of
@@ -808,6 +818,9 @@ sub serve()
                         c.SetMessagePort(m.port)
                         c.NotifyReadable(true)
                         conns[c.GetID().ToStr()] = {sock: c, buf: ""}
+                        ' Which start of the player asked (see sendAll).
+                        if m.sockGen.Count() > 200 then m.sockGen = {}
+                        m.sockGen[c.GetID().ToStr()] = m.top.startedAgain
                     end if
                 end if
             else
@@ -923,6 +936,11 @@ sub sendAll(sock as Object, ba as Object)
             idle = 0
         else
             if not sock.IsConnected() then return
+            ' Asked before the player was started again: that one has stopped
+            ' reading, and waiting out the 10 s below held up the whole proxy,
+            ' so the new one sat on its spinner (2026-10-17).
+            gen = m.sockGen[sock.GetID().ToStr()]
+            if gen <> invalid and gen <> m.top.startedAgain then return
             idle = idle + 1
             if idle > 5000 then return
             sleep(2)

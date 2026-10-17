@@ -18,6 +18,12 @@
     <field id="servedSecs" type="float" />
     <!-- The player is starting again: list only the newest few (longerWindow). -->
     <field id="trim" type="boolean" />
+    <!-- Counts the player's starts again (PlayerScreen's restartAtLive): a
+         segment still going to the one before is dropped (sendAll). -->
+    <field id="startedAgain" type="integer" />
+    <!-- The picture's clock just jumped this far ahead (s): big enough that the
+         player starts again at live (PlayerScreen's onJumped). -->
+    <field id="jumped" type="float" alwaysNotify="true" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/webdriver.brs" />
   <script type="text/brightscript" uri="pkg:/source/streamlink.brs" />

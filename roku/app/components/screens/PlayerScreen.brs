@@ -109,6 +109,7 @@ sub start()
     m.task.observeField("error", "onError")
     m.task.observeField("streamUrl", "onStreamUrl")
     m.task.observeField("quality", "onQuality")
+    m.task.observeField("jumped", "onJumped")
     m.task.control = "run"
 end sub
 
@@ -258,6 +259,7 @@ sub switchTo(s as Object, fallback as Boolean)
         m.task.unobserveField("error")
         m.task.unobserveField("streamUrl")
         m.task.unobserveField("quality")
+        m.task.unobserveField("jumped")
         m.task.quit = true
         m.task = invalid
     end if
@@ -926,11 +928,33 @@ sub onStuck()
     m.stuck.control = "stop"
     m.restarted = true
     print logTime(); "[player] stuck: "; Int(took); " s of video taken without playing; starting the player again"
+    restartAtLive()
+end sub
+
+' The same proxy, listing only its newest few segments (trim), so the player
+' starts at live: no new browser session, no hold back.
+sub restartAtLive()
     url = m.video.content.url
+    m.task.startedAgain = m.task.startedAgain + 1
     m.task.trim = true
     m.video.control = "stop"
     m.video.content = streamContent(url)
     m.video.control = "play"
+end sub
+
+' The source came back with its picture's clock far ahead (an 80 s jump after
+' an ~85 s outage, 2026-10-17): the player raced through what it had, stuck,
+' buffered, then asked again for segments it had already played, a replay.
+' Small jumps it plays straight over, and one it runs dry at is onStuck's.
+' Started again on the newest segments, as onStuck does, it plays on at live.
+' Once for a jump: its next segment, finishing out of order, reports it too.
+sub onJumped()
+    if m.task = invalid or m.video.content = invalid then return
+    now = CreateObject("roDateTime").AsSeconds()
+    if m.jumpedAt <> invalid and now - m.jumpedAt < 15 then return
+    m.jumpedAt = now
+    print logTime(); "[player] the picture jumped "; Int(m.task.jumped); " s ahead; starting the player again at live"
+    restartAtLive()
 end sub
 
 sub onStall()
@@ -959,6 +983,7 @@ sub reconnect(reason as String)
         m.task.unobserveField("error")
         m.task.unobserveField("streamUrl")
         m.task.unobserveField("quality")
+        m.task.unobserveField("jumped")
         m.task.quit = true
         m.task = invalid
     end if

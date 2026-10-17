@@ -269,7 +269,7 @@ the others or is added here as a deliberate gap.
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
 | Quality on a weak connection | steps down a source's separate feeds; back up only from a "1080p" button offered once the connection holds (hls.js switches both ways where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |
-| A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides); stuck after the source skips ahead, the player starts again at live (see "Stuck after the source skips ahead") |
+| A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides); stuck after the source skips ahead, or it skips 30 s or more, the player starts again at live (see "Stuck after the source skips ahead") |
 | No pause (live streams only; a pause would just fall behind live) | no pause control | no pause control | Play/Pause shows the title bar like the other buttons |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
@@ -964,6 +964,24 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
   buffering, and the 20 s stall still reconnects if it didn't help. Seen
   working 2026-10-16: stuck 16 s after a 32 s jump, playing 1.2 s after the
   restart, ~20 s sooner than the old way.
+- **A big jump restarts at once** (`onJumped`, 1.0.126): a still-playing
+  player doesn't go over every jump. After an ~85 s outage the working link's
+  picture was 80 s ahead (2026-10-17); the player raced through what it had
+  ("going really fast"), stuck, buffered, then asked again for segments it
+  had already played, a replay. So a jump of 30 s or more (`checkClock` sets
+  StreamTask's `jumped` as the segment downloads, before the player asks for
+  it) starts the player again at live the same way; once per jump, as the
+  next segment, finishing out of order, reports it too (and a segment
+  downloaded again isn't checked twice). Smaller jumps it plays over, and one
+  it runs dry at is still onStuck's. Tested with a staged 18 s skip (threshold
+  lowered for the test): jump seen, playing again 1.3 s later.
+- **A restart drops what was going to the old player.** Stopped mid-segment,
+  that player stops reading, and `sendAll` waited out its 10 s for it while
+  the whole proxy served nothing: the new player sat on its spinner, then
+  onStuck restarted it again (14 s, in the test). Each connection now carries
+  the start of the player it came from (`startedAgain`, counted by
+  `restartAtLive`), and a send to an older one is dropped as soon as it
+  stalls.
 - **Tried and dropped:** marking the jump in the player's list
   (`#EXT-X-DISCONTINUITY`): the Roku's player went back to the top of the
   list, replayed it, then played garbled, fast and silent, and froze. Listing
