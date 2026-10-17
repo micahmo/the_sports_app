@@ -882,6 +882,19 @@ const String _takeoverJs = r'''
     if (k === "Escape" || k === "m" || k === "f") { e.preventDefault(); post("key:" + k); }
   }, true);
 
+  // A page that's hidden, even for a moment, has its video paused by the
+  // browser, and nothing played it again: going fullscreen on desktop hides
+  // the page for ~3 ms while the window loses its frame, and the picture froze
+  // there. It plays on once the page is back. A pause by the viewer (Android's
+  // picture-in-picture controls) happens while it's shown, so it stays.
+  var pausedHidden = false;
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden || !video || !video.paused || !pausedHidden) return;
+    pausedHidden = false;
+    log("paused while the page was hidden: playing on");
+    video.play().catch(function () {});
+  });
+
   // Back online after a dead zone: the app reloads straight away rather than
   // waiting for its next retry.
   window.addEventListener("online", function () {
@@ -1033,6 +1046,9 @@ const String _takeoverJs = r'''
     video.addEventListener("volumechange", function () {
       post(video.muted ? "muted" : "unmuted");
     });
+    // Paused while the page was hidden: the browser's doing, not the viewer's
+    // (see visibilitychange).
+    video.addEventListener("pause", function () { pausedHidden = document.hidden; });
 
     if (hls) { try { hls.destroy(); } catch (e) {} }
     hlsSrc = url;
@@ -1677,6 +1693,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   bool _muted = false;
   // Desktop only: the window itself is fullscreen (no title bar or taskbar).
   bool _fullscreen = false;
+  // Whether the page was last told to hide the pointer (_sendOverlay).
+  bool _cursorHidden = false;
   // The embed page shows its own broken-player message before we take over,
   // so keep it covered until our player reports back.
   bool _ready = false;
@@ -2601,6 +2619,13 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     if (json == _overlaySent) return;
     _overlaySent = json;
     _web.runJavaScript('window.__appOverlay && window.__appOverlay.render($json)').catchError((_) {});
+    // WebView2 changes the pointer only when it moves, unless the web view
+    // has keyboard focus, and F (which went fullscreen) leaves that with the
+    // app: the arrow stayed on the picture with the page's cursor at none.
+    // With focus, the page still hands Esc, M and F back (see keydown).
+    final bool hide = _fullscreen && !chrome;
+    if (hide && !_cursorHidden) _web.focus().catchError((_) {});
+    _cursorHidden = hide;
   }
 
   String _hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';

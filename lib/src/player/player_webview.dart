@@ -39,6 +39,9 @@ abstract class PlayerWebView {
 
   Future<void> reload();
 
+  /// Windows: keyboard focus to the native web view.
+  Future<void> focus();
+
   /// Play another page in the same view (switching streams in place).
   Future<void> load(Uri url);
 
@@ -106,6 +109,9 @@ class _FlutterPlayerWebView implements PlayerWebView {
 
   @override
   Future<void> reload() => _controller.reload();
+
+  @override
+  Future<void> focus() async => _win?.requestFocus();
 
   @override
   Future<void> load(Uri url) {

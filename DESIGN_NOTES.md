@@ -455,6 +455,20 @@ Things that differ from Android and were each found the hard way:
   `--autoplay-policy=no-user-gesture-required` to
   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` before the app starts, keeping anything
   already there (a debug port).
+- **Going fullscreen froze the picture.** Taking the window's frame off (and
+  putting it back) has WebView2 report the page hidden for ~3 ms, and the
+  browser pauses the video; nothing played it again, and the app's watch
+  treats a paused video as fine. The page now plays on when it's shown again
+  if the pause came while it was hidden (a pause while shown, as from
+  Android's picture-in-picture controls, stays). Seen and fixed 2026-10-17
+  (1.0.125); the log says "paused while the page was hidden: playing on".
+- **The pointer stayed on the picture in fullscreen.** The page sets
+  `cursor: none` as the title bar goes, but WebView2 changes the pointer
+  without the mouse moving only while it has keyboard focus, and F (pressed
+  in the app) leaves focus with Flutter: the arrow stayed, with the page's
+  cursor already at none (seen on dprec11 over the debug port, 2026-10-17).
+  Hiding the pointer now gives the web view focus first (requestFocus); the
+  page hands Esc, M and F back as before.
 - **Keyboard focus.** Once the video is clicked, WebView2 holds keyboard focus
   and Flutter never sees keys, so the page forwards Esc/M/F as `key:<name>`
   messages.
