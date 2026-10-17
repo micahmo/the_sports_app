@@ -274,7 +274,7 @@ the others or is added here as a deliberate gap.
 | Updates | through Obtainium | checks only on Home: at start, when the window gets focus, and on coming back to Home, at most hourly (`updates.checkEveryMinutes`); a version you said "Not now" to waits for the next start; installs itself and restarts | checks at start and hourly, says one is available; installing is up to the user |
 | Asks before exiting on Back | no | no | yes: TV convention |
 | Needs the Chrome stream server | no | no | yes (see Roku) |
-| `golf` streams | play (inner page opened directly) | play | play |
+| `golf` streams | play (inner page opened directly) | play | play; since 1.0.123 its segments come through the page (see "Segments only the page may fetch") |
 
 ## Android Auto (1.0.119)
 
@@ -897,6 +897,31 @@ in StreamTask): the player gets the source's newest if it comes within 1.5 s
 with a build that held one playlist fetch in ten for 9 s: segments were served
 all through each hold, no buffering. Phone and desktop already fetch playlists
 in the background (hls.js).
+
+### Segments only the page may fetch (1.0.123)
+
+Some sources tie each segment link to whoever fetched the playlist. Golf began
+doing it around 2026-10-15: the page in the server's Chrome fetches the
+playlist, so its segment links worked for that page and were refused (403) to
+the TV, which marked every golf stream failed and fell back. Checked from a PC
+on the same public IP: refused whatever the headers, even connecting as Chrome
+does (curl_cffi), even fetched before the page; but a playlist fetched there,
+connecting as Chrome, gave segment links that played. Not the address, not
+single-use links: the playlist's fetcher.
+
+So when a segment fetched directly is refused, the TV fetches that one and the
+rest of the stream's through the page (`viaPage`, `addTransfer` and
+`pageSegment` in StreamTask, `segmentScript` in streamlink): the page fetches
+the segment and hands it over as base64 through WebDriver, and the TV writes
+it to a file and serves it as any other. It's triggered by the refusal, not by
+the source's name, so any source that starts doing this is covered and the
+others never pay for it. Measured: a 2.5 MB, 5 s segment arrives in ~0.5–1 s
+to a PC and ~1.1–1.6 s on the TV (720p60 golf, 2026-10-16: playing 10.5 s
+after starting, a few seconds slower as the first segments queue). No second
+copy of a slow segment this way: the page's Chrome runs one script at a time,
+so it would only queue behind the first. The video goes through the server
+(fine on the LAN); phone and desktop don't need any of this, their web view
+fetches both.
 
 ### Stuck after the source skips ahead (1.0.122)
 

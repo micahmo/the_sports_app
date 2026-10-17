@@ -198,6 +198,13 @@ function fetchScript() as String
     return "var done=arguments[arguments.length-1];fetch(arguments[0]).then(function(r){return r.text().then(function(t){done(r.status+'\n'+t)})}).catch(function(e){done('0\n'+e)});"
 end function
 
+' A segment fetched by the page itself, as base64 text, or "status N" / "error
+' ...". For sources whose segment links only work for whoever fetched the
+' playlist (see StreamTask's viaPage).
+function segmentScript() as String
+    return "var cb=arguments[arguments.length-1];fetch(arguments[0]).then(function(r){if(r.status!=200){cb('status '+r.status);return}return r.arrayBuffer().then(function(a){var b=new Uint8Array(a),s='';for(var i=0;i<b.length;i+=32768){s+=String.fromCharCode.apply(null,b.subarray(i,i+32768))}cb(btoa(s))})}).catch(function(e){cb('error '+e)});"
+end function
+
 function fetchInPageOnce(url as String) as Dynamic
     js = fetchScript()
     ' They take ~130 ms; waiting longer holds up everything the proxy serves.

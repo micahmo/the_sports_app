@@ -30,6 +30,8 @@ sub work()
     ' Segments the source's server refused (403) before any played: two and the
     ' stream is given up at once (see onDownload).
     m.refused = 0
+    ' Segments fetched by the page rather than directly (see addTransfer).
+    m.viaPage = false
     m.anyServed = false
     m.refusedOut = false
     ' A download still running this long gets a second copy (shared with the
@@ -447,9 +449,33 @@ function startDownload(u as String) as Object
 end function
 
 ' Another copy of a segment's download, into its own file.
+'
+' Directly from the source's server, or once a direct download has been
+' refused (403), through the page in the server's Chrome for the rest of the
+' stream (viaPage): some servers tie each segment link to whoever fetched the
+' playlist, and only the page fetches the playlist (golf, 2026-10-16: refused
+' to the TV and to any other client, even one connecting as Chrome; loaded by
+' the page). The page hands it over as base64 in ~0.5-1 s for a 2.5 MB, 5 s
+' segment. Triggered by the refusal, not by the source, so any source that
+' starts doing this is covered and the others never pay for it.
 sub addTransfer(d as Object)
     m.fileSeq = m.fileSeq + 1
     path = "tmp:/seg" + m.fileSeq.ToStr() + ".bin"
+    if m.viaPage then
+        x = CreateObject("roUrlTransfer")
+        x.SetMessagePort(m.port)
+        x.SetUrl(m.driver + "/session/" + m.sid + "/execute/async")
+        x.AddHeader("Content-Type", "application/json")
+        x.RetainBodyOnError(true)
+        x.SetRequest("POST")
+        if x.AsyncPostFromString(FormatJson({script: segmentScript(), args: [d.url]})) then
+            id = x.GetIdentity().ToStr()
+            d.xfers.Push({x: x, path: path, id: id, page: true})
+            d.active = d.active + 1
+            m.xferOf[id] = d.url
+        end if
+        return
+    end if
     x = CreateObject("roUrlTransfer")
     x.SetUrl(d.url)
     x.SetCertificatesFile("common:/certs/ca-bundle.crt")
@@ -489,7 +515,9 @@ sub onDownload(ev as Object)
         DeleteFile(mine.path)
         return
     end if
-    if ev.GetResponseCode() = 200 then
+    code = ev.GetResponseCode()
+    if mine.page <> invalid and code = 200 then code = pageSegment(ev.GetString(), mine.path)
+    if code = 200 then
         d.done = true
         d.file = mine.path
         d.took = d.started.TotalMilliseconds()
@@ -510,7 +538,16 @@ sub onDownload(ev as Object)
         return
     end if
     DeleteFile(mine.path)
-    code = ev.GetResponseCode()
+    ' Refused directly: through the page from now on (see addTransfer), this
+    ' one at once.
+    if code = 403 and mine.page = invalid then
+        if not m.viaPage then
+            m.viaPage = true
+            print logTime(); "[stream] segments refused directly: fetching them through the page"
+        end if
+        addTransfer(d)
+        return
+    end if
     if d.active > 0 then return   ' another copy is still going
     ' Tries again a little later each time (0.5, 1, 2, 4 s): straight away, all
     ' three tries failed within a tenth of a second, on segments the CDN didn't
@@ -575,9 +612,10 @@ sub checkClock(u as String, path as String)
         if gap > pred.d + 0.5 then
             print logTime(); "[stream] picture clock jumps ahead "; Int(gap * 10) / 10; " s at this segment"
         end if
-    else if m.stamps.Count() > 0 then
+    else if m.stamps.Count() > 0 and m.top.servedSecs > 30 then
         ' Earlier than every recent one: the first segments finishing out of
-        ' order, unless it's well back (the source's clock starting over).
+        ' order (so not in the first 30 s), unless it's well back (the
+        ' source's clock starting over).
         low = m.stamps[0].st
         for each r in m.stamps
             if r.st < low then low = r.st
@@ -589,6 +627,25 @@ sub checkClock(u as String, path as String)
     m.stamps.Push({st: st, d: d})
     if m.stamps.Count() > 6 then m.stamps.Shift()
 end sub
+
+' The page's answer for a segment (WebDriver's {"value": "..."}): written to
+' path, 200; or the page's own status (403...), or 0.
+function pageSegment(body as String, path as String) as Integer
+    k = Instr(1, body, Chr(34) + "value" + Chr(34))
+    if k = 0 then return 0
+    q = Instr(k + 7, body, Chr(34))
+    if q = 0 then return 0
+    e = Instr(q + 1, body, Chr(34))
+    if e = 0 then return 0
+    v = Mid(body, q + 1, e - q - 1)
+    if Left(v, 7) = "status " then return Mid(v, 8).ToInt()
+    if Left(v, 6) = "error " or v = "" then return 0
+    ba = CreateObject("roByteArray")
+    ba.FromBase64String(v.Replace("\/", "/"))
+    if ba.Count() = 0 then return 0
+    ba.WriteFile(path)
+    return 200
+end function
 
 ' Send a downloaded segment to whoever asked for it, then forget it.
 sub serveSegment(u as String)
@@ -653,7 +710,9 @@ sub tick()
     stale = []
     for each u in m.dl
         d = m.dl[u]
-        if not d.done and not d.hedged and d.active > 0 and d.started.TotalMilliseconds() > m.stuckMs then
+        ' (Not through the page: its Chrome runs one script at a time, so a
+        ' second copy would only queue behind the first.)
+        if not d.done and not d.hedged and not m.viaPage and d.active > 0 and d.started.TotalMilliseconds() > m.stuckMs then
             d.hedged = true
             print logTime(); "[stream] segment slow after "; d.started.TotalMilliseconds(); " ms: starting a second copy"
             addTransfer(d)
