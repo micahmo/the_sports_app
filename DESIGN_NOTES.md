@@ -462,6 +462,13 @@ Things that differ from Android and were each found the hard way:
   `--autoplay-policy=no-user-gesture-required` to
   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` before the app starts, keeping anything
   already there (a debug port).
+- **The viewer's mute stays** (1.0.129, phone too). Every new player started
+  with sound (`play()` set `muted = false`): a switch to another feed (built
+  afresh, see "Separate feeds") or a reload unmuted a muted game (2026-10-18,
+  RedZone dropping to 540p). The choice is the viewer's alone (M or the menu,
+  `_wantMuted`); the page keeps it in `__appWantMuted`, the app hands it to
+  each page it loads, and `play()` follows it. The browser muting a refused
+  autoplay doesn't count as a choice.
 - **Going fullscreen froze the picture.** Taking the window's frame off (and
   putting it back) has WebView2 report the page hidden for ~3 ms, and the
   browser pauses the video; nothing played it again, and the app's watch

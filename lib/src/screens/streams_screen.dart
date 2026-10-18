@@ -1005,8 +1005,11 @@ const String _takeoverJs = r'''
     return true;
   };
 
+  // Muted only if the viewer muted it (the app's toggle, kept in
+  // __appWantMuted): a new player, as for a switch to another feed, came up
+  // with sound whatever they had chosen (2026-10-18).
   function play() {
-    video.muted = false;
+    video.muted = !!window.__appWantMuted;
     video.play().catch(function () {
       // Autoplay with sound refused: fall back to muted so something shows.
       video.muted = true;
@@ -1692,6 +1695,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   bool _inPip = false;
   bool _muted = false;
+  // The viewer's own choice (M or the menu), kept for every player this screen
+  // starts: _muted also follows the browser's own muting (autoplay refused).
+  bool _wantMuted = false;
   // Desktop only: the window itself is fullscreen (no title bar or taskbar).
   bool _fullscreen = false;
   // Whether the page was last told to hide the pointer (_sendOverlay).
@@ -2400,6 +2406,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         .replaceAll('__SLOW_START_MS__', '${PlayerTuning.slowStartMs}')
         .replaceAll('__START_FEED__', '$_startFeed')
         .replaceAll('__OVERLAY__', '${PlayerTuning.overlayPercent / 100}');
+    // The viewer's mute, for this page's players (see play() in the page).
+    _web.runJavaScript('window.__appWantMuted=$_wantMuted;').catchError((_) {});
     _web.runJavaScript(js).catchError((_) {});
   }
 
@@ -2413,11 +2421,14 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   }
 
   Future<void> _toggleMute() async {
-    const String js = '(function(){var v=document.getElementById("appPlayer");if(!v)return "none";v.muted=!v.muted;if(!v.muted)v.play().catch(function(){});return v.muted?"muted":"unmuted";})();';
+    const String js = '(function(){var v=document.getElementById("appPlayer");if(!v)return "none";v.muted=!v.muted;window.__appWantMuted=v.muted;if(!v.muted)v.play().catch(function(){});return v.muted?"muted":"unmuted";})();';
     try {
       final Object? res = await _web.runJavaScriptReturningResult(js);
       final String r = res.toString().replaceAll('"', '');
-      if (mounted && r != 'none') setState(() => _muted = r == 'muted');
+      if (mounted && r != 'none') {
+        _wantMuted = r == 'muted';
+        setState(() => _muted = _wantMuted);
+      }
     } catch (_) {}
   }
 
