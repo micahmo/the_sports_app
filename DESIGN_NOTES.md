@@ -266,7 +266,7 @@ the others or is added here as a deliberate gap.
 | A stuck segment download | second copy after 4 s if nothing is arriving | same | second copy after 4 s |
 | Title bar with the game and quality in the player | from the start, and after switching streams, until the quality is known; then tap, or the menu; always in debug builds | the same, then mouse movement, or the menu; always in debug builds | the same, then OK (until 1.0.113 none of the apps held it again after a switch) |
 | Title bar, Streams pill and note fade in and out | 150 ms (the note 250); the row fades too when it goes by itself with the title bar, and goes at once when closed by hand | same | same, since 1.0.116 (before, they appeared and vanished); the row's fade since 1.0.117 |
-| Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer hides with it in fullscreen | no menu: the remote's buttons |
+| Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer over the video hides with it, in a window too | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
 | Quality on a weak connection | steps down a source's separate feeds; back up only from a "1080p" button offered once the connection holds (hls.js switches both ways where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |
 | A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides); stuck after the source skips ahead, or it skips 30 s or more, the player starts again at live (see "Stuck after the source skips ahead") |
@@ -432,6 +432,13 @@ in one widget shape so the view isn't rebuilt. Found on the way:
   stream plays on, sound and all, until it's garbage-collected.
 - The page keeps its last 300 log lines in `window.__appLog`, for reading over
   the debug port (desktop has no log to read).
+- **A debug port on a PC that asks for one** (1.0.128): the runner (main.cpp)
+  adds `--remote-debugging-port=<n>` when `%APPDATA%\com.micahmo\sports\debug-port`
+  holds a port number. Nobody else has the file, and WebView2 listens on that
+  PC alone (127.0.0.1), so it's reached over SSH (`ssh -L 9334:127.0.0.1:9333
+  dprec11`). dprec11 has it (9333), so the player can be looked at live when
+  something shows, without relaunching and losing what's in memory. It lasts
+  through updates (the file isn't in the app's folder).
 
 Things that differ from Android and were each found the hard way:
 
@@ -469,6 +476,10 @@ Things that differ from Android and were each found the hard way:
   cursor already at none (seen on dprec11 over the debug port, 2026-10-17).
   Hiding the pointer now gives the web view focus first (requestFocus); the
   page hands Esc, M and F back as before.
+- **The pointer hides in a window too** (1.0.128), over the video once the
+  title bar goes, as YouTube does. The focus it needs (above) is taken only
+  while the app is the window in front (`windowManager.isFocused`), never from
+  another app the mouse happens to rest beside.
 - **Keyboard focus.** Once the video is clicked, WebView2 holds keyboard focus
   and Flutter never sees keys, so the page forwards Esc/M/F as `key:<name>`
   messages.

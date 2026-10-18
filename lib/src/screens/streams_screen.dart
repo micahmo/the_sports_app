@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:window_manager/window_manager.dart';
 import '../api/models.dart';
 import '../api/streamed_api.dart';
 import '../car.dart';
@@ -2622,9 +2623,15 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     // WebView2 changes the pointer only when it moves, unless the web view
     // has keyboard focus, and F (which went fullscreen) leaves that with the
     // app: the arrow stayed on the picture with the page's cursor at none.
-    // With focus, the page still hands Esc, M and F back (see keydown).
-    final bool hide = _fullscreen && !chrome;
-    if (hide && !_cursorHidden) _web.focus().catchError((_) {});
+    // With focus, the page still hands Esc, M and F back (see keydown). Only
+    // while this is the window in front: in a window, focus mustn't be taken
+    // from another app the mouse just happens to rest over us beside.
+    final bool hide = !chrome;
+    if (hide && !_cursorHidden && Platform.isWindows) {
+      windowManager.isFocused().then((bool front) {
+        if (front && mounted && _cursorHidden) _web.focus().catchError((_) {});
+      }).catchError((_) {});
+    }
     _cursorHidden = hide;
   }
 
@@ -2680,7 +2687,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
           : null,
       'rowFading': _rowFading,
       'menu': _rowOpen ? null : <String, Object?>{'open': _menuOpen, 'muted': _muted},
-      'hideCursor': _fullscreen && !chrome,
+      // Over the video once the title bar goes, in a window too (as YouTube).
+      'hideCursor': !chrome,
       'icons': <String, int>{
         'pill': PlayerIcons.streamsPill.codePoint,
         'up': PlayerIcons.qualityUp.codePoint,
