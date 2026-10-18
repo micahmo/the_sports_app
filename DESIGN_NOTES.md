@@ -946,6 +946,17 @@ so it would only queue behind the first. The video goes through the server
 (fine on the LAN); phone and desktop don't need any of this, their web view
 fetches both.
 
+**Not for good** (1.0.127). A dying link refuses its segments too: on an admin
+stream (2026-10-18) the link went (playlist 500), its next segment was refused
+(403), and the TV went through the page for the rest of the stream, where
+none of admin's segments came (its CDN, from the page: errors, or a page that
+wasn't a segment), even after a working link arrived 4 s later. Every segment
+failed for 25 s until the stall reconnected. So a new link starts direct
+again, and a segment that doesn't come through the page either is fetched
+directly at once, with the TV back to direct for the rest (that segment isn't
+sent to the page again, so the two can't ping-pong). Golf pays one refused
+request per new link.
+
 ### Stuck after the source skips ahead (1.0.122)
 
 After the source stalls it sometimes comes back having skipped part of the

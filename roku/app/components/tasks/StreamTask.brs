@@ -419,6 +419,11 @@ sub onMinted(r as Object)
     rememberSession(m.driver, m.sid)
     closeSession(m.driver, old)
     print logTime(); "[stream] switched to a new link after "; m.mintTry.TotalMilliseconds(); " ms: "; Left(m.playlistUrl, 40)
+    ' A new link starts direct again: a dying link refuses its segments too
+    ' (403), which put an admin stream on the page for good, where none of its
+    ' segments came, until the stall reconnected (2026-10-18). See addTransfer.
+    if m.viaPage then print logTime(); "[stream] new link: fetching segments directly again"
+    m.viaPage = false
 end sub
 
 ' ---- segments ---------------------------------------------------------------
@@ -444,7 +449,7 @@ end sub
 
 function startDownload(u as String) as Object
     ' asked: when the player asked, if it had to wait; active: copies running.
-    d = {url: u, xfers: [], started: CreateObject("roTimespan"), done: false, file: "", took: 0, waiters: [], asked: invalid, hedged: false, active: 0, retries: 0, retryIn: 0, since: invalid}
+    d = {url: u, xfers: [], started: CreateObject("roTimespan"), done: false, file: "", took: 0, waiters: [], asked: invalid, hedged: false, active: 0, retries: 0, retryIn: 0, since: invalid, pageFailed: false}
     m.dl[u] = d
     addTransfer(d)
     return d
@@ -540,9 +545,21 @@ sub onDownload(ev as Object)
         return
     end if
     DeleteFile(mine.path)
+    ' Not through the page either: that's no way to get this stream's
+    ' segments, so straight from the server again, this one at once (and not
+    ' back to the page for it, should that refuse it too).
+    if mine.page <> invalid then
+        d.pageFailed = true
+        if m.viaPage then
+            m.viaPage = false
+            print logTime(); "[stream] segment didn't come through the page either (error "; code; "): fetching directly again"
+        end if
+        addTransfer(d)
+        return
+    end if
     ' Refused directly: through the page from now on (see addTransfer), this
     ' one at once.
-    if code = 403 and mine.page = invalid then
+    if code = 403 and not d.pageFailed then
         if not m.viaPage then
             m.viaPage = true
             print logTime(); "[stream] segments refused directly: fetching them through the page"
