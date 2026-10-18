@@ -889,7 +889,13 @@ const String _takeoverJs = r'''
   // there. It plays on once the page is back. A pause by the viewer (Android's
   // picture-in-picture controls) happens while it's shown, so it stays.
   var pausedHidden = false;
+  // When the page was last shown again (performance.now()): see judging().
+  var shownAt = 0;
   document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) {
+      shownAt = performance.now();
+      lastLinkErrorAt = 0;
+    }
     if (document.hidden || !video || !video.paused || !pausedHidden) return;
     pausedHidden = false;
     log("paused while the page was hidden: playing on");
@@ -1207,7 +1213,7 @@ const String _takeoverJs = r'''
   // button, "1080p available"), for as long as that holds. An up that
   // doesn't hold (down again within upHold) doubles the wait.
   function adapt(ratio, bps) {
-    if (!ownSwitching) return;
+    if (!ownSwitching || !judging()) return;
     if (ratio * 100 < __DOWN_PCT__) {
       upOkSince = 0;
       offer(false);
@@ -1358,7 +1364,8 @@ const String _takeoverJs = r'''
       if (!st || !st.loading || !st.loading.start) continue;
       var got = st.loaded || 0;
       if (loading[i].second && loading[i].second.stats) got = Math.max(got, loading[i].second.stats.loaded || 0);
-      var ms = performance.now() - st.loading.start;
+      // (Timed from the page being shown again, if it was hidden meanwhile.)
+      var ms = performance.now() - Math.max(st.loading.start, shownAt);
       if (!best || ms > best.ms) best = { ms: ms, bytes: got };
     }
     return best;
@@ -1380,7 +1387,17 @@ const String _takeoverJs = r'''
   // failing to load) says so too, as the freeze starts: going down a feed
   // can't help there. (Before, only a slow download did, so in a dead zone the
   // note came as the signal trickled back, 2026-10-14.)
+  // Whether downloads say anything about the connection now. Not while the
+  // page is hidden (the app in the background: Android slows or cuts its
+  // network, and the timers barely run), nor for 5 s after it's shown again:
+  // coming back from Home, "Weak connection" was already up, on Wi-Fi
+  // (2026-10-18). Errors from then don't count either (lastLinkErrorAt).
+  function judging() {
+    return !document.hidden && performance.now() - shownAt > 5000;
+  }
+
   function checkConnection() {
+    if (!judging()) return;
     var f = inflight(), need = needBps();
     var slow = !!f && f.ms > 2000 && f.bytes > 0 && need > 0 && f.bytes * 8000 / f.ms < need;
     var dead = (!!f && f.ms > 3000 && f.bytes === 0) || Date.now() - lastLinkErrorAt < 20000;

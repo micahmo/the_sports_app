@@ -550,6 +550,11 @@ the master and each feed's playlist once (`readFeeds()`):
   download with nothing after 3 s, or the playlist failing to load in the
   last 20 s), as the freeze starts: before, only a slow download counted, so
   in a dead zone the note came as the signal trickled back (2026-10-14).
+  Not while the page is hidden, nor for 5 s after it's shown again (1.0.130,
+  `judging()`; the feed switching down waits the same): back from Home on
+  Wi-Fi, "Weak connection" was already up (2026-10-18), Android having slowed
+  or cut the backgrounded app's network. A download under way is timed from
+  the page being shown, and link errors from before don't count.
   Never over the reconnecting spinner, nor in the 30 s after it lifts. Tested
   by holding the web view's requests for 30 s: the note 4 s into the freeze,
   none once it recovered. A stall while
