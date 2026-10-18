@@ -469,6 +469,9 @@ Things that differ from Android and were each found the hard way:
   `_wantMuted`); the page keeps it in `__appWantMuted`, the app hands it to
   each page it loads, and `play()` follows it. The browser muting a refused
   autoplay doesn't count as a choice.
+  Each new player also says its mute as it starts (1.0.131): one starting
+  with sound sends no change, so after the browser had muted the last one the
+  icon said muted over a game playing with sound.
 - **Going fullscreen froze the picture.** Taking the window's frame off (and
   putting it back) has WebView2 report the page hidden for ~3 ms, and the
   browser pauses the video; nothing played it again, and the app's watch
@@ -550,6 +553,24 @@ the master and each feed's playlist once (`readFeeds()`):
   download with nothing after 3 s, or the playlist failing to load in the
   last 20 s), as the freeze starts: before, only a slow download counted, so
   in a dead zone the note came as the signal trickled back (2026-10-14).
+  **The connection, not the source** (1.0.131, `networkSuspect()`): the note
+  and a step down both need the connection to look bad, not just a segment.
+  On Wi-Fi, RedZone's server took 4-10 s for 3 s segments while its playlist
+  came back in ~100 ms; the app said "Weak connection" and dropped to 540p,
+  which stalled anyway (2026-10-18). Suspect: playlist requests with no
+  answer at all (an HTTP error is the server answering), most of the last few
+  segments barely faster than the feed needs *once they were coming* (a long
+  wait for the first byte is the server), the segment under way still
+  arriving but slowly (one that went quiet and got a second copy is the
+  server: the same line Hedged draws), or nothing back quickly for 5 s.
+  Tested with CDP: every segment held 5 s before it was sent, 50 s, no step
+  down and no note; a 2 Mbps throttle on 1080p, down to 540p 3.6 s into the
+  stall. A server that sends steadily but slowly still looks like a slow line.
+  **The offer goes while struggling** (1.0.131): "1080p" was only reconsidered
+  as segments finished, and in a weak zone few do: it stayed up over a stuck
+  540p, and taken, held 5 s (2026-10-18, phone). Now a slow or stalled
+  download, or a stuck picture, withdraws it and restarts its minute. Tested:
+  offered, then cut to 30 kbps, withdrawn 7 s later.
   Not while the page is hidden, nor for 5 s after it's shown again (1.0.130,
   `judging()`; the feed switching down waits the same): back from Home on
   Wi-Fi, "Weak connection" was already up (2026-10-18), Android having slowed

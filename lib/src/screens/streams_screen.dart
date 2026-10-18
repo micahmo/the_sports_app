@@ -1016,6 +1016,10 @@ const String _takeoverJs = r'''
   // with sound whatever they had chosen (2026-10-18).
   function play() {
     video.muted = !!window.__appWantMuted;
+    // Said as it starts, not only on a change (a new player starting with
+    // sound isn't one): the app's icon said muted over a playing game after a
+    // switch, the last player having been muted by the browser.
+    post(video.muted ? "muted" : "unmuted");
     video.play().catch(function () {
       // Autoplay with sound refused: fall back to muted so something shows.
       video.muted = true;
@@ -1082,6 +1086,8 @@ const String _takeoverJs = r'''
     lastEndSN = -1;
     lastAdvanceAt = Date.now();
     hls.on(OurHls.Events.LEVEL_LOADED, function (_, d) {
+      var ps = d.stats && d.stats.loading;
+      if (ps && ps.end - ps.start < 1500) answeredAt = Date.now();
       var det = d.details;
       if (!det || !det.live) return;
       var now = Date.now();
@@ -1105,6 +1111,12 @@ const String _takeoverJs = r'''
         // How fast it came once it was coming (the wait for the first byte
         // swamps a small segment's time), for whether a better feed would keep up.
         var flowMs = d.frag.stats.loading.end - (d.frag.stats.loading.first || d.frag.stats.loading.start);
+        // Once it was coming, for networkSuspect(): a server slow to answer
+        // makes the wait long; a slow connection makes the bytes slow.
+        if (flowMs > 0 && bytes > 0) {
+          rates.push(bytes * 8000 / flowMs);
+          if (rates.length > 6) rates.shift();
+        }
         if (ms > 0 && d.frag.duration > 0) {
           lastRatio = d.frag.duration * 1000 / ms;
           adapt(lastRatio, flowMs > 0 ? bytes * 8000 / flowMs : 0);
@@ -1115,6 +1127,10 @@ const String _takeoverJs = r'''
       log((d.fatal ? "fatal " : "") + d.type + " " + d.details);
       // The playlist stops loading once the stream has played: its link has
       // died (the phone changed networks, or the source's server dropped it).
+      if (/^(level|manifest)Load/.test(d.details)) {
+        // The server answering, even with an error, is the connection working.
+        if (d.response && d.response.code > 0) answeredAt = Date.now(); else lastNetErrAt = Date.now();
+      }
       if (announced && /^(level|manifest)Load/.test(d.details)) linkFailing(d.details);
       if (!d.fatal) return;
       // Load again, a second later: straight away, with no network at all,
@@ -1217,7 +1233,7 @@ const String _takeoverJs = r'''
     if (ratio * 100 < __DOWN_PCT__) {
       upOkSince = 0;
       offer(false);
-      if (++slowRun >= 2 && cur < feeds.length - 1) switchFeed(cur + 1);
+      if (++slowRun >= 2 && cur < feeds.length - 1 && networkSuspect()) switchFeed(cur + 1);
       return;
     }
     slowRun = 0;
@@ -1276,6 +1292,10 @@ const String _takeoverJs = r'''
   // start it; at most once every 20 s. If it doesn't work, the stall watch
   // still reconnects as before.
   var linkErrors = [], lastLinkErrorAt = 0, relinking = false, relinkedAt = 0, relinkGen = 0;
+  // For networkSuspect(): the last few segments' rates once coming (bps), when a
+  // playlist last came back quickly or the server answered at all, and when a
+  // playlist request last got no answer.
+  var rates = [], answeredAt = 0, lastNetErrAt = 0;
   function linkFailing(why) {
     var now = Date.now();
     lastLinkErrorAt = now;
@@ -1366,7 +1386,10 @@ const String _takeoverJs = r'''
       if (loading[i].second && loading[i].second.stats) got = Math.max(got, loading[i].second.stats.loaded || 0);
       // (Timed from the page being shown again, if it was hidden meanwhile.)
       var ms = performance.now() - Math.max(st.loading.start, shownAt);
-      if (!best || ms > best.ms) best = { ms: ms, bytes: got };
+      // And since its first byte, for networkSuspect().
+      var flowMs = st.loading.first ? performance.now() - Math.max(st.loading.first, shownAt) : 0;
+      // quiet: it went quiet and has a second copy (Hedged): the server, not the line.
+      if (!best || ms > best.ms) best = { ms: ms, bytes: got, flowMs: flowMs, quiet: !!loading[i].second };
     }
     return best;
   }
@@ -1396,12 +1419,45 @@ const String _takeoverJs = r'''
     return !document.hidden && performance.now() - shownAt > 5000;
   }
 
+  // Whether it's the connection, not the source. A slow or stuck segment by
+  // itself doesn't say: RedZone's server took 4-10 s for a 3 s segment over
+  // and over while the playlist came back in ~100 ms, and on Wi-Fi the app said
+  // "Weak connection" and dropped to 540p, which then stalled anyway
+  // (2026-10-18). The connection is suspect when requests get no answer at
+  // all, when most recent segments came barely faster than the feed needs
+  // once they were coming (a slow one among quick ones, or a long wait for the
+  // first byte, is the server), or when nothing has come back quickly for 5 s
+  // (a dead zone: the playlist hangs too).
+  function networkSuspect() {
+    var now = Date.now();
+    if (now - lastNetErrAt < 20000) return true;
+    var need = needBps();
+    // The segment coming in now, slower than the feed needs once coming.
+    var f = inflight();
+    // (Still arriving, only slowly; one that went quiet is the server: see Hedged.)
+    if (f && !f.quiet && need > 0 && f.flowMs > 1500 && f.bytes > 0 && f.bytes * 8000 / f.flowMs < need) return true;
+    if (need > 0 && rates.length >= 3) {
+      var r = rates.slice().sort(function (a, b) { return a - b; });
+      if (r[Math.floor((r.length - 1) / 2)] < need * 1.2) return true;
+    }
+    return now - answeredAt > 5000;
+  }
+
   function checkConnection() {
     if (!judging()) return;
     var f = inflight(), need = needBps();
     var slow = !!f && f.ms > 2000 && f.bytes > 0 && need > 0 && f.bytes * 8000 / f.ms < need;
     var dead = (!!f && f.ms > 3000 && f.bytes === 0) || Date.now() - lastLinkErrorAt < 20000;
     var canDown = ownSwitching && cur < feeds.length - 1;
+    // Struggling now: no better feed on offer, and the minute it must hold
+    // starts over. Only finished segments used to count (adapt), and in a
+    // weak zone few finish: "1080p" was offered while 540p was stuck, and
+    // taken, it held 5 s (2026-10-18, phone).
+    var stuck = announced && Date.now() - lastProgressAt >= 3000 && video.readyState < 3;
+    if (slow || dead || stuck) {
+      upOkSince = 0;
+      offer(false);
+    }
     if (!announced) {
       if (slow && canDown && Date.now() - startedAt > 6000) { switchFeed(cur + 1); return; }
       if (!slowStartTold && Date.now() - startedAt > __SLOW_START_MS__) {
@@ -1415,6 +1471,9 @@ const String _takeoverJs = r'''
     // Stuck right now (not just resuming: the last progress reading lags a
     // moment behind, and the note came up just as the stream came back).
     if (!(slow || dead) || Date.now() - lastProgressAt < 3000 || video.readyState >= 3) return;
+    // The source being slow: no lower feed (it was no help) and no note
+    // blaming the viewer's connection; the stall watch carries on as before.
+    if (!networkSuspect()) return;
     if (slow && canDown) { switchFeed(cur + 1); return; }
     if (Date.now() - weakToldAt > 60000) {
       weakToldAt = Date.now();
