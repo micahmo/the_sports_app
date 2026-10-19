@@ -244,12 +244,25 @@ function longerWindow(lines as Object) as Object
     end for
     ' The player is starting again (stuck, see PlayerScreen's onStuck): only the
     ' newest few, so it starts at live rather than at the top of the list
-    ' (where it replayed the stream's first segments, 2026-10-15).
+    ' (where it replayed the stream's first segments, 2026-10-15). It starts at
+    ' the top of these 3, and those it has had it would show again (~10 s after
+    ' every restart, 2026-10-18 and -19), so how long they last goes to
+    ' PlayerScreen (skipSecs), which moves it past them once it plays. (Listing
+    ' only the ones it hasn't had doesn't do: with fewer than 3, the player
+    ' started over, spinner and all, as soon as the list grew.)
     if m.top.trim then
         m.top.trim = false
         while w.items.Count() > 3
             w.items.Shift()
         end while
+        had = 0
+        for i = 0 to w.items.Count() - 2
+            it = w.items[i]
+            if not m.served.DoesExist(segTarget(it.lines[it.lines.Count() - 1])) or it.dur = invalid then exit for
+            had = had + it.dur
+        end for
+        m.top.skipSecs = had
+        if had > 0 then print logTime(); "[stream] starting again on "; Int(had); " s it has had: to be skipped"
     end if
     total = 0
     for each it in w.items

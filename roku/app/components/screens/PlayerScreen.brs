@@ -13,6 +13,7 @@ sub init()
     m.stall.observeField("fire", "onStall")
     m.stuck = m.top.findNode("stuck")
     m.stuck.observeField("fire", "onStuck")
+    m.skipAfterStart = false
     m.restarted = false
     m.servedAtBuffering = 0
     m.retry = m.top.findNode("retry")
@@ -360,6 +361,17 @@ sub onVideoState()
         m.holdTimerBack.control = "start"
         print logTime(); "[player] holding back "; m.holdBack; " s after reconnecting"
         return
+    end if
+    if st = "playing" and m.skipAfterStart and m.task <> invalid then
+        ' Started again (restartAtLive) at the top of a list holding what it had
+        ' played: on past that, within what it has in hand.
+        m.skipAfterStart = false
+        s = m.task.skipSecs
+        if s > 0.5 then
+            print logTime(); "[player] skipping "; Int(s); " s it has shown"
+            ' (Half a second on: right at the edge, it fetched the last again.)
+            m.video.seek = m.video.position + s + 0.5
+        end if
     end if
     if st = "playing" then
         hideStatus()
@@ -938,15 +950,19 @@ sub onStuck()
     m.stuck.control = "stop"
     m.restarted = true
     print logTime(); "[player] stuck: "; Int(took); " s of video taken without playing; starting the player again"
-    restartAtLive()
+    restartAtLive(false)
 end sub
 
 ' The same proxy, listing only its newest few segments (trim), so the player
 ' starts at live: no new browser session, no hold back.
-sub restartAtLive()
+sub restartAtLive(skipShown as Boolean)
     url = m.video.content.url
     m.task.startedAgain = m.task.startedAgain + 1
     m.task.trim = true
+    m.task.skipSecs = 0
+    ' Past what it showed (see onVideoState), after a jump: it was playing. Not
+    ' when stuck: it showed none of what it took, and that's game not yet seen.
+    m.skipAfterStart = skipShown
     m.video.control = "stop"
     m.video.content = streamContent(url)
     m.video.control = "play"
@@ -964,7 +980,7 @@ sub onJumped()
     if m.jumpedAt <> invalid and now - m.jumpedAt < 15 then return
     m.jumpedAt = now
     print logTime(); "[player] the picture jumped "; Int(m.task.jumped); " s ahead; starting the player again at live"
-    restartAtLive()
+    restartAtLive(true)
 end sub
 
 sub onStall()

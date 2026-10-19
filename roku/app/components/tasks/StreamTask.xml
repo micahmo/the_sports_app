@@ -18,6 +18,9 @@
     <field id="servedSecs" type="float" />
     <!-- The player is starting again: list only the newest few (longerWindow). -->
     <field id="trim" type="boolean" />
+    <!-- How much of that list, from the top, the player has had (s): PlayerScreen
+         skips it once the player plays. -->
+    <field id="skipSecs" type="float" />
     <!-- Counts the player's starts again (PlayerScreen's restartAtLive): a
          segment still going to the one before is dropped (sendAll). -->
     <field id="startedAgain" type="integer" />

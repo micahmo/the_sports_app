@@ -1053,6 +1053,19 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
   moment; `onStuck` now also waits for it to stay unplayed 2 s (a player that
   goes on by itself does within ~1 s; one that doesn't, didn't in the tests,
   so the restart is right). Staged: source back to playing in 4.2 s.
+- **No replay after a jump's restart** (1.0.133). `restartAtLive` lists the
+  newest 3 segments, and Roku's player starts at the top of the list, so it
+  showed again the two it had just played (~10 s), every time (the log's
+  sequence numbers: playing 748-749, asking 750 with the jump; restarted on
+  748-750, it asked 748, 749, 750; 2026-10-19). Listing only what it hadn't
+  had doesn't do: with fewer than 3 the player started over, spinner and all,
+  as soon as the list grew. So the 3 stay, StreamTask says how much of them
+  from the top the player has had (`skipSecs`), and once it plays PlayerScreen
+  seeks on past that (and half a second, or it fetched the last one again).
+  Tested with a staged 15 s jump: playing ~2 s after the restart, past the
+  seek ~1 s later, then on; no replay. Only after a jump (the player was
+  playing): a stuck player showed none of what it took, so that's game not
+  yet seen, and a stuck restart plays it.
 - **The replay after running dry, not solved yet.** Starting again after it
   ran dry at the end of the list, the player goes back ~3 segments, and with
   the source stalled those are ones it played (~20 s again; 2026-10-17 and
