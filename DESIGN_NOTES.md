@@ -1037,6 +1037,30 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
   the start of the player it came from (`startedAgain`, counted by
   `restartAtLive`), and a send to an older one is dropped as soon as it
   stalls.
+- **No answer holds up the proxy** (1.0.132). Even so, a restart after a dry
+  spell sat ~12 s: the *new* player asked for a segment and didn't read it at
+  first, and the one-at-a-time send waited out its 10 s, then again, while
+  nothing else was answered (not even the proxy's own playlist fetch), until
+  the stall reconnected. Now each answer goes out as fast as its connection
+  takes it (`respond` sends until the socket is full, `pumpAll` sends the rest
+  every turn of the loop, polling every 5 ms while any is pending), and is
+  dropped if it's for an older start of the player or takes nothing for 15 s.
+  Tested (a staged dry spell: the list held still until the player had been
+  dry 8 s, then the held segments released): playing 1.3 s after the
+  restart instead of the ~12 s wait and a reconnect.
+- **Stuck needs 2 s too** (1.0.132): after a dry spell the source can come
+  back with several segments at once, so the 15 s of video arrived in a
+  moment; `onStuck` now also waits for it to stay unplayed 2 s (a player that
+  goes on by itself does within ~1 s; one that doesn't, didn't in the tests,
+  so the restart is right). Staged: source back to playing in 4.2 s.
+- **The replay after running dry, not solved yet.** Starting again after it
+  ran dry at the end of the list, the player goes back ~3 segments, and with
+  the source stalled those are ones it played (~20 s again; 2026-10-17 and
+  -18). Tried: once it's dry, dropping the segments it had from the list:
+  same 4.2 s, then dry again 5 s later (it had too little listed), so not
+  kept. The staged dry spell never produced the replay itself (the player got
+  stuck instead), so `askSegment` now logs "the player asked again for a
+  segment it had", to see in a real one when and how it happens.
 - **Tried and dropped:** marking the jump in the player's list
   (`#EXT-X-DISCONTINUITY`): the Roku's player went back to the top of the
   list, replayed it, then played garbled, fast and silent, and froze. Listing

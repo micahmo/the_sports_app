@@ -396,6 +396,7 @@ sub onVideoState()
         ' Mid-game only: while starting, segments in hand are normal. Once per
         ' spell of buffering (a restart buffers too).
         if m.task <> invalid then m.servedAtBuffering = m.task.servedSecs
+        m.tookAt = invalid
         if m.recorded and not m.restarted then m.stuck.control = "start"
     else if st = "paused" and (m.holding or m.status.visible) then
         ' (holding back after a reconnect, or paused for something else)
@@ -924,7 +925,16 @@ sub onStuck()
         return
     end if
     took = m.task.servedSecs - m.servedAtBuffering
-    if took < 15 then return
+    ' And still not playing 2 s on: after a dry spell the source can come back
+    ' with several segments at once, the 15 s arriving in a moment, and a
+    ' player that plays on by itself does within ~1 s of them (2026-10-18).
+    if took < 15 then
+        m.tookAt = invalid
+        return
+    end if
+    if m.tookAt = invalid then m.tookAt = CreateObject("roTimespan")
+    if m.tookAt.TotalSeconds() < 2 then return
+    m.tookAt = invalid
     m.stuck.control = "stop"
     m.restarted = true
     print logTime(); "[player] stuck: "; Int(took); " s of video taken without playing; starting the player again"

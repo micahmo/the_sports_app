@@ -387,7 +387,7 @@ sub answerPlaylist(sock as Object, text as Dynamic)
         ba.FromAsciiString(text)
         respond(sock, "200 OK", "application/vnd.apple.mpegurl", ba)
     end if
-    sock.Close()
+    finish(sock)
 end sub
 
 ' A new link from a fresh browser session (MintTask), while this one keeps
@@ -589,7 +589,7 @@ sub onDownload(ev as Object)
     end if
     for each sock in d.waiters
         respond(sock, "502 Bad Gateway", "text/plain", invalid)
-        sock.Close()
+        finish(sock)
     end for
     m.dl.Delete(u)
 end sub
@@ -684,7 +684,7 @@ sub serveSegment(u as String)
         else
             respond(sock, "200 OK", "video/mp2t", ba)
         end if
-        sock.Close()
+        finish(sock)
     end for
     if ba = invalid then
         print logTime(); "[stream] segment FAILED (not MPEG-TS)"
@@ -707,6 +707,10 @@ end sub
 ' The player asked for a segment: serve it now if it's here, else when it is.
 ' True if the request was answered (so the connection can close).
 function askSegment(sock as Object, u as String) as Boolean
+    ' A replay in the making: after running dry the player starts again ~3
+    ' segments from the end of the list, and with the source stalled those are
+    ' ones it has played (~20 s again, 2026-10-17 and -18). Logged, to see when.
+    if m.served.DoesExist(u) then print logTime(); "[stream] the player asked again for a segment it had"
     d = m.dl[u]
     if d = invalid then d = startDownload(u)
     if d.done then
@@ -813,13 +817,22 @@ sub serve()
     print logTime(); "[stream] serving on port "; portNum
     m.top.streamUrl = "http://127.0.0.1:" + portNum.ToStr() + "/live.m3u8"
     conns = {}
+    m.out = {}
+    tickAt = CreateObject("roTimespan")
     while true
-        ev = wait(500, m.port)
+        ' Briefly while answers are still going out (see pumpAll).
+        timeout = 500
+        if m.out.Count() > 0 then timeout = 5
+        ev = wait(timeout, m.port)
         if m.refusedOut then exit while
+        if m.out.Count() > 0 then pumpAll()
         checkPlaylist()
         checkRetries()
         if ev = invalid then
-            tick()
+            if tickAt.TotalMilliseconds() >= 500 then
+                tickAt.Mark()
+                tick()
+            end if
         else if type(ev) = "roSGNodeEvent" and ev.getField() = "quit" then
             exit while
         else if type(ev) = "roSGNodeEvent" and ev.getField() = "result" then
@@ -835,7 +848,7 @@ sub serve()
                         c.SetMessagePort(m.port)
                         c.NotifyReadable(true)
                         conns[c.GetID().ToStr()] = {sock: c, buf: ""}
-                        ' Which start of the player asked (see sendAll).
+                        ' Which start of the player asked (see pumpAll).
                         if m.sockGen.Count() > 200 then m.sockGen = {}
                         m.sockGen[c.GetID().ToStr()] = m.top.startedAgain
                     end if
@@ -854,7 +867,7 @@ sub serve()
                             ' A segment that's still downloading is answered later
                             ' (onDownload), which also closes the connection.
                             cn.sock.NotifyReadable(false)
-                            if handle(cn.sock, cn.buf) then cn.sock.Close()
+                            if handle(cn.sock, cn.buf) then finish(cn.sock)
                             conns.Delete(k)
                         end if
                     end if
@@ -864,6 +877,9 @@ sub serve()
     end while
     for each k in conns
         conns[k].sock.Close()
+    end for
+    for each k in m.out
+        m.out[k].sock.Close()
     end for
     if m.plFetch <> invalid then m.plFetch.x.AsyncCancel()
     for each w in m.plWaiters
@@ -936,31 +952,68 @@ sub respond(sock as Object, status as String, ctype as String, payload as Dynami
     crlf = Chr(13) + Chr(10)
     head = CreateObject("roByteArray")
     head.FromAsciiString("HTTP/1.1 " + status + crlf + "Content-Type: " + ctype + crlf + "Content-Length: " + n.ToStr() + crlf + "Connection: close" + crlf + crlf)
-    sendAll(sock, head)
-    if payload <> invalid then sendAll(sock, payload)
+    parts = [head]
+    if payload <> invalid then parts.Push(payload)
+    k = sock.GetID().ToStr()
+    o = {sock: sock, parts: parts, pi: 0, off: 0, close: false, since: CreateObject("roTimespan"), gen: m.sockGen[k]}
+    if pump(o) then return
+    m.out[k] = o
 end sub
 
-sub sendAll(sock as Object, ba as Object)
-    total = ba.Count()
-    sent = 0
-    idle = 0
-    while sent < total
-        chunk = total - sent
-        if chunk > 65536 then chunk = 65536
-        n = sock.Send(ba, sent, chunk)
-        if n > 0 then
-            sent = sent + n
-            idle = 0
-        else
-            if not sock.IsConnected() then return
-            ' Asked before the player was started again: that one has stopped
-            ' reading, and waiting out the 10 s below held up the whole proxy,
-            ' so the new one sat on its spinner (2026-10-17).
-            gen = m.sockGen[sock.GetID().ToStr()]
-            if gen <> invalid and gen <> m.top.startedAgain then return
-            idle = idle + 1
-            if idle > 5000 then return
-            sleep(2)
-        end if
+' Answers go out as fast as each connection takes them, without holding up the
+' rest: sent until the socket is full, the remainder kept (m.out) and sent as it
+' drains (pumpAll, every turn of serve()'s loop). Sending in one go waited up to
+' 10 s on a player that had stopped reading, and the whole proxy with it: after
+' a dry spell the restarted player's first segment sat unread, nothing else was
+' answered (not even the proxy's own playlist fetch), and the stall reconnected
+' (2026-10-18). True once it's all out, or the connection is gone.
+function pump(o as Object) as Boolean
+    while o.pi < o.parts.Count()
+        ba = o.parts[o.pi]
+        total = ba.Count()
+        while o.off < total
+            chunk = total - o.off
+            if chunk > 65536 then chunk = 65536
+            n = o.sock.Send(ba, o.off, chunk)
+            if n > 0 then
+                o.off = o.off + n
+                o.since.Mark()
+            else
+                return not o.sock.IsConnected()
+            end if
+        end while
+        o.pi = o.pi + 1
+        o.off = 0
     end while
+    return true
+end function
+
+' Close a connection once its answer is out (now, if it already is).
+sub finish(sock as Object)
+    o = m.out[sock.GetID().ToStr()]
+    if o = invalid then sock.Close() else o.close = true
+end sub
+
+' The rest of every answer still going out. One from before the player was
+' started again (it has stopped reading; see restartAtLive), or that has taken
+' nothing for 15 s, is dropped.
+sub pumpAll()
+    gone = []
+    for each k in m.out
+        o = m.out[k]
+        if o.gen <> invalid and o.gen <> m.top.startedAgain then
+            print logTime(); "[stream] dropped an answer to the player from before it started again"
+            gone.Push(k)
+        else if o.since.TotalSeconds() >= 15 then
+            print logTime(); "[stream] dropped an answer the player stopped taking"
+            gone.Push(k)
+        else if pump(o) then
+            gone.Push(k)
+        end if
+    end for
+    for each k in gone
+        o = m.out[k]
+        m.out.Delete(k)
+        if o.close then o.sock.Close()
+    end for
 end sub
