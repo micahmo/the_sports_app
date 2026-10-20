@@ -341,6 +341,15 @@ Android Auto's developer settings with **Unknown sources** on; no AAAD.
   phone is unchanged (edge to edge, system back).
 - In the background, as on any phone, the stream stops (the web view
   pauses); returning jumps to live.
+- **Android Auto connecting or shutting down paused the stream on the phone**
+  (1.0.134). It takes the sound (audio focus) as it connects, and briefly
+  again as it shuts down; WebView pauses on that and lets go of the sound for
+  good, so it stayed paused (2026-10-19, both ends of two drives; seen in
+  `dumpsys audio`'s focus history: gearhead's requests, then the app's
+  `handleLoss`). The app has no pause of its own (none on screen, in
+  picture-in-picture or in a notification), so a pause while the page is
+  shown plays on a second later (`playOnAfterPause`, phone and desktop);
+  "paused by the system: playing on" in the log.
 
 ### Testing it
 

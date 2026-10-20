@@ -886,8 +886,8 @@ const String _takeoverJs = r'''
   // A page that's hidden, even for a moment, has its video paused by the
   // browser, and nothing played it again: going fullscreen on desktop hides
   // the page for ~3 ms while the window loses its frame, and the picture froze
-  // there. It plays on once the page is back. A pause by the viewer (Android's
-  // picture-in-picture controls) happens while it's shown, so it stays.
+  // there. It plays on once the page is back. (Paused while shown, see
+  // playOnAfterPause: nobody can pause it in the app either.)
   var pausedHidden = false;
   // When the page was last shown again (performance.now()): see judging().
   var shownAt = 0;
@@ -1014,6 +1014,20 @@ const String _takeoverJs = r'''
   // Muted only if the viewer muted it (the app's toggle, kept in
   // __appWantMuted): a new player, as for a switch to another feed, came up
   // with sound whatever they had chosen (2026-10-18).
+  // The app has no pause (not on the screen, not in picture-in-picture, not in
+  // a notification), so a pause while it's shown is the system's: Android Auto
+  // taking the sound as it connects, and again as it shuts down, had WebView
+  // pause the stream on the phone and let go of the sound for good, so it
+  // stayed paused (2026-10-19, at both ends of a drive, twice). A second on,
+  // if it's still paused and still shown, it plays on.
+  function playOnAfterPause() {
+    setTimeout(function () {
+      if (!video || !video.paused || document.hidden) return;
+      log("paused by the system: playing on");
+      video.play().catch(function () {});
+    }, 1000);
+  }
+
   function play() {
     video.muted = !!window.__appWantMuted;
     // Said as it starts, not only on a change (a new player starting with
@@ -1061,8 +1075,11 @@ const String _takeoverJs = r'''
       post(video.muted ? "muted" : "unmuted");
     });
     // Paused while the page was hidden: the browser's doing, not the viewer's
-    // (see visibilitychange).
-    video.addEventListener("pause", function () { pausedHidden = document.hidden; });
+    // (see visibilitychange). Paused while it's shown: see playOnAfterPause.
+    video.addEventListener("pause", function () {
+      pausedHidden = document.hidden;
+      if (!document.hidden) playOnAfterPause();
+    });
 
     if (hls) { try { hls.destroy(); } catch (e) {} }
     hlsSrc = url;
