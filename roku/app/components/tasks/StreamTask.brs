@@ -649,8 +649,9 @@ sub checkClock(u as String, path as String)
             print logTime(); "[stream] picture clock jumps ahead "; Int(gap * 10) / 10; " s at this segment"
             ' Far enough that the player won't play over it: it raced through what
             ' it had, stuck, then asked again for segments it had played (an 80 s
-            ' jump after an outage, 2026-10-17). See PlayerScreen's onJumped.
-            if gap >= 30 then m.top.jumped = gap
+            ' jump after an outage, 2026-10-17; a 25 s one, 2026-10-19, replayed
+            ' segments too). See PlayerScreen's onJumped.
+            if gap >= 20 then m.top.jumped = gap
         end if
     else if m.stamps.Count() > 0 and m.top.servedSecs > 30 then
         ' Earlier than every recent one: the first segments finishing out of

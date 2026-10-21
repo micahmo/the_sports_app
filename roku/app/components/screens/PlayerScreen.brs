@@ -15,6 +15,11 @@ sub init()
     m.stuck.observeField("fire", "onStuck")
     m.skipAfterStart = false
     m.restarted = false
+    m.afterRestart = false
+    m.spellPos = invalid
+    m.replayCheck = m.top.createChild("Timer")
+    m.replayCheck.duration = 1
+    m.replayCheck.observeField("fire", "onReplayCheck")
     m.servedAtBuffering = 0
     m.retry = m.top.findNode("retry")
     m.retry.observeField("fire", "onRetry")
@@ -35,9 +40,9 @@ sub init()
     hideStatus()
 
     m.restarts = 0
-    ' How much further behind live to start: none, until a reconnect shows the
-    ' stream is flaky (see onHoldBack).
-    m.holdBack = 0
+    ' How far behind live to start (see onHoldBack): every stream, not just after
+    ' a reconnect.
+    m.holdBack = holdBackSecs()
     m.holdPending = false
     m.holding = false
     m.holdCover = m.top.findNode("holdCover")
@@ -99,6 +104,9 @@ sub start()
     m.barTitle.text = m.match.title
     m.barQuality.text = barLine("")
     m.recorded = false
+    m.spellPos = invalid
+    m.replayCheck.control = "stop"
+    if m.holdBack > 0 then m.holdPending = true
     if m.holdBar then
         setShown(m.bar, true)
         setShown(m.pill, hasRow())
@@ -272,7 +280,7 @@ sub switchTo(s as Object, fallback as Boolean)
     m.tried[s.embedUrl] = true
     m.stream = s
     m.restarts = 0
-    m.holdBack = 0
+    m.holdBack = holdBackSecs()
     ' The bar waits for the new stream's quality, as at the start (until
     ' 1.0.113 only the first stream's).
     m.holdBar = true
@@ -349,9 +357,12 @@ sub onVideoState()
     st = m.video.state
     print logTime(); "[player] "; st; " "; m.video.errorMsg
     if st = "playing" and m.holdPending then
-        ' Reconnected: wait a little longer behind the spinner, paused, while
-        ' the source publishes on. Its segments stay listed (StreamTask keeps
-        ' 45 s), so it resumes that much behind live with that much in hand.
+        ' Starting (or reconnected): wait a little longer behind the spinner,
+        ' paused, while the source publishes on. Its segments stay listed
+        ' (StreamTask keeps 45 s), so it resumes that much behind live with
+        ' that much in hand. At the edge, with nothing banked, a source that
+        ' stood still 13-20 s or a slow segment meant a spinner (ten times
+        ' 2026-10-08 to -19); after a reconnect's hold the stream was steady.
         m.holdPending = false
         m.holding = true
         m.stall.control = "stop"
@@ -359,7 +370,7 @@ sub onVideoState()
         m.video.control = "pause"
         m.holdTimerBack.duration = m.holdBack
         m.holdTimerBack.control = "start"
-        print logTime(); "[player] holding back "; m.holdBack; " s after reconnecting"
+        print logTime(); "[player] holding back "; m.holdBack; " s"
         return
     end if
     if st = "playing" and m.skipAfterStart and m.task <> invalid then
@@ -372,6 +383,11 @@ sub onVideoState()
             ' (Half a second on: right at the edge, it fetched the last again.)
             m.video.seek = m.video.position + s + 0.5
         end if
+    end if
+    if st = "playing" then m.afterRestart = false
+    if st = "playing" and m.spellPos <> invalid then
+        checkReplay()
+        if m.spellPos <> invalid then m.replayCheck.control = "start"
     end if
     if st = "playing" then
         hideStatus()
@@ -409,15 +425,45 @@ sub onVideoState()
         ' spell of buffering (a restart buffers too).
         if m.task <> invalid then m.servedAtBuffering = m.task.servedSecs
         m.tookAt = invalid
+        ' Where it ran dry, mid-game (see checkReplay).
+        m.replayCheck.control = "stop"
+        if m.recorded and not m.afterRestart and m.spellPos = invalid then m.spellPos = m.video.position
         if m.recorded and not m.restarted then m.stuck.control = "start"
     else if st = "paused" and (m.holding or m.status.visible) then
-        ' (holding back after a reconnect, or paused for something else)
+        ' (holding back, or paused for something else)
     else if st = "paused" then
         hideStatus()
     else if st = "error" then
         reconnect("Playback failed: " + m.video.errorMsg)
     end if
 end sub
+
+' Ran dry, mid-game, and playing again from further back: the player rewinds
+' when it starts again, inside what it has (no segment asked for, 2026-10-19
+' 20:51) or asking again for segments it played (seven times in 25 s,
+' 2026-10-19 23:03), and replays 10-20 s. On from where it ran dry instead:
+' a spinner while the video comes, not a replay. Checked as it plays and a
+' second on (its position can lag), once per spell; not after restartAtLive,
+' which starts at the top of its list on purpose.
+sub checkReplay()
+    if m.spellPos = invalid then return
+    back = m.spellPos - m.video.position
+    if back > 3 then
+        print logTime(); "[player] playing again "; Int(back); " s back from where it ran dry: on to there"
+        m.video.seek = m.spellPos
+        m.spellPos = invalid
+    end if
+end sub
+
+sub onReplayCheck()
+    if m.video.state = "playing" then checkReplay()
+    m.spellPos = invalid
+end sub
+
+' 12 s: as long as most of the source's stalls (see onVideoState).
+function holdBackSecs() as Integer
+    return 12
+end function
 
 sub onHoldBack()
     if not m.holding then return
@@ -960,6 +1006,9 @@ sub restartAtLive(skipShown as Boolean)
     m.task.startedAgain = m.task.startedAgain + 1
     m.task.trim = true
     m.task.skipSecs = 0
+    m.afterRestart = true
+    m.spellPos = invalid
+    m.replayCheck.control = "stop"
     ' Past what it showed (see onVideoState), after a jump: it was playing. Not
     ' when stuck: it showed none of what it took, and that's game not yet seen.
     m.skipAfterStart = skipShown
@@ -1022,7 +1071,7 @@ sub reconnect(reason as String)
     print logTime(); "[player] reconnecting ("; m.restarts; "): "; reason
     ' A stream that hung this long hangs again: start it further behind live,
     ' keeping the cushion the hang would have left.
-    m.holdBack = 12
+    m.holdBack = holdBackSecs()
     m.holdPending = true
     showWorking("Reconnecting...")
     if m.restarts = 1 then

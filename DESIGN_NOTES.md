@@ -960,7 +960,15 @@ cushion, so after one the player pauses the new stream for 12 s behind a black
 cover and the spinner (`holdBack` in PlayerScreen) while the source publishes
 on, then resumes 12 s further behind live with those segments in hand
 (tested: resumed ~24 s behind, every segment ready before it was asked for).
-Switching streams starts without it. Phone and desktop can't hold a cushion
+
+**Every stream starts with the hold** (1.0.135). At the edge with nothing
+banked, every TV spinner reported 2026-10-08 to -19 (ten of them) came from
+the source standing still 13-20 s or one slow segment, and the stream was
+steady once a reconnect's hold had put it behind. So a new stream (picked,
+switched to, or fallen back to) holds 12 s the same way before it plays:
+starting takes ~12 s longer. Tested: held 12 s, then played ~30 s behind the
+newest segment instead of ~18. A restart at live (below) still starts at the
+edge: by then the stall has spent the cushion anyway. Phone and desktop can't hold a cushion
 beyond what the source lists (~12 s): hls.js jumps back to live once its next
 segment is gone.
 
@@ -1034,7 +1042,9 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
   ("going really fast"), stuck, buffered, then asked again for segments it
   had already played, a replay. So a jump of 30 s or more (`checkClock` sets
   StreamTask's `jumped` as the segment downloads, before the player asks for
-  it) starts the player again at live the same way; once per jump, as the
+  it) starts the player again at live the same way (20 s since 1.0.135: a
+  25 s jump played over, 2026-10-19, and the player then asked again for
+  segments it had played, a replay); once per jump, as the
   next segment, finishing out of order, reports it too (and a segment
   downloaded again isn't checked twice). Smaller jumps it plays over, and one
   it runs dry at is still onStuck's. Tested with a staged 18 s skip (threshold
@@ -1075,14 +1085,21 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
   seek ~1 s later, then on; no replay. Only after a jump (the player was
   playing): a stuck player showed none of what it took, so that's game not
   yet seen, and a stuck restart plays it.
-- **The replay after running dry, not solved yet.** Starting again after it
-  ran dry at the end of the list, the player goes back ~3 segments, and with
-  the source stalled those are ones it played (~20 s again; 2026-10-17 and
-  -18). Tried: once it's dry, dropping the segments it had from the list:
-  same 4.2 s, then dry again 5 s later (it had too little listed), so not
-  kept. The staged dry spell never produced the replay itself (the player got
-  stuck instead), so `askSegment` now logs "the player asked again for a
-  segment it had", to see in a real one when and how it happens.
+- **No replay after running dry** (1.0.135). Starting again after it ran dry
+  at the end of the list, the player sometimes goes back and shows again what
+  it played (~10-20 s; 2026-10-17, -18 and -19): rewinding inside what it has,
+  with no segment asked for (2026-10-19 20:51), or asking again for segments
+  it played (seven times in 25 s, 2026-10-19 23:03). Tried first: once it's
+  dry, dropping the segments it had from the list: dry again 5 s later (too
+  little listed), so not kept. Now PlayerScreen notes the position when it
+  runs dry mid-game (`spellPos`), and if it plays again more than 3 s before
+  that, seeks on to it (`checkReplay`, as it plays and a second on, since the
+  position can lag; once per spell; not after `restartAtLive`, which starts at
+  the top of its list on purpose). Instead of a replay: a spinner while the
+  video comes. The staged dry spell never produced the rewind (the player got
+  stuck instead), so tested with a staged 10 s rewind while playing: back to
+  where it was in 0.4 s, then on. `askSegment` logs "the player asked again
+  for a segment it had".
 - **Tried and dropped:** marking the jump in the player's list
   (`#EXT-X-DISCONTINUITY`): the Roku's player went back to the top of the
   list, replayed it, then played garbled, fast and silent, and froze. Listing
