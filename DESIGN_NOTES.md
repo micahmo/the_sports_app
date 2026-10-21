@@ -694,6 +694,36 @@ showed was the device's decoding speed ("1080p2" on a slow decoder, "70" after
 a catch-up burst). Lesson: when two apps compute the same thing, use one
 method, and check each actually produces values.
 
+**A cushion in seconds** (phone and desktop, 1.0.136). hls.js started 3
+segments behind live, so a source with 3 s segments (admin's RedZone) left
+~9 s in hand, and a playlist standing still 11-13 s froze the picture (four
+times on 2026-10-18). Starting further back wasn't possible: admin lists only
+its last 4 segments (12 s), and a player behind them jumped to live, losing
+what it had banked. Now the playlist loader (`longerList`, in
+`relinkedLoader`) keeps listing the last 45 s of segments after the source
+drops them, as the TV's proxy does (the CDN still serves them; checked a
+minute on), and hls.js aims 18 s behind live, or 3 segments if those are
+longer (only short-segment sources change, ~9 s further behind live). The list
+is per playlist and carries through fresh links (`relinked` maps the old
+ones); it starts afresh after a gap in the numbering (segments missed) or a
+restart, takes each segment's tags as the source lists them now (the clock tag
+goes on whichever segment is first), backs listed discontinuities out of the
+discontinuity sequence, and leaves alone playlists with keys, maps, byte ranges
+or an end. Tested on the emulator (Willow SD, 3 s segments): 12-15 s buffered
+ahead instead of ~9.
+
+**A refused segment is skipped** (1.0.136). On 2026-10-21 admin's segment CDN
+refused some segments (403) to any request carrying embed.st as Origin or
+Referer, and served them to plain requests (so not the TV, whose proxy sends
+neither; a page can't leave its Origin off). hls.js asked for the refused one
+again every second until the app reloaded the stream 20 s later, then hit it
+again; today's release did the same. Now a segment refused (403, 404) twice is
+skipped once the player gets to it: it's next, and under a second is left or
+the video has stopped for want of more (it stopped 1.4 s short of the end of
+what it had on the emulator, and where hls.js thinks a segment starts can be
+as far off). Tested with one segment refused on purpose (CDP Fetch): skipped
+3 s after the stall, no reload, played on.
+
 ### Streams row and falling back (all apps)
 
 Agreed with the user from mockups (2026-09-30). A tap, mouse movement or OK
@@ -968,9 +998,9 @@ steady once a reconnect's hold had put it behind. So a new stream (picked,
 switched to, or fallen back to) holds 12 s the same way before it plays:
 starting takes ~12 s longer. Tested: held 12 s, then played ~30 s behind the
 newest segment instead of ~18. A restart at live (below) still starts at the
-edge: by then the stall has spent the cushion anyway. Phone and desktop can't hold a cushion
-beyond what the source lists (~12 s): hls.js jumps back to live once its next
-segment is gone.
+edge: by then the stall has spent the cushion anyway. Phone and desktop keep
+a longer list of their own (see "A cushion in seconds" under Playlists and
+segment downloads).
 
 None of that helped while the proxy fetched the playlist and waited: a 17 s
 playlist request held up the whole proxy, so the player couldn't get even the

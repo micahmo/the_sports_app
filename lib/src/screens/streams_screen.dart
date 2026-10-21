@@ -707,6 +707,78 @@ const String _takeoverJs = r'''
     var from = dirOf(hlsSrc);
     return u.indexOf(from) === 0 ? dirOf(linkTo) + u.slice(from.length) : u;
   }
+  // The playlist hls.js gets keeps the last 45 s of segments, not just the few
+  // the source lists (admin lists its last 4: 12 s with 3 s segments), and
+  // hls.js aims 18 s behind live (or 3 segments, if longer). With only 3 s
+  // segments it held ~9 s, and a playlist standing still 11-13 s froze the
+  // picture (four times on 2026-10-18); and with nothing listed further back,
+  // a player that fell behind in a stall jumped to live, losing what it had
+  // banked. The source's servers still have a segment minutes after it leaves
+  // the list (as the TV's proxy relies on, see StreamTask's longerWindow).
+  // Per playlist, through fresh links (relinked maps the old ones). Starts over
+  // when segments were missed (a gap in the numbering) or it restarts, and
+  // leaves alone playlists this doesn't follow (keys, maps, byte ranges, an end).
+  var lists = {}, refused = {};
+  function longerList(key, text, base) {
+    if (text.indexOf("#EXTINF") < 0) return text;
+    var q = /#EXT-X-MEDIA-SEQUENCE:(\d+)/.exec(text);
+    if (!q || /#EXT-X-(ENDLIST|KEY|MAP|BYTERANGE)/.test(text)) { delete lists[key]; return text; }
+    var seq = parseInt(q[1], 10);
+    var ds = /#EXT-X-DISCONTINUITY-SEQUENCE:(\d+)/.exec(text);
+    var t = /#EXT-X-TARGETDURATION:(\d+)/.exec(text);
+    if (t && hls) hls.config.liveSyncDurationCount = Math.max(3, Math.ceil(18 / Math.max(1, parseInt(t[1], 10))));
+    var header = [], items = [], tags = [];
+    text.split("\n").forEach(function (raw) {
+      var line = raw.trim();
+      if (!line) return;
+      if (line.charAt(0) !== "#") {
+        var d = 0, disc = false;
+        tags.forEach(function (x) {
+          if (x.indexOf("#EXTINF:") === 0) d = parseFloat(x.slice(8)) || 0;
+          if (x === "#EXT-X-DISCONTINUITY") disc = true;
+        });
+        items.push({ lines: tags.concat([new URL(line, base).href]), dur: d, disc: disc });
+        tags = [];
+      } else if (!items.length && !tags.length && !/^#EXTINF|^#EXT-X-(DISCONTINUITY$|PROGRAM-DATE-TIME|GAP|BITRATE)/.test(line)) {
+        header.push(line);
+      } else {
+        tags.push(line);
+      }
+    });
+    if (!items.length) return text;
+    var w = lists[key];
+    if (w && seq > w.next) log("playlist: missed " + (seq - w.next) + " segment(s); listing afresh");
+    if (w && (seq > w.next || seq + items.length < w.next - 100)) w = null;
+    if (!w) w = { items: [], next: seq };
+    items.forEach(function (it, i) {
+      if (seq + i < w.next) {
+        // Its tags as the source has them now: the clock (program date time)
+        // goes on whichever segment the source lists first.
+        w.items.forEach(function (k) { if (k.seq === seq + i) k.lines = it.lines; });
+        return;
+      }
+      it.seq = seq + i;
+      w.items.push(it);
+      w.next = it.seq + 1;
+    });
+    var total = 0;
+    w.items.forEach(function (it) { total += it.dur; });
+    while (w.items.length > 1 && total - w.items[0].dur >= 45) total -= w.items.shift().dur;
+    lists[key] = w;
+    // Each discontinuity still listed that the source has dropped was counted
+    // in its discontinuity sequence: back out of it.
+    var dseq = ds ? parseInt(ds[1], 10) : 0;
+    w.items.forEach(function (it) { if (it.seq < seq && it.disc) dseq--; });
+    if (dseq < 0) return text;
+    var out = header.map(function (l) {
+      if (l.indexOf("#EXT-X-MEDIA-SEQUENCE:") === 0) return "#EXT-X-MEDIA-SEQUENCE:" + w.items[0].seq;
+      if (l.indexOf("#EXT-X-DISCONTINUITY-SEQUENCE:") === 0) return "#EXT-X-DISCONTINUITY-SEQUENCE:" + dseq;
+      return l;
+    });
+    w.items.forEach(function (it) { Array.prototype.push.apply(out, it.lines); });
+    return out.join("\n") + "\n";
+  }
+
   function relinkedLoader(Base) {
     function Relinked(config) {
       this.inner = new Base(config);
@@ -714,9 +786,18 @@ const String _takeoverJs = r'''
       this.context = null;
     }
     Relinked.prototype.load = function (context, loaderConfig, callbacks) {
+      var key = context.url;
       context.url = relinked(context.url);
       this.context = context;
-      this.inner.load(context, loaderConfig, callbacks);
+      var cbs = Object.assign({}, callbacks, {
+        onSuccess: function (response, stats, ctx, details) {
+          if (response && typeof response.data === "string") {
+            try { response.data = longerList(key, response.data, response.url || ctx.url); } catch (e) {}
+          }
+          callbacks.onSuccess(response, stats, ctx, details);
+        },
+      });
+      this.inner.load(context, loaderConfig, cbs);
       this.stats = this.inner.stats;
     };
     Relinked.prototype.abort = function () { this.inner.abort(); };
@@ -1149,6 +1230,24 @@ const String _takeoverJs = r'''
         if (d.response && d.response.code > 0) answeredAt = Date.now(); else lastNetErrAt = Date.now();
       }
       if (announced && /^(level|manifest)Load/.test(d.details)) linkFailing(d.details);
+      // A segment its server refuses (403, 404) is skipped once the player
+      // gets to it, as the TV's player skips one it can't get: hls.js asked
+      // for it again every second, forever. Seen 2026-10-21 (admin): the
+      // segments' CDN refused some of them to any request from the page (its
+      // Origin), and served the rest.
+      if (d.details === "fragLoadError" && d.frag && d.response && (d.response.code === 403 || d.response.code === 404)) {
+        var n = refused[d.frag.url] = (refused[d.frag.url] || 0) + 1;
+        // Played up to it: it's next, and under a second is left or the video
+        // has stopped for want of more (it can stop a second or two short of
+        // the end of what it has; where hls.js thinks the segment starts can
+        // be as far off).
+        var t = video.currentTime, b = video.buffered, ahead = 0;
+        for (var i = 0; i < b.length; i++) if (b.start(i) <= t + 0.1 && b.end(i) > t) ahead = b.end(i) - t;
+        if (n >= 2 && (ahead < 1 || (ahead < 3 && video.readyState < 3)) && d.frag.end > t && d.frag.start < t + ahead + d.frag.duration) {
+          log("segment refused (" + d.response.code + "): skipping its " + d.frag.duration.toFixed(1) + " s");
+          video.currentTime = Math.max(d.frag.end, t + ahead) + 0.05;
+        }
+      }
       if (!d.fatal) return;
       // Load again, a second later: straight away, with no network at all,
       // every request failed at once and it went round ~80 times a second
@@ -1168,6 +1267,7 @@ const String _takeoverJs = r'''
       else { post("fatal"); }
     });
     lastTime = -1;
+    refused = {};
     stalledFor = 0;
     lastProgressAt = Date.now();
     startedAt = Date.now();
@@ -1222,6 +1322,7 @@ const String _takeoverJs = r'''
 
   function takeOver(url) {
     window.__appPlayer.url = url;
+    lists = {};
     Promise.all([loadHls(), readFeeds(url)]).then(function (r) {
       if (!OurHls || !OurHls.isSupported()) return post("unsupported");
       var f = r[1];
