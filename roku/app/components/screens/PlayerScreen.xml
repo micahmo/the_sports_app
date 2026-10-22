@@ -14,7 +14,7 @@
   <script type="text/brightscript" uri="pkg:/components/screens/PlayerScreen.brs" />
   <children>
     <Video id="video" width="1920" height="1080" />
-    <!-- Black over the paused picture while holding back after a reconnect. -->
+    <!-- Black over the paused picture while it's held (see onVideoState). -->
     <Rectangle id="holdCover" width="1920" height="1080" color="0x000000FF" visible="false" />
     <!-- Under our spinner while starting or reconnecting, centred alone for a
          final message (showWorking, showFinal). -->

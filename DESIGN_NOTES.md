@@ -925,6 +925,21 @@ Things that were tried and didn't pan out: headers/HTTP-2 tricks for the
 playlist (it's the TLS fingerprint), and a server relay that re-serves the video
 (works, but unnecessary once the Roku can unwrap segments itself).
 
+### The picture under the spinner (tried on the TV, dropped 2026-10-22)
+
+The idea: the spinner over the picture the player stopped on, dimmed (as
+under the title bar), not over black. The user liked the look, but the Roku
+blanks its picture while buffering, so a stall went black first and the
+picture came back dimmed only for the hold that follows: "the black screen to
+overlay transition, that's worse than no dimmed picture at all". A restart or
+reconnect blanks it too (stopping the player clears it, apps can't capture a
+video frame, and most Rokus decode one video at a time), and the player
+ignored a seek past a lost segment while buffering, which would have kept it.
+What could work, untried: pausing the player ourselves just before it runs
+dry (the proxy knows what it handed over, the player how far it played), at
+the risk of extra spinners when the estimate is off. Phone and desktop keep
+the last frame while buffering, so they could do it simply.
+
 ### Servers that drop a stream
 
 The `lb*.strmd.st` sources (delta, foxtrot, hotel) can lose a stream on one
@@ -1001,8 +1016,9 @@ runs dry mid-game it holds a little once the picture is back (`rampUp`): 4 s,
 then 6, 8, 10, up to 30 s banked. A steady stream never waits; a flaky one
 banks only what it needs to stop stalling. A replay is moved past first (see
 below), then the hold: holding first left the rewound picture up for it. A
-reconnect holds what was banked,
-12 s at least; a new stream starts at none. A restart at live (below) starts
+reconnect counts as one more stall:
+it holds all that was banked and the next step (a fixed 12 s until 1.0.138);
+a new stream starts at none. A restart at live (below) starts
 at the edge: by then the stall has spent the cushion anyway. Phone and desktop
 keep a longer list of their own (see "A cushion in seconds" under Playlists and
 segment downloads).
@@ -1063,7 +1079,9 @@ runs dry at it doesn't: it took the segments after it without playing until
 `onStuck` restarted it 15 s on. So when a segment is lost for good (`lost`,
 counted by StreamTask) and the player runs dry within 40 s of it, it starts
 again at live 2 s into the spinner (`onLost`). Seen: restarted ~4 s into the
-spinner, playing 5 s later. And a stream is no longer given up as refused
+spinner, playing 5 s later. (Tried first: seeking past the gap, to keep the
+picture up where a restart blanks it. The player ignored the seek while
+buffering, its position unchanged, and the restart came 2 s later anyway.) And a stream is no longer given up as refused
 (two refusals before anything played) once any of its segments has come: two
 refused at the start marked admin's NFL Network failed and fell back to its SD
 stream, which then played.

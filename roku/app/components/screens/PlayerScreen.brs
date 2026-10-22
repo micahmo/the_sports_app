@@ -1,6 +1,7 @@
 sub init()
     t = theme()
     m.video = m.top.findNode("video")
+    m.holdCover = m.top.findNode("holdCover")
     m.status = m.top.findNode("status")
     m.status.font = bodyFont(32)
     m.status.color = t.textDim
@@ -51,7 +52,6 @@ sub init()
     m.seeking = false
     m.holdPending = false
     m.holding = false
-    m.holdCover = m.top.findNode("holdCover")
     m.holdTimerBack = m.top.createChild("Timer")
     m.holdTimerBack.observeField("fire", "onHoldBack")
 
@@ -154,6 +154,10 @@ sub showWorking(text as String)
     m.status.vertAlign = "top"
     m.status.translation = [160, 600]
     m.status.visible = true
+    showSpinner()
+end sub
+
+sub showSpinner()
     m.spinner.visible = true
     m.spinner.control = "start"
 end sub
@@ -431,8 +435,7 @@ sub onVideoState()
         end if
     else if st = "buffering" then
         ' Mid-game, our spinner alone; while starting, the status is under it.
-        m.spinner.visible = true
-        m.spinner.control = "start"
+        showSpinner()
         m.stall.control = "stop"
         m.stall.control = "start"
         ' Mid-game only: while starting, segments in hand are normal. Once per
@@ -1068,7 +1071,9 @@ end sub
 ' A segment gone for good (StreamTask's lost: refused directly and through the
 ' page), and the player ran dry at it: it doesn't play over the gap, but takes
 ' the segments after it without playing until onStuck (15 s, 2026-10-21). So
-' 2 s into the spinner, start it again at live, as onStuck would.
+' 2 s into the spinner, start it again at live, as onStuck would. (Seeking
+' past the gap instead, to keep its picture up: the player ignored the seek
+' while buffering, its position unchanged, 2026-10-22.)
 sub onLost()
     m.lostAt = CreateObject("roTimespan")
     if m.video.state = "buffering" and m.recorded and not m.afterRestart then m.lostTimer.control = "start"
@@ -1121,10 +1126,14 @@ sub reconnect(reason as String)
     end if
     m.restarts = m.restarts + 1
     print logTime(); "[player] reconnecting ("; m.restarts; "): "; reason
-    ' A stream that hung this long hangs again: start it further behind live,
-    ' keeping the cushion the hang would have left, and what it had banked.
-    m.holdBack = 12
-    if m.banked > m.holdBack then m.holdBack = m.banked
+    ' One more stall (see rampUp), and the new player starts at the edge with
+    ' nothing in hand: it holds all that was banked and the next step. (A
+    ' fixed 12 s before 1.0.138.)
+    if m.banked < 30 then
+        m.banked = m.banked + m.ramp
+        m.ramp = m.ramp + 2
+    end if
+    m.holdBack = m.banked
     m.holdPending = true
     showWorking("Reconnecting...")
     if m.restarts = 1 then
