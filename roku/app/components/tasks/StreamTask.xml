@@ -21,6 +21,8 @@
     <!-- How much of that list, from the top, the player has had (s): PlayerScreen
          skips it once the player plays. -->
     <field id="skipSecs" type="float" />
+    <!-- Counts segments lost for good mid-stream (PlayerScreen's onLost). -->
+    <field id="lost" type="integer" />
     <!-- Counts the player's starts again (PlayerScreen's restartAtLive): a
          segment still going to the one before is dropped (sendAll). -->
     <field id="startedAgain" type="integer" />

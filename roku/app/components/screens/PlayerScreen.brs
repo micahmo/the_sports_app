@@ -20,6 +20,9 @@ sub init()
     m.replayCheck = m.top.createChild("Timer")
     m.replayCheck.duration = 1
     m.replayCheck.observeField("fire", "onReplayCheck")
+    m.lostTimer = m.top.createChild("Timer")
+    m.lostTimer.duration = 2
+    m.lostTimer.observeField("fire", "onLostTimer")
     m.servedAtBuffering = 0
     m.retry = m.top.findNode("retry")
     m.retry.observeField("fire", "onRetry")
@@ -40,9 +43,12 @@ sub init()
     hideStatus()
 
     m.restarts = 0
-    ' How far behind live to start (see onHoldBack): every stream, not just after
-    ' a reconnect.
-    m.holdBack = holdBackSecs()
+    ' How long to hold the picture once it's ready (see onHoldBack): none at
+    ' the start; each stall mid-game a little more (rampUp).
+    m.holdBack = 0
+    m.ramp = 4
+    m.banked = 0
+    m.seeking = false
     m.holdPending = false
     m.holding = false
     m.holdCover = m.top.findNode("holdCover")
@@ -119,6 +125,7 @@ sub start()
     m.task.observeField("streamUrl", "onStreamUrl")
     m.task.observeField("quality", "onQuality")
     m.task.observeField("jumped", "onJumped")
+    m.task.observeField("lost", "onLost")
     m.task.control = "run"
 end sub
 
@@ -269,6 +276,7 @@ sub switchTo(s as Object, fallback as Boolean)
         m.task.unobserveField("streamUrl")
         m.task.unobserveField("quality")
         m.task.unobserveField("jumped")
+        m.task.unobserveField("lost")
         m.task.quit = true
         m.task = invalid
     end if
@@ -280,7 +288,9 @@ sub switchTo(s as Object, fallback as Boolean)
     m.tried[s.embedUrl] = true
     m.stream = s
     m.restarts = 0
-    m.holdBack = holdBackSecs()
+    m.holdBack = 0
+    m.ramp = 4
+    m.banked = 0
     ' The bar waits for the new stream's quality, as at the start (until
     ' 1.0.113 only the first stream's).
     m.holdBar = true
@@ -356,13 +366,22 @@ end sub
 sub onVideoState()
     st = m.video.state
     print logTime(); "[player] "; st; " "; m.video.errorMsg
+    if st = "playing" then
+        m.afterRestart = false
+        m.seeking = false
+    end if
+    ' A replay is moved past first, then any hold: holding first left the
+    ' rewound picture up for the hold (2026-10-22 00:02:45, "flashed back").
+    if st = "playing" and m.spellPos <> invalid then
+        checkReplay()
+        if m.seeking then return
+        if m.spellPos <> invalid then m.replayCheck.control = "start"
+    end if
     if st = "playing" and m.holdPending then
-        ' Starting (or reconnected): wait a little longer behind the spinner,
-        ' paused, while the source publishes on. Its segments stay listed
-        ' (StreamTask keeps 45 s), so it resumes that much behind live with
-        ' that much in hand. At the edge, with nothing banked, a source that
-        ' stood still 13-20 s or a slow segment meant a spinner (ten times
-        ' 2026-10-08 to -19); after a reconnect's hold the stream was steady.
+        ' After a stall (rampUp) or a reconnect: wait a little longer behind
+        ' the spinner, paused, while the source publishes on. Its segments stay
+        ' listed (StreamTask keeps 45 s), so it resumes that much further
+        ' behind live with that much more in hand.
         m.holdPending = false
         m.holding = true
         m.stall.control = "stop"
@@ -383,11 +402,6 @@ sub onVideoState()
             ' (Half a second on: right at the edge, it fetched the last again.)
             m.video.seek = m.video.position + s + 0.5
         end if
-    end if
-    if st = "playing" then m.afterRestart = false
-    if st = "playing" and m.spellPos <> invalid then
-        checkReplay()
-        if m.spellPos <> invalid then m.replayCheck.control = "start"
     end if
     if st = "playing" then
         hideStatus()
@@ -425,10 +439,17 @@ sub onVideoState()
         ' spell of buffering (a restart buffers too).
         if m.task <> invalid then m.servedAtBuffering = m.task.servedSecs
         m.tookAt = invalid
-        ' Where it ran dry, mid-game (see checkReplay).
+        ' Ran dry, mid-game: hold a little once it's back (rampUp), and note
+        ' where (see checkReplay). Once per spell; not for our own seek.
         m.replayCheck.control = "stop"
-        if m.recorded and not m.afterRestart and m.spellPos = invalid then m.spellPos = m.video.position
+        if m.recorded and not m.afterRestart and not m.seeking and m.spellPos = invalid then
+            rampUp()
+            m.spellPos = m.video.position
+        end if
         if m.recorded and not m.restarted then m.stuck.control = "start"
+        if m.recorded and not m.afterRestart and m.lostAt <> invalid then
+            if m.lostAt.TotalSeconds() < 40 then m.lostTimer.control = "start"
+        end if
     else if st = "paused" and (m.holding or m.status.visible) then
         ' (holding back, or paused for something else)
     else if st = "paused" then
@@ -450,6 +471,7 @@ sub checkReplay()
     back = m.spellPos - m.video.position
     if back > 3 then
         print logTime(); "[player] playing again "; Int(back); " s back from where it ran dry: on to there"
+        m.seeking = true
         m.video.seek = m.spellPos
         m.spellPos = invalid
     end if
@@ -460,10 +482,21 @@ sub onReplayCheck()
     m.spellPos = invalid
 end sub
 
-' 12 s: as long as most of the source's stalls (see onVideoState).
-function holdBackSecs() as Integer
-    return 12
-end function
+' Each stall mid-game, once the picture is back, holds it a little more: 4 s,
+' then 6, 8, 10, up to 30 s in all (StreamTask lists 45 s, and the player
+' keeps ~12 of it). At the edge, with nothing banked, a source that stood still
+' 13-20 s or a slow segment meant a spinner (ten times 2026-10-08 to -19);
+' holding 12 s at every start (1.0.135) cost every start that long, steady
+' stream or not ("painfully slow"). This way a steady stream never waits, and
+' a flaky one banks only what it needs to stop stalling.
+sub rampUp()
+    if m.banked >= 30 then return
+    m.holdBack = m.ramp
+    m.holdPending = true
+    m.banked = m.banked + m.ramp
+    m.ramp = m.ramp + 2
+    print logTime(); "[player] ran dry: holding "; m.holdBack; " s once it's back ("; m.banked; " s banked)"
+end sub
 
 sub onHoldBack()
     if not m.holding then return
@@ -1032,6 +1065,24 @@ sub onJumped()
     restartAtLive(true)
 end sub
 
+' A segment gone for good (StreamTask's lost: refused directly and through the
+' page), and the player ran dry at it: it doesn't play over the gap, but takes
+' the segments after it without playing until onStuck (15 s, 2026-10-21). So
+' 2 s into the spinner, start it again at live, as onStuck would.
+sub onLost()
+    m.lostAt = CreateObject("roTimespan")
+    if m.video.state = "buffering" and m.recorded and not m.afterRestart then m.lostTimer.control = "start"
+end sub
+
+sub onLostTimer()
+    if m.video.state <> "buffering" or m.task = invalid or m.restarted then return
+    m.lostAt = invalid
+    m.stuck.control = "stop"
+    m.restarted = true
+    print logTime(); "[player] at a segment that's gone: starting the player again"
+    restartAtLive(false)
+end sub
+
 sub onStall()
     print logTime(); "[player] stalled for "; m.stall.duration; "s"
     reconnect("The stream stalled")
@@ -1059,6 +1110,7 @@ sub reconnect(reason as String)
         m.task.unobserveField("streamUrl")
         m.task.unobserveField("quality")
         m.task.unobserveField("jumped")
+        m.task.unobserveField("lost")
         m.task.quit = true
         m.task = invalid
     end if
@@ -1070,8 +1122,9 @@ sub reconnect(reason as String)
     m.restarts = m.restarts + 1
     print logTime(); "[player] reconnecting ("; m.restarts; "): "; reason
     ' A stream that hung this long hangs again: start it further behind live,
-    ' keeping the cushion the hang would have left.
-    m.holdBack = holdBackSecs()
+    ' keeping the cushion the hang would have left, and what it had banked.
+    m.holdBack = 12
+    if m.banked > m.holdBack then m.holdBack = m.banked
     m.holdPending = true
     showWorking("Reconnecting...")
     if m.restarts = 1 then

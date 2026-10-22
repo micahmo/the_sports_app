@@ -29,9 +29,10 @@ sub work()
     m.stamps = []
     ' Each connection's start of the player (startedAgain when it connected).
     m.sockGen = {}
-    ' Segments the source's server refused (403) before any played: two and the
-    ' stream is given up at once (see onDownload).
+    ' Segments the source's server refused (403) before any played, with none
+    ' fetched at all: two and the stream is given up at once (see onDownload).
     m.refused = 0
+    m.anyGot = false
     ' Segments fetched by the page rather than directly (see addTransfer).
     m.viaPage = false
     m.anyServed = false
@@ -538,6 +539,7 @@ sub onDownload(ev as Object)
     code = ev.GetResponseCode()
     if mine.page <> invalid and code = 200 then code = pageSegment(ev.GetString(), mine.path)
     if code = 200 then
+        m.anyGot = true
         d.done = true
         d.file = mine.path
         d.took = d.started.TotalMilliseconds()
@@ -586,6 +588,10 @@ sub onDownload(ev as Object)
     ' have yet just after they were listed (2026-10-04); the player usually has
     ' ~12 s in hand, so there's time to wait for them.
     delays = [500, 1000, 2000, 4000]
+    ' Refused both directly and through the page: gone, not late. 8 s of
+    ' tries held the player at it, a spinner each time (admin, 2026-10-21, a
+    ' refused segment every few); a quick end and it plays over the gap.
+    if code = 403 and d.pageFailed then delays = [500, 1000]
     if d.retries < delays.Count() then
         d.retryIn = delays[d.retries]
         d.retries = d.retries + 1
@@ -596,10 +602,13 @@ sub onDownload(ev as Object)
     print logTime(); "[stream] segment FAILED after "; d.started.TotalMilliseconds(); " ms (error "; code; ")"
     ' Refused, not just slow or missing: that won't change, so rather than
     ' three reconnects over ~3 minutes, give the stream up now.
-    if code = 403 and not m.anyServed then
+    ' (Not when others come: a CDN refusing a segment every few gave up a
+    ' stream that played, 2026-10-21, and fell back to its SD stream.)
+    if code = 403 and not m.anyServed and not m.anyGot then
         m.refused = m.refused + 1
         if m.refused >= 2 then m.refusedOut = true
     end if
+    if m.anyServed then m.top.lost = m.top.lost + 1
     for each sock in d.waiters
         respond(sock, "502 Bad Gateway", "text/plain", invalid)
         finish(sock)

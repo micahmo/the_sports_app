@@ -991,15 +991,20 @@ cover and the spinner (`holdBack` in PlayerScreen) while the source publishes
 on, then resumes 12 s further behind live with those segments in hand
 (tested: resumed ~24 s behind, every segment ready before it was asked for).
 
-**Every stream starts with the hold** (1.0.135). At the edge with nothing
-banked, every TV spinner reported 2026-10-08 to -19 (ten of them) came from
-the source standing still 13-20 s or one slow segment, and the stream was
-steady once a reconnect's hold had put it behind. So a new stream (picked,
-switched to, or fallen back to) holds 12 s the same way before it plays:
-starting takes ~12 s longer. Tested: held 12 s, then played ~30 s behind the
-newest segment instead of ~18. A restart at live (below) still starts at the
-edge: by then the stall has spent the cushion anyway. Phone and desktop keep
-a longer list of their own (see "A cushion in seconds" under Playlists and
+**A cushion that ramps up** (1.0.137). At the edge with nothing banked,
+every TV spinner reported 2026-10-08 to -19 (ten of them) came from the source
+standing still 13-20 s or one slow segment, and the stream was steady once a
+reconnect's hold had put it behind. 1.0.135 held every new stream 12 s before
+it played, which cost every start that long, steady stream or not ("painfully
+slow"). Now (the user's idea) nothing at the start, and each time the player
+runs dry mid-game it holds a little once the picture is back (`rampUp`): 4 s,
+then 6, 8, 10, up to 30 s banked. A steady stream never waits; a flaky one
+banks only what it needs to stop stalling. A replay is moved past first (see
+below), then the hold: holding first left the rewound picture up for it. A
+reconnect holds what was banked,
+12 s at least; a new stream starts at none. A restart at live (below) starts
+at the edge: by then the stall has spent the cushion anyway. Phone and desktop
+keep a longer list of their own (see "A cushion in seconds" under Playlists and
 segment downloads).
 
 None of that helped while the proxy fetched the playlist and waited: a 17 s
@@ -1047,6 +1052,21 @@ again, and a segment that doesn't come through the page either is fetched
 directly at once, with the TV back to direct for the rest (that segment isn't
 sent to the page again, so the two can't ping-pong). Golf pays one refused
 request per new link.
+
+**Gone, not late** (1.0.137). On 2026-10-21 admin's CDN refused a segment
+every few, both directly and through the page, and the TV tried each again for
+8 s (0.5, 1, 2 and 4 s apart, meant for segments listed before the CDN has
+them), holding the player at it: a spinner each time, then a 20 s stall and a
+reconnect. Refused both ways, a segment now gets two quick tries (1.5 s).
+With video in hand the player plays over the gap (seen at midnight). One that
+runs dry at it doesn't: it took the segments after it without playing until
+`onStuck` restarted it 15 s on. So when a segment is lost for good (`lost`,
+counted by StreamTask) and the player runs dry within 40 s of it, it starts
+again at live 2 s into the spinner (`onLost`). Seen: restarted ~4 s into the
+spinner, playing 5 s later. And a stream is no longer given up as refused
+(two refusals before anything played) once any of its segments has come: two
+refused at the start marked admin's NFL Network failed and fell back to its SD
+stream, which then played.
 
 ### Stuck after the source skips ahead (1.0.122)
 
