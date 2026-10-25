@@ -404,6 +404,9 @@ sub onVideoState()
         if s > 0.5 then
             print logTime(); "[player] skipping "; Int(s); " s it has shown"
             ' (Half a second on: right at the edge, it fetched the last again.)
+            ' Our seek: its buffering isn't running dry (it held 10 s for
+            ' it, 2026-10-25).
+            m.seeking = true
             m.video.seek = m.video.position + s + 0.5
         end if
     end if
@@ -481,12 +484,28 @@ sub checkReplay()
 end sub
 
 sub onReplayCheck()
+    ' Paused for a hold: checked once it plays after it (giving up here let a
+    ' 14 s rewind replay after the hold, 2026-10-25).
+    if m.holding or m.holdPending then return
     if m.video.state = "playing" then checkReplay()
     m.spellPos = invalid
 end sub
 
-' Each stall mid-game, once the picture is back, holds it a little more: 4 s,
-' then 6, 8, 10, up to 30 s in all (StreamTask lists 45 s, and the player
+' The next hold: 4 s, then 6 at most each, and never past 30 s banked in all
+' (going past it, a reconnect held 40 s, 2026-10-23). Up to 12 s each, a 0.3 s
+' stall became a 12 s spinner (2026-10-25): the user would rather have short
+' ones.
+function nextStep() as Integer
+    n = m.ramp
+    if n > 6 then n = 6
+    if m.banked + n > 30 then n = 30 - m.banked
+    if n < 0 then n = 0
+    m.ramp = m.ramp + 2
+    return n
+end function
+
+' Each stall mid-game, once the picture is back, holds it a little: 4 s,
+' then 6 s each, up to 30 s in all (StreamTask lists 45 s, and the player
 ' keeps ~12 of it). At the edge, with nothing banked, a source that stood still
 ' 13-20 s or a slow segment meant a spinner (ten times 2026-10-08 to -19);
 ' holding 12 s at every start (1.0.135) cost every start that long, steady
@@ -494,10 +513,9 @@ end sub
 ' a flaky one banks only what it needs to stop stalling.
 sub rampUp()
     if m.banked >= 30 then return
-    m.holdBack = m.ramp
+    m.holdBack = nextStep()
     m.holdPending = true
-    m.banked = m.banked + m.ramp
-    m.ramp = m.ramp + 2
+    m.banked = m.banked + m.holdBack
     print logTime(); "[player] ran dry: holding "; m.holdBack; " s once it's back ("; m.banked; " s banked)"
 end sub
 
@@ -1039,10 +1057,17 @@ end sub
 ' starts at live: no new browser session, no hold back.
 sub restartAtLive(skipShown as Boolean)
     url = m.video.content.url
+    ' Not under a hold still going: its black cover stayed up over the new
+    ' player, sound and no picture, until its timer ran out (2026-10-25).
+    if m.holding then endHold()
     m.task.startedAgain = m.task.startedAgain + 1
     m.task.trim = true
     m.task.skipSecs = 0
     m.afterRestart = true
+    ' At the edge again: only the hold it's about to do (rampUp) is banked,
+    ' and the steps start small again.
+    if m.holdPending then m.banked = m.holdBack else m.banked = 0
+    m.ramp = 4
     m.spellPos = invalid
     m.replayCheck.control = "stop"
     ' Past what it showed (see onVideoState), after a jump: it was playing. Not
@@ -1126,15 +1151,14 @@ sub reconnect(reason as String)
     end if
     m.restarts = m.restarts + 1
     print logTime(); "[player] reconnecting ("; m.restarts; "): "; reason
-    ' One more stall (see rampUp), and the new player starts at the edge with
-    ' nothing in hand: it holds all that was banked and the next step. (A
-    ' fixed 12 s before 1.0.138.)
-    if m.banked < 30 then
-        m.banked = m.banked + m.ramp
-        m.ramp = m.ramp + 2
-    end if
-    m.holdBack = m.banked
-    m.holdPending = true
+    ' One more stall (see rampUp). The new player starts at the edge, so what
+    ' was banked is gone: it holds the next step, and that's all it has.
+    ' (Holding all that was banked held 40 s, 2026-10-23.)
+    m.banked = 0
+    m.ramp = 4
+    m.holdBack = nextStep()
+    m.banked = m.holdBack
+    m.holdPending = m.holdBack > 0
     showWorking("Reconnecting...")
     if m.restarts = 1 then
         start()

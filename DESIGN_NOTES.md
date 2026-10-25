@@ -1013,12 +1013,23 @@ reconnect's hold had put it behind. 1.0.135 held every new stream 12 s before
 it played, which cost every start that long, steady stream or not ("painfully
 slow"). Now (the user's idea) nothing at the start, and each time the player
 runs dry mid-game it holds a little once the picture is back (`rampUp`): 4 s,
-then 6, 8, 10, up to 30 s banked. A steady stream never waits; a flaky one
+then 6 s each, up to 30 s banked. A steady stream never waits; a flaky one
 banks only what it needs to stop stalling. A replay is moved past first (see
 below), then the hold: holding first left the rewound picture up for it. A
-reconnect counts as one more stall:
-it holds all that was banked and the next step (a fixed 12 s until 1.0.138);
-a new stream starts at none. A restart at live (below) starts
+reconnect counts as one more stall
+(a fixed 12 s until 1.0.138). Each hold is 6 s at most (12 s turned a 0.3 s
+stall into a 12 s spinner; the user would rather have short ones), the steps
+start at 4 s again after a restart or reconnect, and the bank never goes past
+30 s; a restart or reconnect puts the player at the edge, so what
+was banked is gone and only the hold that follows counts (1.0.139: holding all
+that was banked, past the cap, held 40 s after a reconnect, 2026-10-23). A
+new stream starts at none. Our own seeks (past a replay, past what a restart
+had already shown) don't count as running dry: the skip after a jump's restart
+once set off a 10 s hold (1.0.139). A restart in the middle of a hold ends it: its black
+cover stayed up over the restarted player, sound and no picture, for the rest
+of the hold (1.0.139). And the replay check waits out a hold: a second after
+the picture came back the player was paused for one, the check gave up, and
+a 14 s rewind replayed once the hold ended (1.0.139). A restart at live (below) starts
 at the edge: by then the stall has spent the cushion anyway. Phone and desktop
 keep a longer list of their own (see "A cushion in seconds" under Playlists and
 segment downloads).
