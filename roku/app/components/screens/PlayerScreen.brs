@@ -21,6 +21,14 @@ sub init()
     m.replayCheck = m.top.createChild("Timer")
     m.replayCheck.duration = 1
     m.replayCheck.observeField("fire", "onReplayCheck")
+    ' The picture not moving while the player says it's playing (see onStill).
+    m.stillTimer = m.top.createChild("Timer")
+    m.stillTimer.duration = 1
+    m.stillTimer.repeat = true
+    m.stillTimer.observeField("fire", "onStill")
+    m.stillTimer.control = "start"
+    m.stillPos = -1
+    m.stillFor = 0
     m.lostTimer = m.top.createChild("Timer")
     m.lostTimer.duration = 2
     m.lostTimer.observeField("fire", "onLostTimer")
@@ -1113,6 +1121,31 @@ sub onLostTimer()
     restartAtLive(false)
 end sub
 
+' Each second: the player says "playing" but its position hasn't moved in
+' 10 s. Seen 2026-10-25 21:47: the source's playlist stood still, the
+' picture stopped, and the player never said "buffering", so the stall
+' reconnect (which starts on buffering) never came; it sat frozen until the
+' stream was picked again, which played at once on a fresh link.
+sub onStill()
+    if m.video.state <> "playing" or m.holding or m.task = invalid then
+        m.stillFor = 0
+        m.stillPos = -1
+        return
+    end if
+    p = m.video.position
+    if p <> m.stillPos then
+        m.stillPos = p
+        m.stillFor = 0
+        return
+    end if
+    m.stillFor = m.stillFor + 1
+    if m.stillFor < 10 then return
+    m.stillFor = 0
+    m.stillPos = -1
+    print logTime(); "[player] the picture hasn't moved in 10 s while playing"
+    reconnect("The picture stopped")
+end sub
+
 sub onStall()
     print logTime(); "[player] stalled for "; m.stall.duration; "s"
     reconnect("The stream stalled")
@@ -1171,6 +1204,7 @@ end sub
 
 sub onClosing()
     endHold()
+    m.stillTimer.control = "stop"
     saveBest()
     m.stall.control = "stop"
     m.stuck.control = "stop"

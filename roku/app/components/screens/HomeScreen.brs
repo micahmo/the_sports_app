@@ -79,6 +79,7 @@ sub onLoaded()
     sports = ParseJson(r.sports)
     renameSports(sports)
     live = ParseJson(r.live)
+    cleanTitles(live)
     if type(sports) <> "roArray" then
         if m.quiet and m.rows.Count() > 0 then return
         showMessage("Couldn't reach streamed.pk. Press OK to retry.")
@@ -100,6 +101,7 @@ sub onLoaded()
     ' app does: it includes 24/7 channels that /live doesn't list.
     top = []
     counted = ParseJson(r.counts)
+    cleanTitles(counted)
     if type(counted) = "roArray" then
         ranked = []
         for each mt in counted

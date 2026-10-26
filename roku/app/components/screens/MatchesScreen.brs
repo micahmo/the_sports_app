@@ -137,6 +137,7 @@ end sub
 sub onLoaded()
     r = m.api.results
     matches = ParseJson(r.matches)
+    cleanTitles(matches)
     quiet = m.quiet and m.list.content <> invalid
     if type(matches) <> "roArray" then
         if quiet then return   ' keep what's showing
@@ -165,7 +166,9 @@ sub onLoaded()
         end for
         if not found then matches.Unshift(p.match)
     end if
-    matches = withViewers(matches, viewerCounts(ParseJson(r.counts)))
+    counts = ParseJson(r.counts)
+    cleanTitles(counts)
+    matches = withViewers(matches, viewerCounts(counts))
     if quiet then
         applyRefresh(matches)
         return

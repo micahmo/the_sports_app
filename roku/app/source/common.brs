@@ -479,3 +479,34 @@ function isNewerVersion(a as String, b as String) as Boolean
     end for
     return x.Count() > y.Count()
 end function
+
+' Emoji out of match titles, with the spaces they leave: the TV's fonts have
+' none, so each was a box ("🏈 🏈 🏈 NFL RedZone 🏈 🏈 🏈", 2026-10-25).
+' (The phone and desktop show them.)
+sub cleanTitles(list as Dynamic)
+    if type(list) <> "roArray" then return
+    for each mt in list
+        if type(mt) = "roAssociativeArray" then
+            if type(mt.title) = "roString" or type(mt.title) = "String" then mt.title = noEmoji(mt.title)
+        end if
+    end for
+end sub
+
+function noEmoji(s as String) as String
+    out = ""
+    dropped = false
+    for i = 1 to Len(s)
+        c = Mid(s, i, 1)
+        a = Asc(c)
+        if a >= &h1F000 or (a >= &h2600 and a <= &h27BF) or a = &hFE0F or a = &h200D or (a >= &hD800 and a <= &hDFFF) then
+            dropped = true
+        else
+            out = out + c
+        end if
+    end for
+    if not dropped then return s
+    while Instr(1, out, "  ") > 0
+        out = out.Replace("  ", " ")
+    end while
+    return out.Trim()
+end function

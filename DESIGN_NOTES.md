@@ -940,6 +940,26 @@ dry (the proxy knows what it handed over, the player how far it played), at
 the risk of extra spinners when the estimate is off. Phone and desktop keep
 the last frame while buffering, so they could do it simply.
 
+### Frozen while "playing" (TV, 1.0.140)
+
+On 2026-10-25 (21:47) the source's playlist stood still, the picture stopped,
+and the Roku's player never said "buffering" (ECP reported it, the Video
+node's state stayed "playing"), so the stall reconnect, which starts on
+buffering, never came: it sat frozen until the stream was picked again, which
+played at once on a fresh link. Now a once-a-second check (`onStill`)
+reconnects when the position hasn't moved in 10 s while the player says it's
+playing (not during our holds; the short holds over a hole are ~2 s).
+
+### Emoji in titles (TV)
+
+The TV's fonts have no emoji, and a Label has one font with no fallback, so
+each emoji drew as a box: "🏈 🏈 🏈 NFL RedZone 🏈 🏈 🏈" (the site's title,
+2026-10-25) showed as three boxes each side. The TV drops emoji from match
+titles as it reads the lists (`cleanTitles`, `noEmoji` in common.brs), with
+the spaces they leave; phone and desktop show them. (Drawing common ones as
+small images, e.g. our football icon for 🏈, would be the nicer version if
+emoji titles become common.)
+
 ### Servers that drop a stream
 
 The `lb*.strmd.st` sources (delta, foxtrot, hotel) can lose a stream on one
