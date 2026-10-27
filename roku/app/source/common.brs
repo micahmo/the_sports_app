@@ -510,3 +510,17 @@ function noEmoji(s as String) as String
     end while
     return out.Trim()
 end function
+
+' A game the same however it's listed: its two sides in either order, "vs" or
+' "at" ("Dallas Cowboys vs Philadelphia Eagles" = "Philadelphia Eagles at
+' Dallas Cowboys"); anything else, the title as is.
+function gameKey(title as String) as String
+    t = LCase(title).Trim()
+    t = t.Replace(" at ", " vs ").Replace(" v ", " vs ").Replace(" vs. ", " vs ")
+    sides = t.Split(" vs ")
+    if sides.Count() <> 2 then return t
+    a = sides[0].Trim()
+    b = sides[1].Trim()
+    if a > b then return b + "|" + a
+    return a + "|" + b
+end function

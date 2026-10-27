@@ -2360,6 +2360,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       final List<List<ApiMatch>> lists = await Future.wait(<Future<List<ApiMatch>>>[_api.fetchLiveMatches(), _api.fetchAllMatches()]);
       _currentIds = <String>{
         for (final ApiMatch m in lists[0]) m.id,
+        // The same game can be listed twice, under different ids: MNF was
+        // watched as "Philadelphia Eagles vs Dallas Cowboys" while the live
+        // list had "Dallas Cowboys vs Philadelphia Eagles", and RECENT dropped
+        // it as finished (2026-10-26, on the TV).
+        for (final ApiMatch m in lists[0]) 't:${gameKey(m.title)}',
         for (final ApiMatch m in lists[1])
           if (m.date <= 0) m.id,
       };
@@ -2387,7 +2392,17 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   List<RecentGame> get _rowRecent {
     final int now = DateTime.now().millisecondsSinceEpoch;
     final Set<String>? ids = _currentIds;
-    return _recent.where((RecentGame r) => (ids == null || ids.contains(r.match.id)) && r.match.date <= now).take(PlayerTuning.rowRecent).toList();
+    return _recent.where((RecentGame r) => (ids == null || ids.contains(r.match.id) || ids.contains('t:${gameKey(r.match.title)}')) && r.match.date <= now).take(PlayerTuning.rowRecent).toList();
+  }
+
+  // A game the same however it's listed: its two sides in either order, "vs"
+  // or "at"; anything else, the title as is. (As the TV's gameKey.)
+  static String gameKey(String title) {
+    final String t = title.toLowerCase().trim().replaceAll(' at ', ' vs ').replaceAll(' v ', ' vs ').replaceAll(' vs. ', ' vs ');
+    final List<String> sides = t.split(' vs ');
+    if (sides.length != 2) return t;
+    final List<String> two = <String>[sides[0].trim(), sides[1].trim()]..sort();
+    return two.join('|');
   }
 
   // The list keeps the best resolution and frame rate this viewing reached (an

@@ -601,7 +601,10 @@ function rowRecent() as Object
     for each r in recentGames()
         if out.Count() >= appPlayer().rowRecent then exit for
         ok = r.match <> invalid and r.match.id <> m.match.id and matchSeconds(r.match) <= now
-        if ok and m.currentIds <> invalid then ok = m.currentIds.DoesExist(r.match.id)
+        if ok and m.currentIds <> invalid then
+            ok = m.currentIds.DoesExist(r.match.id)
+            if not ok and r.match.title <> invalid then ok = m.currentIds.DoesExist("t:" + gameKey(r.match.title))
+        end if
         if ok then out.Push(r)
     end for
     return out
@@ -647,6 +650,11 @@ sub onAllLoaded()
     ids = {}
     for each mt in live
         if mt.id <> invalid then ids[mt.id] = true
+        ' The same game can be listed twice, under different ids: MNF was
+        ' watched as "Philadelphia Eagles vs Dallas Cowboys" while the live list
+        ' had "Dallas Cowboys vs Philadelphia Eagles", so RECENT dropped it as
+        ' finished (2026-10-26).
+        if type(mt.title) = "roString" or type(mt.title) = "String" then ids["t:" + gameKey(mt.title)] = true
     end for
     for each mt in list
         if mt.id <> invalid and matchSeconds(mt) <= 0 then ids[mt.id] = true

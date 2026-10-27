@@ -775,6 +775,14 @@ so another stream can be picked without waiting out a fallback.
 - The numbers (cards per side, recents kept, the note's time) and the wording
   are in `shared/app_data.json` (`player`, `playerText`).
 
+**The same game under two listings** (all apps, 2026-10-26). RECENT keeps a
+game only while the site's live list has it, by id. The site can list one
+game twice: MNF was watched as "Philadelphia Eagles vs Dallas Cowboys" (one
+id) while the live list had "Dallas Cowboys vs Philadelphia Eagles" (another),
+so the row dropped it as finished. Now a recent game also counts as on when
+the live list has a game with the same two sides, in either order, "vs" or
+"at" (`gameKey`).
+
 ### Buffer gaps
 
 Some feeds leave holes in the buffer (seen: 1–4s and 9–18s buffered, nothing in
