@@ -52,6 +52,7 @@
    "category": "american-football",
    "date": 0,
    "poster": "https://static.ppvservices.st/assets/thumb/5ed7ea60fe8e3842203b0741187f0fd7-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/5ed7ea60fe8e3842203b0741187f0fd7.jpg",
    "teams": null,
    "sources": [
     "ppv/18172"
@@ -65,6 +66,7 @@
    "category": "american-football",
    "date": 1793319300000,
    "poster": "https://static.ppvservices.st/assets/thumb/88b0c112edd9d19105dae562c5b37275-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/88b0c112edd9d19105dae562c5b37275.jpg",
    "teams": [
     [
      "Green Bay Packers",
@@ -87,6 +89,7 @@
    "category": "american-football",
    "date": 1793462400000,
    "poster": "https://static.ppvservices.st/assets/thumb/86a39ab4ee4b472b06c3cd26bf55f829-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/86a39ab4ee4b472b06c3cd26bf55f829.jpg",
    "teams": [
     [
      "Navy Midshipmen",
@@ -109,6 +112,7 @@
    "category": "afl",
    "date": 0,
    "poster": "https://static.ppvservices.st/assets/thumb/514cf8272ec290889a5ce6fd299fb9c8-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/514cf8272ec290889a5ce6fd299fb9c8.jpg",
    "teams": null,
    "sources": [
     "ppv/27406"
@@ -122,6 +126,7 @@
    "category": "baseball",
    "date": 1793232000000,
    "poster": "https://static.ppvservices.st/assets/thumb/3222f84fc40d2517cdd102587b9ad16f-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/3222f84fc40d2517cdd102587b9ad16f.jpg",
    "teams": [
     [
      "Milwaukee Brewers",
@@ -144,6 +149,7 @@
    "category": "basketball",
    "date": 1793228400000,
    "poster": "https://static.ppvservices.st/assets/thumb/f070ecc291fff4f69d8ba70e81c3b02f-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/f070ecc291fff4f69d8ba70e81c3b02f.jpg",
    "teams": [
     [
      "Miami Heat",
@@ -166,6 +172,7 @@
    "category": "basketball",
    "date": 1793228400000,
    "poster": "https://static.ppvservices.st/assets/thumb/7e7adb9d47b78097af1fcaa4bf2bad98-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/7e7adb9d47b78097af1fcaa4bf2bad98.jpg",
    "teams": [
     [
      "Washington Wizards",
@@ -188,6 +195,7 @@
    "category": "cricket",
    "date": 0,
    "poster": "https://static.ppvservices.st/assets/thumb/2e3cba2a94ae6af4b958675e73fe91e9-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/2e3cba2a94ae6af4b958675e73fe91e9.jpg",
    "teams": null,
    "sources": [
     "ppv/27493"
@@ -201,6 +209,7 @@
    "category": "cricket",
    "date": 0,
    "poster": "https://static.ppvservices.st/assets/thumb/5dfe2fc8e56d59add47afb0f6e996e55-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/5dfe2fc8e56d59add47afb0f6e996e55.jpg",
    "teams": null,
    "sources": [
     "ppv/27496"
@@ -214,6 +223,7 @@
    "category": "football",
    "date": 1793208600000,
    "poster": "https://static.ppvservices.st/assets/thumb/ed00aae83b945a2682aebd6b80c6a349-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/ed00aae83b945a2682aebd6b80c6a349.jpg",
    "teams": [
     [
      "AC Milan",
@@ -236,6 +246,7 @@
    "category": "football",
    "date": 1793208600000,
    "poster": "https://static.ppvservices.st/assets/thumb/f97b2d3b715838661cb716d707ffdfcc-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/f97b2d3b715838661cb716d707ffdfcc.jpg",
    "teams": [
     [
      "Parma",
@@ -258,6 +269,7 @@
    "category": "golf",
    "date": 0,
    "poster": "https://static.ppvservices.st/assets/thumb/9950e3e6c1a19cad6a216ec1c6b50d71-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/9950e3e6c1a19cad6a216ec1c6b50d71.jpg",
    "teams": null,
    "sources": [
     "ppv/29059"
@@ -271,6 +283,7 @@
    "category": "hockey",
    "date": 0,
    "poster": "https://static.ppvservices.st/assets/thumb/4a70bb8cf331b8ab0299fd836b56e2ed-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/4a70bb8cf331b8ab0299fd836b56e2ed.jpg",
    "teams": null,
    "sources": [
     "ppv/29780"
@@ -284,6 +297,7 @@
    "category": "hockey",
    "date": 1793230200000,
    "poster": "https://static.ppvservices.st/assets/thumb/9442b9f518ba74c931dfa3c602e132b6-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/9442b9f518ba74c931dfa3c602e132b6.jpg",
    "teams": [
     [
      "Philadelphia Flyers",
@@ -306,6 +320,7 @@
    "category": "rugby",
    "date": 0,
    "poster": "https://static.ppvservices.st/assets/thumb/5ec4933f4ae6363e151dfe5c75ad24e3-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/5ec4933f4ae6363e151dfe5c75ad24e3.jpg",
    "teams": null,
    "sources": [
     "ppv/27405"
@@ -319,6 +334,7 @@
    "category": "fight",
    "date": 1793232000000,
    "poster": "https://static.ppvservices.st/assets/thumb/b406ff9100d91b9210600260350246ff-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/b406ff9100d91b9210600260350246ff.jpg",
    "teams": null,
    "sources": [
     "ppv/31240"
@@ -332,6 +348,7 @@
    "category": "fight",
    "date": 1793322000000,
    "poster": "https://static.ppvservices.st/assets/thumb/78f581ee61589a76f6bcdeb095f95c12-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/78f581ee61589a76f6bcdeb095f95c12.jpg",
    "teams": null,
    "sources": [
     "ppv/31241"
@@ -345,6 +362,7 @@
    "category": "247",
    "date": 0,
    "poster": "https://thumbs.poocloud.in/southpark/preview.jpg",
+   "backdrop": null,
    "teams": null,
    "sources": [
     "ppv/5112"
@@ -358,6 +376,7 @@
    "category": "247",
    "date": 0,
    "poster": "https://static.ppvservices.st/assets/thumb/213d77252211e1926309f43b38263a4f-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/213d77252211e1926309f43b38263a4f.jpg",
    "teams": null,
    "sources": [
     "ppv/3663"

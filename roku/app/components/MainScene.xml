@@ -9,6 +9,8 @@
     <field id="newVersion" type="string" />
     <!-- "checking", "failed" or "done"; "" for a local build, which doesn't check. -->
     <field id="updateStatus" type="string" />
+    <!-- A deep link into a stream (see Main and openStream). -->
+    <field id="deepLink" type="assocarray" onChange="openStream" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/common.brs" />
   <script type="text/brightscript" uri="pkg:/source/generated/app_data.brs" />

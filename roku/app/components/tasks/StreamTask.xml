@@ -29,6 +29,8 @@
     <!-- The picture's clock just jumped this far ahead (s): big enough that the
          player starts again at live (PlayerScreen's onJumped). -->
     <field id="jumped" type="float" alwaysNotify="true" />
+    <!-- Counts new links found mid-stream (PlayerScreen's onNewLink). -->
+    <field id="newLink" type="integer" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/webdriver.brs" />
   <script type="text/brightscript" uri="pkg:/source/streamlink.brs" />

@@ -394,6 +394,14 @@ function posterUrl(match as Object) as String
     return ""
 end function
 
+' The biggest picture of the match there is, for behind the player while it
+' has none (the adapter's backdrop, else the poster); "" for none.
+function backdropUrl(match as Object) as String
+    b = match.backdrop
+    if b <> invalid and Left(b, 4) = "http" then return b
+    return posterUrl(match)
+end function
+
 ' A team badge's image, as {uri, crop}, or invalid for none (the badge then
 ' shows the sport icon). "logo<n>:<poster>" (posterLogos in backend.brs) is a
 ' team's logo on the game's poster: crop is where (left, top, width, height as

@@ -58,6 +58,10 @@ abstract class Backend {
   /// The match's poster image, or '' for none.
   String posterUrl(ApiMatch m);
 
+  /// The biggest picture of the match there is, for behind the player while
+  /// it has none (starting, reconnecting); '' for none.
+  String backdropUrl(ApiMatch m) => m.backdrop ?? posterUrl(m);
+
   /// A team badge's image from the backend's own badge id, or null if this
   /// backend has none.
   String? badgeUrl(String badgeId);

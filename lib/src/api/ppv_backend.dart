@@ -52,15 +52,19 @@ class PpvBackend extends Backend {
         final bool isLive = always || (starts <= now && (ends == 0 || now < ends));
         // The site counts people waiting for a game too, before it starts.
         final int? viewers = int.tryParse('${ev['viewers'] ?? ''}');
+        final String? poster = ev['poster'] as String?;
         matches.add(ApiMatch(
           id: id,
           title: title,
           category: sportId,
           // 0: a 24/7 channel, as the app has always read it.
           date: always ? 0 : starts * 1000,
-          poster: ev['poster'] as String?,
+          poster: poster,
+          // The poster's a 300x168 thumbnail; without "-thumbnail", the
+          // full picture (1280x720 mostly, 2026-10-28).
+          backdrop: poster != null && poster.contains('-thumbnail.') ? poster.replaceFirst('-thumbnail.', '.') : null,
           popular: null,
-          teams: teamsFrom(title, ev['poster'] as String?),
+          teams: teamsFrom(title, poster),
           sources: <MatchSourceRef>[MatchSourceRef(source: 'ppv', id: id)],
           viewers: viewers,
         ));

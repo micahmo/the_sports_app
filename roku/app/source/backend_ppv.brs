@@ -39,7 +39,7 @@ function ppvConvert(kind as String, a as String, b as String, text as String) as
                 ' 0: a 24/7 channel, as the app has always read it.
                 date = 0&
                 if not always then date = starts * 1000&
-                mt = {id: id, title: ev.name.Trim(), category: sportId, date: date, poster: ev.poster, teams: ppvTeams(ev.name.Trim(), ev.poster), sources: [{source: "ppv", id: id}], viewers: viewers}
+                mt = {id: id, title: ev.name.Trim(), category: sportId, date: date, poster: ev.poster, backdrop: ppvBackdrop(ev.poster), teams: ppvTeams(ev.name.Trim(), ev.poster), sources: [{source: "ppv", id: id}], viewers: viewers}
                 mt.live = live
                 if kind = "stream" and id = b then return FormatJson(ppvStreams(ev, viewers))
                 matches.Push(mt)
@@ -98,6 +98,15 @@ function ppvTeams(title as String, poster as Dynamic) as Dynamic
         if parts.Count() = 2 then return {home: {name: parts[0].Trim(), badge: logos[0]}, away: {name: parts[1].Trim(), badge: logos[1]}}
     end for
     return invalid
+end function
+
+' The poster's a 300x168 thumbnail; without "-thumbnail", the full picture
+' (1280x720 mostly, 2026-10-28). invalid if it isn't one.
+function ppvBackdrop(poster as Dynamic) as Dynamic
+    if poster = invalid then return invalid
+    i = Instr(1, poster, "-thumbnail.")
+    if i = 0 then return invalid
+    return Left(poster, i - 1) + Mid(poster, i + 10)
 end function
 
 ' "en-gb" -> "English"; an unknown code as it is.

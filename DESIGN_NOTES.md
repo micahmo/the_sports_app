@@ -911,6 +911,22 @@ the spinner lifted ~4 s after the network returned, the same stream playing on.
 The player page is also exactly the screen's height now (the video sat on a
 line of text, 4 px taller, and the page could be scrolled by that).
 
+### The weak note, and the player's log file (phone and desktop, 2026-10-28)
+
+**"Weak connection"** stays up while the connection is the trouble (stuck
+and `networkSuspect()`), and goes 10 s after playing steadily again, so a
+connection that stutters on doesn't flash it off and on; "Reconnecting…"
+takes its place (the spinner says so itself). It was a 4 s note at most once
+a minute, missed on the first pass through a dead zone (2026-10-25).
+
+**The player's log in a file** (`PlayerLog`, lib/src/player/player_log.dart):
+what's played and everything the page logs, timestamped, ~1 MB then
+`player.1.log`. The phone's system log rolled over within the hour (a replay
+at 7:33 PM was gone by 8:45, 2026-10-25), and desktop had none. Android:
+`adb shell cat /sdcard/Android/data/com.micahmo.sports/files/player.log`
+(release builds too; from PowerShell, Git Bash mangles the path); Windows:
+the app's support folder (`%APPDATA%`).
+
 ### Debugging
 
 Launch with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223`
@@ -1032,7 +1048,47 @@ ignored a seek past a lost segment while buffering, which would have kept it.
 What could work, untried: pausing the player ourselves just before it runs
 dry (the proxy knows what it handed over, the player how far it played), at
 the risk of extra spinners when the estimate is off. Phone and desktop keep
-the last frame while buffering, so they could do it simply.
+the last frame while buffering, so they could do it simply. (Built that way
+on 2026-10-28: next section.)
+
+### Pausing before it runs dry, and never black (TV, 2026-10-28)
+
+**Pause before dry** (`onDryCheck`, every half second): the video the player
+has in hand past the picture is what StreamTask handed it since this player
+started (`servedSecs` less `served0`, taken at each new content) less its
+position. A steady ppv.st stream keeps 10-20 s (measured 2026-10-28). Under
+`tvDryPauseAt` (2 s, shared/app_data.json) while playing, the TV pauses
+itself: the picture stays, dimmed (`dryDim`), our spinner over it, and the
+stall timer runs as if buffering. On again once it has `tvDryPauseAt` plus
+the next ramp step (4, then 6) in hand, so that pause is the hold, with the
+picture up, and banks the cushion as rampUp did. Tested on a staged 50 s
+playlist freeze, then a real one (ppv.st segment 404s, 19 s): frozen picture
+and spinner, then straight back to live. If it runs dry anyway (Roku
+buffering), the old path (rampUp, a hold) is as before.
+
+**Reconnects keep the picture**: the old player is paused, dimmed, under
+"Reconnecting..." (nothing it does counts meanwhile: `keptPicture`), and is
+stopped only when the new link is ready (`onStreamUrl`). The Roku can't keep
+one picture while loading another, so ~2 s of the poster follow. No hold
+after a reconnect any more: it showed the new link's first picture dimmed and
+paused, one more change on screen (the user: "dimmed or undimmed a couple
+times"); the next pause before dry banks the first step instead.
+
+**The poster instead of black** (all apps): starting, loading a new link, or
+buffering, the game's biggest picture, darkened (to 40%, the dim's level),
+under the spinner (`backdrop` on the TV, `_Backdrop` on phone and desktop,
+fitted where the video goes, fetched ahead when the streams page opens).
+`Backend.backdropUrl`: the adapter's `backdrop` (ppv.st's poster without
+"-thumbnail": 1280x720 rather than 300x168), else the poster. Black for a
+game with neither. Not over a kept picture: the real frozen frame first.
+
+**Holds**: muted from when one's due until the picture's uncovered (a blip of
+sound got out before the pause, 2026-10-26); the cover stays until the
+player says "playing" after the hold, past any replay skip (it came down on a
+rewound picture for an instant); dimmed rather than black unless a replay may
+be skipped. A new link found while the player spins restarts the 20 s stall
+timer (`newLink`), which had thrown away a link found a second earlier
+(2026-10-25 14:32).
 
 ### Frozen while "playing" (TV, 1.0.140)
 

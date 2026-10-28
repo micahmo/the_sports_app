@@ -46,6 +46,7 @@ class ApiMatch {
   final String category;
   final int date; // unix ms; 0 for a 24/7 channel
   final String? poster; // the backend's poster (Backend.posterUrl)
+  final String? backdrop; // a bigger picture of it, where the backend has one (Backend.backdropUrl)
   final bool? popular;
   final MatchTeams? teams;
   final List<MatchSourceRef> sources;
@@ -54,13 +55,14 @@ class ApiMatch {
   /// otherwise).
   final int? viewers;
 
-  ApiMatch({required this.id, required this.title, required this.category, required this.date, required this.popular, required this.sources, this.poster, this.teams, this.viewers});
+  ApiMatch({required this.id, required this.title, required this.category, required this.date, required this.popular, required this.sources, this.poster, this.backdrop, this.teams, this.viewers});
   factory ApiMatch.fromJson(Map<String, dynamic> j) => ApiMatch(
     id: j['id'] as String,
     title: j['title'] as String,
     category: j['category'] as String,
     date: (j['date'] as num).toInt(),
     poster: j['poster'] as String?,
+    backdrop: j['backdrop'] as String?,
     popular: j['popular'] as bool?,
     teams: j['teams'] != null ? MatchTeams.fromJson(j['teams']) : null,
     sources: ((j['sources'] as List<dynamic>).map((e) => MatchSourceRef.fromJson(e))).toList(),
@@ -74,6 +76,7 @@ class ApiMatch {
     'category': category,
     'date': date,
     'poster': poster,
+    'backdrop': backdrop,
     'popular': popular,
     'teams': teams?.toJson(),
     'sources': <Map<String, dynamic>>[for (final MatchSourceRef s in sources) s.toJson()],

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +15,7 @@ import '../api/backend.dart';
 import '../car.dart';
 import '../desktop/window_state.dart';
 import '../generated/app_data.dart';
+import '../player/player_log.dart';
 import '../player/player_webview.dart';
 import '../player/recents.dart';
 import '../player/stream_quality.dart';
@@ -56,6 +58,12 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     super.initState();
     _future = _loadAllStreams();
     _loadQualities();
+    // The player's backdrop (_Backdrop), fetched now so it's there from the
+    // first moment a stream starts.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final String url = Backend.current.backdropUrl(widget.matchItem);
+      if (url.isNotEmpty && mounted) precacheImage(CachedNetworkImageProvider(url), context).catchError((Object _) {});
+    });
 
     // Ask, then show once granted
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -431,7 +439,7 @@ const String _takeoverJs = r'''
   // Offering the better feed (see adapt()): since when it's looked good
   // enough, how long it must, and when the last switch up was.
   var upOkSince = 0, upHold = __UP_HOLD_MS__, lastUpAt = 0, switchedAt = 0, offering = false;
-  var weakToldAt = 0;
+  var weakTold = false;
   var slowStartTold = false;
   // How many times faster than it plays the last segment came (0: none yet).
   var lastRatio = 0;
@@ -1603,13 +1611,22 @@ const String _takeoverJs = r'''
     }
     // Stuck right now (not just resuming: the last progress reading lags a
     // moment behind, and the note came up just as the stream came back).
-    if (!(slow || dead) || Date.now() - lastProgressAt < 3000 || video.readyState >= 3) return;
+    if (!(slow || dead) || Date.now() - lastProgressAt < 3000 || video.readyState >= 3) {
+      // Playing again: the app lets the note go once it's held a while.
+      if (weakTold && video.readyState >= 3) {
+        weakTold = false;
+        post("weakok");
+      }
+      return;
+    }
     // The source being slow: no lower feed (it was no help) and no note
     // blaming the viewer's connection; the stall watch carries on as before.
     if (!networkSuspect()) return;
     if (slow && canDown) { switchFeed(cur + 1); return; }
-    if (Date.now() - weakToldAt > 60000) {
-      weakToldAt = Date.now();
+    // Up for as long as it struggles (a 4 s note once a minute was missed on
+    // the first pass through a dead zone, 2026-10-25).
+    if (!weakTold) {
+      weakTold = true;
       post("weak");
     }
   }
@@ -2000,6 +2017,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
     _stream = widget.stream;
     _match = widget.match;
+    PlayerLog.add('[app] playing ${_match.title} · ${_stream.name} · ${_stream.embedUrl}');
     _streams = widget.streams;
     _tried.add(_stream.embedUrl);
     _allowedUri = Uri.parse(_stream.embedUrl);
@@ -2052,6 +2070,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     }
     if (message.startsWith('log:')) {
       debugPrint('[player] ${message.substring(4)}');
+      PlayerLog.add('[player] ${message.substring(4)}');
       return;
     }
     if (message.startsWith('quality:')) {
@@ -2129,7 +2148,18 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       // only came as it recovered.
       final DateTime? back = _healedAt;
       if (_healing || (back != null && DateTime.now().difference(back) < const Duration(seconds: 30))) return;
-      _showNote(PlayerText.weakConnection, PlayerIcons.weakConnection);
+      // Up until it's played steadily a while ('weakok').
+      _showNote(PlayerText.weakConnection, PlayerIcons.weakConnection, sticky: true);
+      return;
+    }
+    if (message == 'weakok') {
+      // Playing again: the note goes after 10 s of it, so a connection that
+      // stutters on doesn't flash it off and on.
+      if (_switchedNote != PlayerText.weakConnection) return;
+      _noteTimer?.cancel();
+      _noteTimer = Timer(const Duration(seconds: 10), () {
+        if (mounted && _switchedNote == PlayerText.weakConnection) setState(() => _switchedNote = null);
+      });
       return;
     }
     if (message == 'stalled') {
@@ -2257,6 +2287,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       // The title bar waits for the new stream's quality, as at the start.
       _holdTitle = true;
       _stream = s;
+      PlayerLog.add('[app] switched to ${_stream.name} · ${_stream.embedUrl}');
       _quality = null;
       _bestHeight = 0;
       _bestFps = 0;
@@ -2300,6 +2331,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     final String inner = await _api.innerPlayerUrl(s.embedUrl);
     if (!mounted || _stream.embedUrl != s.embedUrl || inner == s.embedUrl) return;
     debugPrint("[player] player in another site's frame: playing $inner");
+    PlayerLog.add("[player] player in another site's frame: playing $inner");
     _loadPage(Uri.parse(inner));
   }
 
@@ -2450,7 +2482,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   // A brief note where the pill sits ("Switched to …", "Weak connection").
   // rebuild: false when already inside a setState.
-  void _showNote(String text, IconData icon, {bool rebuild = true}) {
+  // sticky: until it's taken down, not after a few seconds.
+  void _showNote(String text, IconData icon, {bool rebuild = true, bool sticky = false}) {
     void apply() {
       _switchedNote = text;
       _noteIcon = icon;
@@ -2462,6 +2495,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       apply();
     }
     _noteTimer?.cancel();
+    if (sticky) return;
     _noteTimer = Timer(const Duration(milliseconds: PlayerTuning.switchedNoteMs), () {
       if (mounted) setState(() => _switchedNote = null);
     });
@@ -2522,7 +2556,15 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   void _heal() {
     if (!mounted || _healing) return;
-    setState(() => _healing = true);
+    setState(() {
+      _healing = true;
+      // The spinner says so itself ("Reconnecting…", "Waiting for
+      // connection…"): not the weak note under it too.
+      if (_switchedNote == PlayerText.weakConnection) {
+        _noteTimer?.cancel();
+        _switchedNote = null;
+      }
+    });
     _healNow();
   }
 
@@ -3062,8 +3104,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                         ),
                       )
                     else if (!_ready || _healing)
-                      ColoredBox(
-                        color: Colors.black,
+                      _Backdrop(
+                        url: Backend.current.backdropUrl(_match),
                         child: Center(
                           // The spinner in the true centre whether or not there's
                           // text; the text goes under it without moving it.
@@ -3366,6 +3408,38 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 }
 
 // Simple holder so Scaffold rebuilds don’t recreate controller widget unnecessarily
+/// While there's no picture (starting, reconnecting): the game's biggest
+/// picture, darkened, rather than black (user, 2026-10-28; the TV's backdrop
+/// too). Black for a game without one.
+class _Backdrop extends StatelessWidget {
+  const _Backdrop({required this.url, required this.child});
+  final String url;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: Colors.black,
+    child: Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        if (url.isNotEmpty)
+          Opacity(
+            opacity: 0.4,
+            // Where the video will be (letterboxed as it is), all of it.
+            child: CachedNetworkImage(
+              imageUrl: url,
+              fit: BoxFit.contain,
+              fadeInDuration: Duration.zero,
+              placeholder: (_, __) => const SizedBox.shrink(),
+              errorWidget: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+        child,
+      ],
+    ),
+  );
+}
+
 class _WebViewHolder extends StatelessWidget {
   // Windows: whether the native web view is in place (see _nativeShown); a
   // field rather than read from the state, so the holder rebuilds when it changes.

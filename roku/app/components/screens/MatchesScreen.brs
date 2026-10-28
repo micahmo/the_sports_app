@@ -30,6 +30,8 @@ sub start()
     if m.mode = "popular" then title = "Popular"
     if m.mode = "sport" then title = p.sportName
     m.title = title
+    ' Opened by a deep link (MainScene's openStream): play this once it's listed.
+    m.autoPlay = p.initialStream
     renderTitle(invalid)
     loading("list")
 
@@ -489,7 +491,9 @@ sub onStreamsLoaded()
     else
         m.streamItems = items
         m.streams.content = content
-        if m.wantStreams = true then
+        if m.autoPlay <> invalid then
+            autoPlay(content)
+        else if m.wantStreams = true then
             m.wantStreams = false
             focusStreams()
         end if
@@ -526,8 +530,29 @@ sub onStreamFocused()
     m.streams.jumpToItem = target
 end sub
 
+' A deep link's stream, once: on it in the list, then playing it as if
+' picked. Not listed: the cursor in the streams, nothing played.
+sub autoPlay(content as Object)
+    want = m.autoPlay
+    m.autoPlay = invalid
+    at = -1
+    for i = 0 to content.getChildCount() - 1
+        c = content.getChild(i)
+        if c.stream <> invalid and c.stream.embedUrl = want then at = i
+    end for
+    m.wantStreams = false
+    focusStreams()
+    if at < 0 then return
+    m.streamFocus = at
+    m.streams.jumpToItem = at
+    play(content.getChild(at))
+end sub
+
 sub onStreamSelected()
-    item = m.streams.content.getChild(m.streams.itemSelected)
+    play(m.streams.content.getChild(m.streams.itemSelected))
+end sub
+
+sub play(item as Dynamic)
     if item = invalid or item.stream = invalid then return
     s = item.stream
     m.lastPlayed = s.embedUrl

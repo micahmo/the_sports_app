@@ -19,6 +19,7 @@ Map<String, dynamic> canonical(PpvSnapshot s) => <String, dynamic>{
         'category': m.category,
         'date': m.date,
         'poster': m.poster,
+        'backdrop': m.backdrop,
         'teams': m.teams == null
             ? null
             : <List<String?>>[

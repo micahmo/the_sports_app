@@ -14,8 +14,14 @@
   <script type="text/brightscript" uri="pkg:/components/screens/PlayerScreen.brs" />
   <children>
     <Video id="video" width="1920" height="1080" />
-    <!-- Black over the paused picture while it's held (see onVideoState). -->
+    <!-- The game's poster, darkened, while there's no picture: starting,
+         loading a new link, buffering (see showBackdrop). -->
+    <Poster id="backdrop" width="1920" height="1080" loadDisplayMode="scaleToZoom" blendColor="0x666666FF" visible="false" />
+    <!-- Over the paused picture while it's held (see onVideoState): dimmed, or
+         black when a replay may be skipped after it. -->
     <Rectangle id="holdCover" width="1920" height="1080" color="0x000000FF" visible="false" />
+    <!-- Over the picture while paused before running dry (onDryCheck). -->
+    <Rectangle id="dryDim" width="1920" height="1080" color="0x00000099" visible="false" />
     <!-- Under our spinner while starting or reconnecting, centred alone for a
          final message (showWorking, showFinal). -->
     <Label id="status" translation="[160, 440]" width="1600" height="200" horizAlign="center" vertAlign="center" wrap="true" />

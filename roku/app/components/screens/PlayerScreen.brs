@@ -2,6 +2,7 @@ sub init()
     t = theme()
     m.video = m.top.findNode("video")
     m.holdCover = m.top.findNode("holdCover")
+    m.backdrop = m.top.findNode("backdrop")
     m.status = m.top.findNode("status")
     m.status.font = bodyFont(32)
     m.status.color = t.textDim
@@ -28,6 +29,16 @@ sub init()
     m.stillTimer.observeField("fire", "onStill")
     m.stillTimer.control = "start"
     m.stillPos = -1
+    ' Pausing just before it runs dry (see onDryCheck).
+    m.dryDim = m.top.findNode("dryDim")
+    m.dryPaused = false
+    m.keptPicture = false
+    m.served0 = 0
+    m.dryCheck = m.top.createChild("Timer")
+    m.dryCheck.duration = 0.5
+    m.dryCheck.repeat = true
+    m.dryCheck.observeField("fire", "onDryCheck")
+    m.dryCheck.control = "start"
     m.stillFor = 0
     m.lostTimer = m.top.createChild("Timer")
     m.lostTimer.duration = 2
@@ -60,6 +71,7 @@ sub init()
     m.seeking = false
     m.holdPending = false
     m.holding = false
+    m.uncover = false
     m.holdTimerBack = m.top.createChild("Timer")
     m.holdTimerBack.observeField("fire", "onHoldBack")
 
@@ -117,10 +129,14 @@ sub start()
     end if
     m.barTitle.text = m.match.title
     m.barQuality.text = barLine("")
+    m.backdrop.uri = backdropUrl(m.match)
+    ' Reconnecting, the frozen picture stays until the new link's ready
+    ' (onStreamUrl): over it, the poster hid the game from the start.
+    if not m.keptPicture then showBackdrop()
     m.recorded = false
     m.spellPos = invalid
     m.replayCheck.control = "stop"
-    if m.holdBack > 0 then m.holdPending = true
+    if m.holdBack > 0 then pendHold()
     if m.holdBar then
         setShown(m.bar, true)
         setShown(m.pill, hasRow())
@@ -134,6 +150,7 @@ sub start()
     m.task.observeField("quality", "onQuality")
     m.task.observeField("jumped", "onJumped")
     m.task.observeField("lost", "onLost")
+    m.task.observeField("newLink", "onNewLink")
     m.task.control = "run"
 end sub
 
@@ -163,6 +180,12 @@ sub showWorking(text as String)
     m.status.translation = [160, 600]
     m.status.visible = true
     showSpinner()
+end sub
+
+' No picture (starting, a new link, buffering): the game's poster, darkened,
+' rather than black (user, 2026-10-28). None for a game without one.
+sub showBackdrop()
+    m.backdrop.visible = m.backdrop.uri <> ""
 end sub
 
 sub showSpinner()
@@ -280,6 +303,8 @@ sub switchTo(s as Object, fallback as Boolean)
     m.stall.control = "stop"
     m.stuck.control = "stop"
     m.retry.control = "stop"
+    m.keptPicture = false
+    m.dryDim.visible = false
     m.video.control = "stop"
     m.video.content = invalid
     if m.task <> invalid then
@@ -289,6 +314,7 @@ sub switchTo(s as Object, fallback as Boolean)
         m.task.unobserveField("quality")
         m.task.unobserveField("jumped")
         m.task.unobserveField("lost")
+        m.task.unobserveField("newLink")
         m.task.quit = true
         m.task = invalid
     end if
@@ -320,6 +346,13 @@ sub onRetry()
 end sub
 
 sub onStreamUrl()
+    if m.keptPicture then
+        m.keptPicture = false
+        m.dryDim.visible = false
+        m.video.control = "stop"
+        showBackdrop()
+    end if
+    m.served0 = m.task.servedSecs
     m.video.content = streamContent(m.task.streamUrl)
     ' Our spinner and the last status stay up until it plays (onVideoState).
     m.video.control = "play"
@@ -378,6 +411,10 @@ end sub
 sub onVideoState()
     st = m.video.state
     print logTime(); "[player] "; st; " "; m.video.errorMsg
+    ' The old stream, paused under a reconnect (see reconnect): nothing it
+    ' does counts.
+    if m.keptPicture then return
+    if st = "playing" then m.backdrop.visible = false
     if st = "playing" then
         m.afterRestart = false
         m.seeking = false
@@ -389,6 +426,10 @@ sub onVideoState()
         if m.seeking then return
         if m.spellPos <> invalid then m.replayCheck.control = "start"
     end if
+    ' After a hold: the picture and sound back only now, past any replay
+    ' (uncovered as the hold ended, a rewound picture flashed up before the
+    ' seek, 2026-10-26 23:00).
+    if st = "playing" and m.uncover then uncover()
     if st = "playing" and m.holdPending then
         ' After a stall (rampUp) or a reconnect: wait a little longer behind
         ' the spinner, paused, while the source publishes on. Its segments stay
@@ -397,6 +438,9 @@ sub onVideoState()
         m.holdPending = false
         m.holding = true
         m.stall.control = "stop"
+        ' Dimmed, the picture showing as when it pauses before running dry;
+        ' black if a replay may be skipped once it's over (see uncover).
+        if m.spellPos = invalid then m.holdCover.color = "0x00000099" else m.holdCover.color = "0x000000FF"
         m.holdCover.visible = true
         m.video.control = "pause"
         m.holdTimerBack.duration = m.holdBack
@@ -446,7 +490,9 @@ sub onVideoState()
         end if
     else if st = "buffering" then
         ' Mid-game, our spinner alone; while starting, the status is under it.
+        ' The poster rather than black behind it.
         showSpinner()
+        showBackdrop()
         m.stall.control = "stop"
         m.stall.control = "start"
         ' Mid-game only: while starting, segments in hand are normal. Once per
@@ -464,8 +510,8 @@ sub onVideoState()
         if m.recorded and not m.afterRestart and m.lostAt <> invalid then
             if m.lostAt.TotalSeconds() < 40 then m.lostTimer.control = "start"
         end if
-    else if st = "paused" and (m.holding or m.status.visible) then
-        ' (holding back, or paused for something else)
+    else if st = "paused" and (m.holding or m.dryPaused or m.status.visible) then
+        ' (holding back, paused before running dry, or for something else)
     else if st = "paused" then
         hideStatus()
     else if st = "error" then
@@ -522,24 +568,83 @@ end function
 sub rampUp()
     if m.banked >= 30 then return
     m.holdBack = nextStep()
-    m.holdPending = true
+    pendHold()
     m.banked = m.banked + m.holdBack
     print logTime(); "[player] ran dry: holding "; m.holdBack; " s once it's back ("; m.banked; " s banked)"
 end sub
 
+' A hold to come, muted till it's over: playing for the moment before the
+' hold paused it let a blip of sound through (2026-10-26 22:28).
+sub pendHold()
+    m.holdPending = true
+    m.video.mute = true
+end sub
+
+' The hold's done: play on, still covered until it's playing (see
+' onVideoState). Unless it never paused: then uncovered now.
 sub onHoldBack()
     if not m.holding then return
     m.holding = false
-    m.holdCover.visible = false
     m.video.control = "resume"
+    if m.video.state = "paused" then m.uncover = true else uncover()
+end sub
+
+sub uncover()
+    m.uncover = false
+    m.holdCover.visible = false
+    m.video.mute = false
 end sub
 
 ' No hold back in progress or waiting (a new stream, a reconnect, leaving).
 sub endHold()
     m.holdPending = false
     m.holding = false
-    m.holdCover.visible = false
     m.holdTimerBack.control = "stop"
+    uncover()
+    if m.dryPaused then endDryPause()
+end sub
+
+' Each half second: the video the player has in hand past the picture (what
+' StreamTask handed it since it started, less its position; 10-20 s on a
+' steady stream, 2026-10-28). Near none and nothing new coming: pause it
+' ourselves, a spinner over the dimmed picture, before it runs dry, which
+' blanks the picture (the Roku's buffering, "definitely jarring", 2026-10-23)
+' and often replays. On again with the next hold's step in hand (see rampUp):
+' the hold, with the picture up. If it runs dry anyway, buffering's path
+' (rampUp, the hold) is as before.
+sub onDryCheck()
+    if m.task = invalid or m.video.content = invalid then return
+    ahead = m.task.servedSecs - m.served0 - m.video.position
+    if m.dryPaused then
+        if ahead >= m.dryResumeAt then
+            print logTime(); "[player] "; Int(ahead); " s in hand: on again"
+            endDryPause()
+            m.video.control = "resume"
+        end if
+        return
+    end if
+    if m.video.state <> "playing" or not m.recorded or m.holding or m.holdPending or m.seeking then return
+    at = appPlayer().tvDryPauseAt
+    if ahead >= at then return
+    m.dryPaused = true
+    m.video.control = "pause"
+    m.dryDim.visible = true
+    showSpinner()
+    ' As when it buffers: if nothing comes, the stall reconnects.
+    m.stall.control = "stop"
+    m.stall.control = "start"
+    n = 0
+    if m.banked < 30 then n = nextStep()
+    m.banked = m.banked + n
+    m.dryResumeAt = at + n
+    print logTime(); "[player] "; ahead; " s in hand: paused before running dry, on at "; m.dryResumeAt; " s ("; m.banked; " s banked)"
+end sub
+
+sub endDryPause()
+    m.dryPaused = false
+    m.dryDim.visible = false
+    m.stall.control = "stop"
+    hideStatus()
 end sub
 
 sub onHoldTimer()
@@ -1088,7 +1193,9 @@ sub restartAtLive(skipShown as Boolean)
     ' Past what it showed (see onVideoState), after a jump: it was playing. Not
     ' when stuck: it showed none of what it took, and that's game not yet seen.
     m.skipAfterStart = skipShown
+    if m.dryPaused then endDryPause()
     m.video.control = "stop"
+    m.served0 = m.task.servedSecs
     m.video.content = streamContent(url)
     m.video.control = "play"
 end sub
@@ -1153,6 +1260,16 @@ sub onStill()
     reconnect("The picture stopped")
 end sub
 
+' A new link found while the player spins: the stall's 20 s start again, to
+' give it time to play (the stall reconnected a second after one came,
+' throwing it away, 2026-10-25 14:32).
+sub onNewLink()
+    if m.video.state <> "buffering" then return
+    print logTime(); "[player] a new link: waiting for it"
+    m.stall.control = "stop"
+    m.stall.control = "start"
+end sub
+
 sub onStall()
     print logTime(); "[player] stalled for "; m.stall.duration; "s"
     reconnect("The stream stalled")
@@ -1170,10 +1287,21 @@ sub reconnect(reason as String)
     m.stall.control = "stop"
     m.stuck.control = "stop"
     m.retry.control = "stop"
-    m.video.control = "stop"
-    ' And let go of it, so none of the player's own UI (its buffering spinner)
-    ' lingers under ours.
-    m.video.content = invalid
+    if m.restarts < 3 and m.video.content <> invalid then
+        ' Its picture stays up, paused and dimmed under the spinner, until the
+        ' new link's ready (onStreamUrl): stopped, it was black all through
+        ' (user, 2026-10-28). Nothing it does counts meanwhile (onVideoState).
+        if not m.keptPicture then m.video.control = "pause"
+        m.keptPicture = true
+        m.dryDim.visible = true
+    else
+        m.keptPicture = false
+        m.dryDim.visible = false
+        m.video.control = "stop"
+        ' And let go of it, so none of the player's own UI (its buffering
+        ' spinner) lingers under ours.
+        m.video.content = invalid
+    end if
     if m.task <> invalid then
         m.task.unobserveField("status")
         m.task.unobserveField("error")
@@ -1181,6 +1309,7 @@ sub reconnect(reason as String)
         m.task.unobserveField("quality")
         m.task.unobserveField("jumped")
         m.task.unobserveField("lost")
+        m.task.unobserveField("newLink")
         m.task.quit = true
         m.task = invalid
     end if
@@ -1191,14 +1320,13 @@ sub reconnect(reason as String)
     end if
     m.restarts = m.restarts + 1
     print logTime(); "[player] reconnecting ("; m.restarts; "): "; reason
-    ' One more stall (see rampUp). The new player starts at the edge, so what
-    ' was banked is gone: it holds the next step, and that's all it has.
-    ' (Holding all that was banked held 40 s, 2026-10-23.)
+    ' The new player starts at the edge with nothing banked, and plays at
+    ' once: a hold here showed its first picture dimmed and paused, one more
+    ' change on screen after the frozen picture and the poster (2026-10-28).
+    ' If it runs low, pausing before it runs dry banks the first step.
     m.banked = 0
     m.ramp = 4
-    m.holdBack = nextStep()
-    m.banked = m.holdBack
-    m.holdPending = m.holdBack > 0
+    m.holdBack = 0
     showWorking("Reconnecting...")
     if m.restarts = 1 then
         start()

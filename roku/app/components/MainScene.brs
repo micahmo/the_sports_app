@@ -134,6 +134,25 @@ sub onNavigate(ev as Object)
     push(s)
 end sub
 
+' A deep link (match, sport, stream): straight into that stream, built as if
+' navigated by hand, so Back goes to the game's streams, then Home. For
+' putting a stream back on after installing a test build (55 s through the
+' menus, 2026-10-26). The sport's list opens on the game and plays the stream
+' (MatchesScreen's initialStream); a stream it doesn't list stays picked.
+sub openStream()
+    link = m.top.deepLink
+    if link = invalid or link.match = invalid or link.sport = invalid then return
+    while m.stack.Count() > 1
+        pop()
+    end while
+    name = link.sport
+    names = appSportDisplayNames()
+    if names.DoesExist(link.sport) then name = names[link.sport]
+    s = CreateObject("roSGNode", "MatchesScreen")
+    s.params = {screen: "matches", mode: "sport", sportId: link.sport, sportName: name, initialMatch: link.match, initialStream: link.stream}
+    push(s)
+end sub
+
 function onKeyEvent(key as String, press as Boolean) as Boolean
     if not press or key <> "back" then return false
     if m.stack.Count() > 1 then

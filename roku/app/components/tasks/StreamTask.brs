@@ -439,6 +439,7 @@ sub onMinted(r as Object)
     ' segments came, until the stall reconnected (2026-10-18). See addTransfer.
     if m.viaPage then print logTime(); "[stream] new link: fetching segments directly again"
     m.viaPage = false
+    m.top.newLink = m.top.newLink + 1
 end sub
 
 ' ---- segments ---------------------------------------------------------------

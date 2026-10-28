@@ -39,7 +39,7 @@ end function
 
 ' Player numbers both apps follow (see the JSON for what each is).
 function appPlayer() as Object
-    return {rowThisGame: 3, rowRecent: 3, recentsKept: 12, stuckDownloadMs: 4000, switchedNoteMs: 4000, overlayPercent: 70, downPercent: 110, upPercent: 150, upHoldMs: 60000, upOfferMs: 8000, slowStartMs: 20000, failedForMinutes: 60}
+    return {rowThisGame: 3, tvDryPauseAt: 2, rowRecent: 3, recentsKept: 12, stuckDownloadMs: 4000, switchedNoteMs: 4000, overlayPercent: 70, downPercent: 110, upPercent: 150, upHoldMs: 60000, upOfferMs: 8000, slowStartMs: 20000, failedForMinutes: 60}
 end function
 
 ' Screen spacing, in pixels of the 1920-wide screen (see the JSON).
