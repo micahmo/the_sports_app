@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<!-- A team's logo on a light disc, as in the phone app, or (`cover`) an
-     event's poster cropped into the disc. Falls back to the sport's icon when
-     there is no image or it fails to load. -->
+<!-- A team's logo on a light disc, as in the phone app (`badge`, the team's
+     badge id: badgeImage in common.brs), or a logo cut from a bigger picture
+     filling the disc, or (`cover`) an event's poster cropped into the disc.
+     Falls back to the sport's icon when there is no image or it fails to
+     load. -->
 <component name="TeamBadge" extends="Group">
   <interface>
     <field id="size" type="float" onChange="update" />
-    <field id="uri" type="string" onChange="update" />
+    <field id="badge" type="string" onChange="update" />
     <field id="fallback" type="string" onChange="update" />
     <field id="cover" type="string" onChange="update" />
   </interface>

@@ -71,7 +71,7 @@ sub work()
     ' No internet (the server on the LAN may still answer): the player waits
     ' and tries again rather than counting this as the stream failing.
     if not siteReachable() then
-        print logTime(); "[stream] streamed.pk unreachable"
+        print logTime(); "[stream] "; hostOf(appBackend().api); " unreachable"
         m.top.error = "offline"
         return
     end if
@@ -108,7 +108,8 @@ end sub
 
 function siteReachable() as Boolean
     x = CreateObject("roUrlTransfer")
-    x.SetUrl("https://streamed.pk/")   ' apiBase() in common.brs, which tasks don't load
+    ' The backend's site (see DESIGN_NOTES, Backends).
+    x.SetUrl("https://" + hostOf(appBackend().api) + "/")
     x.SetCertificatesFile("common:/certs/ca-bundle.crt")
     x.InitClientCertificates()
     port = CreateObject("roMessagePort")
@@ -501,11 +502,13 @@ sub addTransfer(d as Object)
     x.SetUrl(d.url)
     x.SetCertificatesFile("common:/certs/ca-bundle.crt")
     x.InitClientCertificates()
-    ' As the embed page's own requests: segments on the site's own servers
-    ' (lb*.strmd.st, 2026-10-10 golf) are refused (403) without them. TikTok's
-    ' CDN, where most segments are, doesn't mind either way.
-    x.AddHeader("Referer", "https://embed.st/")
-    x.AddHeader("Origin", "https://embed.st")
+    ' As the embed page's own requests (its site as Referer and Origin):
+    ' segments on the site's own servers (lb*.strmd.st, 2026-10-10 golf) were
+    ' refused (403) without them. TikTok's CDN, where most segments are,
+    ' doesn't mind either way.
+    site = "https://" + hostOf(m.top.embedUrl)
+    x.AddHeader("Referer", site + "/")
+    x.AddHeader("Origin", site)
     x.SetMessagePort(m.port)
     if x.AsyncGetToFile(path) then
         id = x.GetIdentity().ToStr()

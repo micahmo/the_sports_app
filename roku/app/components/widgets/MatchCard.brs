@@ -41,7 +41,7 @@ sub render()
             badge = m.top.createChild("TeamBadge")
             badge.translation = [pad, y]
             badge.fallback = icon
-            badge.uri = badgeUrl(teams[i].badge)
+            if teams[i].badge <> invalid then badge.badge = teams[i].badge
             badge.size = b
             nameLabel(teams[i].name, condensed("Medium", 38), nameX, y, lineW[i], b)
         end for
@@ -49,7 +49,6 @@ sub render()
         badge = m.top.createChild("TeamBadge")
         badge.translation = [pad, 14 + (2 * b + 8) / 2 - b / 2]   ' centred on the title's box below
         badge.fallback = icon
-        badge.uri = ""
         badge.cover = posterUrl(mt)
         badge.size = b
         titleW = lineW[0]

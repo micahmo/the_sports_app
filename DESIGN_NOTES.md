@@ -3,6 +3,92 @@
 Hard-won findings that are not obvious from the code. Mostly about the stream
 player, which fights a moving target.
 
+## Backends (since 2026-10-28)
+
+streamed.pk, which the apps were built on, closed on 2026-10-28: its API
+redirects to a closure page and its embed.st players answer 404. Sites like it
+come and go, so the apps now keep the site behind an adapter, and moving to
+another is a new adapter plus one line of config.
+
+**Where things stand.** ppv.st is the backend. The closure page recommended
+it, and of the five it listed it was the only one with everything we used:
+a JSON API (`https://api.ppv.st/api/streams`), all sports, 24/7 channels (NFL
+Network, Fox Cricket, Willow...), posters and viewer counts, and several feeds
+per game. Its players are built like embed.st's (a JW Player bundle, a
+WebAssembly lock, a POST to `/fetch` for the link, playlists under
+`secure/<token>/`, segments on the same CDN), so the player work below carries
+over. Its API says "Interested in using our API? Contact us": not a ban.
+Surveyed and not used: streamfree.top (an open, documented API, embedding
+allowed, but scheduled games only, no 24/7 channels: the best second
+adapter), thedaddy.pk (no API, the schedule only in its page), pitsport.st
+(private API, motorsport only), timst.top (not answering). streamed.pk's
+adapter was removed: git history has it, and the notes below keep what it
+taught (its API notes are now history).
+
+**The layers.**
+- **The app's own models** (`lib/src/api/models.dart`; on the TV the same
+  field names in BrightScript associative arrays): Sport (id, name), Match
+  (id, title, sport, start, poster, teams, the refs its streams come from,
+  viewers), Stream (source, number, language, HD, viewers, embed address).
+  Screens, recents, remembered quality, the streams row and fallback only
+  ever see these. A start time of 0 still means a 24/7 channel.
+- **One adapter per backend** (`lib/src/api/<name>_backend.dart`; on the TV
+  `roku/app/source/backend_<name>.brs`): the site's API to those models, and
+  that site's embed quirks (how its pages hand over the player, which hosts
+  its playlists use). Translation only: nothing about screens.
+  On the TV, screens ask ApiTask for addresses like `backendUrl("live")`
+  (`backend:live`); ApiTask fetches the site once however many lists ask, and
+  the adapter (`ppvConvert`, through `backendConvert` in `backend.brs`) turns
+  the answer into the JSON the screens already parsed, off the render thread.
+  So the screens kept their parsing; only the addresses changed.
+- **The choice**: `"backend"` in `shared/app_data.json`, read by all three
+  apps, with per-backend data beside it (sport names and icons by the site's
+  category, source order). A switch is that line and a release; nothing in
+  the app's settings.
+- **Saved data per backend**: recents, remembered quality and failed marks
+  are kept under the backend's name, so a switch starts them afresh rather
+  than offering the old site's matches and links.
+- **Shared test data**: recorded API answers per backend
+  (`shared/fixtures/<name>/`) and the models they must become
+  (`expected.json`), checked by `test/backend_fixtures_test.dart`
+  (`UPDATE_FIXTURES=1` rewrites it after a deliberate change). The TV's
+  adapter must match it too: checked by hand for now (the TV runs
+  BrightScript only on the device).
+- **Streams are named by their source**, which for ppv.st is the broadcaster:
+  lists group by it (`ESPN`, then its streams), and a stream is "ESPN", or
+  "ESPN 2" for a source's second. **The player's overlay (header, streams
+  row) should show the most telling thing the site says about a feed**
+  ("NFL Network (ESPN)", "Fox", "Kayo"). Short labels are fine in the
+  streams list, where the details sit beside them: streamed.pk's "admin" and
+  "golf" were fine there, but the overlay showed only those and never the
+  description. On ppv.st the broadcaster is the source, so it reaches the
+  overlay as is; the user liked that (2026-10-28). A future site whose
+  sources are bare labels should get its feed details into the overlay too.
+- **Team badges**: a team's `badge` is an id only the backend reads
+  (`Backend.badgeImage`; `badgeImage` in `common.brs` on the TV), so a site
+  with real per-team badges fills it directly. A site without them can name a
+  logo on the game's poster instead: `logo<n>:<poster>`, cut out at
+  `logoCrops[n]` in the backend's config (left, top, width, height as
+  fractions of the poster, for the title's first and second team), filling
+  the badge's disc. Without either, the badge shows the sport's icon.
+
+**ppv.st in the models.** One request lists every event by category; the
+adapter keeps it a minute and answers every list from it (live: started and
+not ended, or `always_live`; popular: by `viewers`, which every event has, as
+a string, upcoming ones too: people waiting, shown on their cards, which
+streamed.pk never gave). Category names map to our sport ids and icons through the config
+("American Football" -> american-football, "Football" -> football (soccer),
+"Ice Hockey" -> hockey, "24/7 Streams" -> other). An event's streams are its
+`iframe` and each of its `substreams`, named by broadcaster (`source_tag`:
+ESPN, ABC, SkyCast), language from `locale`. No team badges, but every game
+poster checked (17 leagues, 2026-10-28) has the same layout: the first-named
+team's logo centered at a quarter of the width, the league's in the middle,
+the other team's at three quarters, so the badges are cut from it
+(`logoCrops`). If odd crops turn up, other options were ESPN's logos (by
+league and team name) or the poster behind the card. Channels and events
+without two teams show the poster in the disc. `tag` is the league (College
+Football, NFL).
+
 ## The stream player does not use the site's player
 
 `StreamPlayerScreen` loads an `embed.st` embed page in a `WebView`, but it does

@@ -4,7 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../api/models.dart';
-import '../api/streamed_api.dart';
+import '../api/backend.dart';
 import '../generated/app_data.dart';
 import '../theme.dart';
 
@@ -206,7 +206,36 @@ class TeamBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool dark = Theme.of(context).brightness == Brightness.dark;
     final Widget fallback = Icon(sportIcon(category), size: size * 0.62, color: const Color(0xFF55585F));
-    final String? id = badgeId;
+    final BadgeImage? image = Backend.current.badgeImage(badgeId);
+    final List<double>? crop = image?.crop;
+    // A logo cut from a bigger picture fills the disc, its own background
+    // with it.
+    if (image != null && crop != null) {
+      final Widget plain = TeamBadge(badgeId: null, category: category, size: size);
+      return CachedNetworkImage(
+        imageUrl: image.url,
+        imageBuilder: (_, ImageProvider<Object> picture) => ClipOval(
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Stack(
+              children: <Widget>[
+                Positioned(
+                  left: -crop[0] / crop[2] * size,
+                  top: -crop[1] / crop[3] * size,
+                  width: size / crop[2],
+                  height: size / crop[3],
+                  child: Image(image: picture, fit: BoxFit.fill),
+                ),
+              ],
+            ),
+          ),
+        ),
+        placeholder: (_, __) => plain,
+        errorWidget: (_, __, ___) => plain,
+      );
+    }
+    final String? url = image?.url;
     return Container(
       width: size,
       height: size,
@@ -216,10 +245,10 @@ class TeamBadge extends StatelessWidget {
         shape: BoxShape.circle,
         border: dark ? null : Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: (id == null || id.isEmpty)
+      child: (url == null)
           ? Center(child: fallback)
           : CachedNetworkImage(
-              imageUrl: StreamedApi.badgeUrl(id),
+              imageUrl: url,
               fit: BoxFit.contain,
               placeholder: (_, __) => const SizedBox.shrink(),
               errorWidget: (_, __, ___) => Center(child: fallback),
@@ -236,7 +265,7 @@ class PosterDisc extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String url = StreamedApi.posterUrlFromMatch(match);
+    final String url = Backend.current.posterUrl(match);
     if (url.isEmpty) return TeamBadge(badgeId: null, category: match.category, size: size);
     return ClipOval(
       child: CachedNetworkImage(

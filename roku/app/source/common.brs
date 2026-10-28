@@ -7,8 +7,18 @@ function theme() as Object
     return appPalette()
 end function
 
-function apiBase() as String
-    return "https://streamed.pk"
+' Saved data (recents, remembered quality, failed marks) is kept per backend:
+' a switch starts it afresh rather than offering the old site's matches and
+' links (Backend.savedKey in the phone app).
+function savedSection(name as String) as String
+    return name + "." + appBackend().name
+end function
+
+' One of the app's lists from the backend in use, for ApiTask (see
+' backend.brs): kind sports, live, all, popular, counts, sport (a: sport id),
+' or stream (a: source, b: match id).
+function backendUrl(kind as String, a = "" as String, b = "" as String) as String
+    return "backend:" + kind + "/" + a + "/" + b
 end function
 
 ' ---- UI builders -----------------------------------------------------------
@@ -169,7 +179,7 @@ end function
 ' (a stream only lasts its match), and only the latest 40, since the registry
 ' is small.
 function qualityLabel(embedUrl as String) as String
-    s = CreateObject("roRegistrySection", "quality")
+    s = CreateObject("roRegistrySection", savedSection("quality"))
     if not s.Exists(embedUrl) then return ""
     v = ParseJson(s.Read(embedUrl))
     if v = invalid or v.label = invalid then return ""
@@ -178,7 +188,7 @@ function qualityLabel(embedUrl as String) as String
 end function
 
 sub saveQuality(embedUrl as String, label as String)
-    s = CreateObject("roRegistrySection", "quality")
+    s = CreateObject("roRegistrySection", savedSection("quality"))
     now = CreateObject("roDateTime").AsSeconds()
     s.Write(embedUrl, FormatJson({label: label, at: now}))
     keys = s.GetKeyList()
@@ -203,7 +213,7 @@ end sub
 ' like their quality, for player.failedForMinutes or until they play (as the
 ' phone app's StreamFailures). The lists say so where the quality goes.
 function failedAt(embedUrl as String) as Integer
-    s = CreateObject("roRegistrySection", "failed")
+    s = CreateObject("roRegistrySection", savedSection("failed"))
     if not s.Exists(embedUrl) then return 0
     at = Val(s.Read(embedUrl))
     if CreateObject("roDateTime").AsSeconds() - at >= appPlayer().failedForMinutes * 60 then return 0
@@ -222,7 +232,7 @@ function failedNote(embedUrl as String) as String
 end function
 
 sub markFailed(embedUrl as String)
-    s = CreateObject("roRegistrySection", "failed")
+    s = CreateObject("roRegistrySection", savedSection("failed"))
     now = CreateObject("roDateTime").AsSeconds()
     ' Drop the expired ones, so the section stays small.
     for each k in s.GetKeyList()
@@ -233,7 +243,7 @@ sub markFailed(embedUrl as String)
 end sub
 
 sub clearFailed(embedUrl as String)
-    s = CreateObject("roRegistrySection", "failed")
+    s = CreateObject("roRegistrySection", savedSection("failed"))
     if not s.Exists(embedUrl) then return
     s.Delete(embedUrl)
     s.Flush()
@@ -270,12 +280,14 @@ sub mergeSources(matches as Object, others as Object)
     end for
 end sub
 
-' "Admin 1": a stream's source and number, as the player names streams.
+' "ESPN", or "ESPN 2" for a source's second stream: as the player names
+' streams (StreamInfo.name in the phone app).
 function streamName(s as Object) as String
     src = s.source
     if src = invalid then src = ""
     if Len(src) > 0 then src = UCase(Left(src, 1)) + Mid(src, 2)
-    return src + " " + Int(s.streamNo).ToStr()
+    if s.streamNo <> invalid and Int(s.streamNo) > 1 then return src + " " + Int(s.streamNo).ToStr()
+    return src
 end function
 
 ' "Admin 1 (HD)"
@@ -296,7 +308,7 @@ end function
 ' the player's streams row (as lib/src/player/recents.dart). One per game. The
 ' match is kept slim: the registry is small.
 function recentGames() as Object
-    s = CreateObject("roRegistrySection", "recents")
+    s = CreateObject("roRegistrySection", savedSection("recents"))
     if not s.Exists("list") then return []
     list = ParseJson(s.Read("list"))
     if type(list) <> "roArray" then return []
@@ -312,7 +324,7 @@ sub recordRecent(match as Object, stream as Object)
         if list.Count() >= keep then exit for
         if r.match <> invalid and r.match.id <> match.id then list.Push(r)
     end for
-    s = CreateObject("roRegistrySection", "recents")
+    s = CreateObject("roRegistrySection", savedSection("recents"))
     s.Write("list", FormatJson(list))
     s.Flush()
 end sub
@@ -373,19 +385,29 @@ function sportIcon(category as String) as String
     return "pkg:/images/icons/" + name + ".png"
 end function
 
-' The event's poster, for matches without teams (as posterUrlFromMatch in the
-' phone app).
+' The event's poster, for matches without teams (as Backend.posterUrl in the
+' phone app). ppv.st gives full addresses.
 function posterUrl(match as Object) as String
     p = match.poster
     if p = invalid or p = "" then return ""
     if Left(p, 4) = "http" then return p
-    if Left(p, 1) = "/" then return apiBase() + p + ".webp"
-    return apiBase() + "/api/images/proxy/" + p + ".webp"
+    return ""
 end function
 
-function badgeUrl(badge as Dynamic) as String
-    if badge = invalid or badge = "" then return ""
-    return apiBase() + "/api/images/badge/" + badge + ".webp"
+' A team badge's image, as {uri, crop}, or invalid for none (the badge then
+' shows the sport icon). "logo<n>:<poster>" (posterLogos in backend.brs) is a
+' team's logo on the game's poster: crop is where (left, top, width, height as
+' fractions of the poster). No backend has badges of its own yet; one that
+' does adds its ids here, as Backend.badgeImage in the phone app.
+function badgeImage(badge as Dynamic) as Dynamic
+    if badge = invalid or badge = "" then return invalid
+    if Left(badge, 4) <> "logo" then return invalid
+    colon = Instr(1, badge, ":")
+    if colon < 6 then return invalid
+    n = Val(Mid(badge, 5, colon - 5))
+    crops = appBackend().logoCrops
+    if n >= crops.Count() then return invalid
+    return {uri: Mid(badge, colon + 1), crop: crops[n]}
 end function
 
 ' The two teams in the order the title names them — the API's home/away does
@@ -401,7 +423,7 @@ function orderedTeams(match as Object) as Dynamic
     return [home, away]
 end function
 
-' streamed.pk lists its better sources first; mirror that (unknown ones last).
+' The backend's sources, best first (shared/app_data.json; unknown ones last).
 function sourceRank(source as String) as Integer
     order = appSourceOrder()
     for i = 0 to order.Count() - 1

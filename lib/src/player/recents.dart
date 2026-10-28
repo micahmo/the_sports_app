@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../api/backend.dart';
 import '../api/models.dart';
 import '../generated/app_data.dart' show PlayerTuning;
 
@@ -27,7 +28,8 @@ class RecentGame {
 }
 
 class Recents {
-  static const String _key = 'recentGames';
+  // Kept per backend (see Backend.savedKey).
+  static final String _key = Backend.savedKey('recentGames');
 
   // Plenty for a row that shows a few; finished games drop out when shown.
   static const int _keep = PlayerTuning.recentsKept;

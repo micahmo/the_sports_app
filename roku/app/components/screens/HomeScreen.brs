@@ -25,9 +25,9 @@ sub load(quiet = false as Boolean)
     if m.api <> invalid then m.api.unobserveField("results")
     m.api = CreateObject("roSGNode", "ApiTask")
     m.api.requests = {
-        sports: apiBase() + "/api/sports"
-        live: apiBase() + "/api/matches/live"
-        counts: apiBase() + "/api/matches/live/popular-viewcount"
+        sports: backendUrl("sports")
+        live: backendUrl("live")
+        counts: backendUrl("counts")
     }
     m.api.observeField("results", "onLoaded")
     m.api.control = "run"
@@ -82,7 +82,7 @@ sub onLoaded()
     cleanTitles(live)
     if type(sports) <> "roArray" then
         if m.quiet and m.rows.Count() > 0 then return
-        showMessage("Couldn't reach streamed.pk. Press OK to retry.")
+        showMessage("Couldn't reach the stream site. Press OK to retry.")
         m.rows = []
         return
     end if

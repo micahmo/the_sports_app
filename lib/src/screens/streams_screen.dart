@@ -10,7 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:window_manager/window_manager.dart';
 import '../api/models.dart';
-import '../api/streamed_api.dart';
+import '../api/backend.dart';
 import '../car.dart';
 import '../desktop/window_state.dart';
 import '../generated/app_data.dart';
@@ -37,7 +37,7 @@ class StreamsScreen extends StatefulWidget {
 }
 
 class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
-  final StreamedApi _api = StreamedApi();
+  final Backend _api = Backend.current;
   late Future<List<_SourceGroup>> _future;
 
   // A background refresh: keep showing the current streams while they load.
@@ -80,7 +80,7 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     // just leaves them out.
     final List<MatchSourceRef> known = widget.matchItem.sources;
     final List<MatchSourceRef> more = (await _api.currentSources(widget.matchItem.id).catchError((Object _) => null)) ?? <MatchSourceRef>[];
-    final List<MatchSourceRef> all = StreamedApi.mergeSources(<List<MatchSourceRef>>[known, more]);
+    final List<MatchSourceRef> all = Backend.mergeSources(<List<MatchSourceRef>>[known, more]);
     // Best sources first, the way the website presents them. List.sort is not
     // stable, so tie-break on the original index to keep unranked sources in
     // the order the API gave them.
@@ -93,16 +93,22 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     // Fetch all sources in parallel
     final List<List<StreamInfo>> results = await Future.wait(
       sources.map((MatchSourceRef s) {
-        final Future<List<StreamInfo>> f = _api.fetchStreams(s.source, s.id);
+        final Future<List<StreamInfo>> f = _api.fetchStreams(s);
         return known.contains(s) ? f : f.catchError((Object _) => <StreamInfo>[]);
       }),
       eagerError: true,
     );
 
-    return <_SourceGroup>[
-      for (int i = 0; i < sources.length; i++)
-        if (results[i].isNotEmpty) _SourceGroup(sources[i].source, results[i]),
-    ];
+    // Grouped by each stream's own source, in the order first met: on a site
+    // with sources (streamed.pk's admin, golf...) that's the source; on one
+    // that lists a game's feeds itself (ppv.st), the broadcaster.
+    final Map<String, List<StreamInfo>> bySource = <String, List<StreamInfo>>{};
+    for (final List<StreamInfo> r in results) {
+      for (final StreamInfo st in r) {
+        bySource.putIfAbsent(st.source, () => <StreamInfo>[]).add(st);
+      }
+    }
+    return <_SourceGroup>[for (final MapEntry<String, List<StreamInfo>> e in bySource.entries) _SourceGroup(e.key, e.value)];
   }
 
   Future<void> _play(StreamInfo s, List<_SourceGroup> groups) async {
@@ -505,6 +511,7 @@ const String _takeoverJs = r'''
       ".ao-disc{width:24px;height:24px;border-radius:50%;background:#E6E8EE;padding:3px;display:flex;align-items:center;justify-content:center;overflow:hidden}" +
       ".ao-disc img{max-width:100%;max-height:100%}" +
       ".ao-disc.poster{padding:0}.ao-disc.poster img{width:100%;height:100%;max-width:none;max-height:none;object-fit:cover}" +
+      ".ao-disc.poster{position:relative}.ao-disc.poster img.crop{position:absolute;object-fit:fill}" +
       ".ao-fab{position:absolute;right:16px;bottom:16px;display:flex;flex-direction:column-reverse;align-items:center;gap:5px}" +
       ".ao-btn{width:32px;height:32px;border-radius:50%;background:#000;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 5px -1px rgba(0,0,0,.2),0 6px 10px 0 rgba(0,0,0,.14),0 1px 18px 0 rgba(0,0,0,.12)}" +
       ".ao-fab .c{transform:scale(0);pointer-events:none!important}" +
@@ -595,10 +602,18 @@ const String _takeoverJs = r'''
       return el;
     }
 
+    // A team's badge; a logo cut from a bigger picture (crop: left, top,
+    // width, height as fractions of it) fills the disc.
+    function badgeImg(b) {
+      if (!b.crop) return "<img src='" + esc(b.url) + "'>";
+      var c = b.crop;
+      return "<img class='crop' src='" + esc(b.url) + "' style='width:" + 100 / c[2] + "%;height:" + 100 / c[3] + "%;left:" + -100 * c[0] / c[2] + "%;top:" + -100 * c[1] / c[3] + "%'>";
+    }
+
     function card(c, i, kind) {
       var top = c.tag
         ? "<span class='tag cd' style='background:" + c.tagColor + "'>" + esc(c.tag) + "</span>"
-        : (c.badges ? c.badges.map(function (b, k) { return "<span class='ao-disc' style='" + (k ? "margin-left:-6px" : "") + "'>" + (b ? "<img src='" + esc(b) + "'>" : icon(c.sportIcon, 15, "#55585F")) + "</span>"; }).join("")
+        : (c.badges ? c.badges.map(function (b, k) { return "<span class='ao-disc" + (b && b.crop ? " poster" : "") + "' style='" + (k ? "margin-left:-6px" : "") + "'>" + (b ? badgeImg(b) : icon(c.sportIcon, 15, "#55585F")) + "</span>"; }).join("")
           : (c.poster ? "<span class='ao-disc poster'><img src='" + esc(c.poster) + "'></span>" : "<span class='ao-disc'>" + icon(c.sportIcon, 15, "#55585F") + "</span>"));
       var lines = c.detailLines || 1;
       var detail = (c.warning ? "<span style='color:" + c.warningColor + "'>" + esc(c.warning) + "</span>" + (c.detail ? " · " : "") : "") + esc(c.detail);
@@ -1809,7 +1824,7 @@ const String _takeoverJs = r'''
     if (settled) return;
     // No playlist after 2 s and the player sits in another site's frame: tell
     // the app, which looks for the real player page inside and plays that
-    // (StreamedApi.innerPlayerUrl). Any source, by what the page does.
+    // (Backend.innerPlayerUrl). Any source, by what the page does.
     if (!nestTold && tries >= 4 && hasForeignPlayer()) { nestTold = true; post("nested"); }
     // Give the page ~10s to produce a playlist before judging it.
     if (++tries < 20) return;
@@ -1849,7 +1864,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   late List<StreamInfo> _streams;
   late Uri _allowedUri;
   late final PlayerWebView _web;
-  final StreamedApi _api = StreamedApi();
+  final Backend _api = Backend.current;
 
   // The streams row (see streams_row.dart): open or not, and what it shows.
   bool _rowOpen = false;
@@ -1904,7 +1919,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   bool _failed = false;
 
   // Healing: once the stream has played, a stall or failure (a dead zone on
-  // mobile, an expired link) doesn't end it. While streamed.pk can't be
+  // mobile, an expired link) doesn't end it. While the backend's site can't be
   // reached the app waits, checking every 10s (and at once when the page sees
   // the network return), then loads the page again for a fresh link, which
   // starts at the live edge. With the network fine, three reloads that don't
@@ -2278,7 +2293,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   // The page's player sits in another site's frame, out of the takeover's
   // reach (golf: embed.st -> rockystream.st -> embed.st again): play the real
-  // player page inside it, if there is one (StreamedApi.innerPlayerUrl). By
+  // player page inside it, if there is one (Backend.innerPlayerUrl). By
   // what the page does, not by source, so a source that starts nesting is
   // covered. If there's none, the page says "blocked" as before.
   Future<void> _playInner(StreamInfo s) async {
@@ -2552,10 +2567,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     });
   }
 
-  // Whether the stream site answers at all (any status will do).
+  // Whether the backend's site answers at all (any status will do).
   Future<bool> _siteReachable() async {
     try {
-      await http.head(Uri.parse('https://streamed.pk/')).timeout(const Duration(seconds: 6));
+      await http.head(Uri.parse(BackendConfig.api).replace(path: '/', query: '')).timeout(const Duration(seconds: 6));
       return true;
     } catch (_) {
       return false;
@@ -2875,10 +2890,14 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     Map<String, Object?> recentCard(RecentGame r) {
       final StreamQuality? q = _qualities[r.stream.embedUrl];
       final List<TeamInfo>? teams = orderedTeams(r.match);
-      final String poster = StreamedApi.posterUrlFromMatch(r.match);
-      String? badge(TeamInfo t) => (t.badge == null || t.badge!.isEmpty) ? null : StreamedApi.badgeUrl(t.badge!);
+      final String poster = Backend.current.posterUrl(r.match);
+      Map<String, Object?>? badge(TeamInfo t) {
+        final BadgeImage? b = Backend.current.badgeImage(t.badge);
+        return b == null ? null : <String, Object?>{'url': b.url, 'crop': b.crop};
+      }
+
       return <String, Object?>{
-        'badges': teams == null ? null : <String?>[badge(teams[0]), badge(teams[1])],
+        'badges': teams == null ? null : <Map<String, Object?>?>[badge(teams[0]), badge(teams[1])],
         'poster': teams == null && poster.isNotEmpty ? poster : null,
         'sportIcon': sportIcon(r.match.category).codePoint,
         'title': r.match.title,

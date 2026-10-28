@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sports/src/screens/sports_screen.dart';
 import '../api/models.dart';
-import '../api/streamed_api.dart';
+import '../api/backend.dart';
 import '../theme.dart';
 import '../widgets/match_widgets.dart';
 import '../widgets/keep_fresh.dart';
@@ -28,7 +28,7 @@ class MatchesScreen extends StatefulWidget {
 const double _kListWidth = 460;
 
 class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
-  final StreamedApi _api = StreamedApi();
+  final Backend _api = Backend.current;
 
   // Side-by-side layout only: the match whose streams are showing, and the
   // matches the list is currently showing (after filters).

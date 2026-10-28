@@ -33,9 +33,9 @@ sub start()
     renderTitle(invalid)
     loading("list")
 
-    url = apiBase() + "/api/matches/live"
-    if m.mode = "popular" then url = apiBase() + "/api/matches/live/popular"
-    if m.mode = "sport" then url = apiBase() + "/api/matches/" + p.sportId
+    url = backendUrl("live")
+    if m.mode = "popular" then url = backendUrl("popular")
+    if m.mode = "sport" then url = backendUrl("sport", p.sportId)
     m.url = url
     fetch(false)
 end sub
@@ -47,12 +47,12 @@ sub fetch(quiet as Boolean)
     m.api = CreateObject("roSGNode", "ApiTask")
     requests = {
         matches: m.url
-        counts: apiBase() + "/api/matches/live/popular-viewcount"
-        sports: apiBase() + "/api/sports"
+        counts: backendUrl("counts")
+        sports: backendUrl("sports")
         ' For each game's sources: the site's lists disagree (see mergeSources).
-        all: apiBase() + "/api/matches/all"
+        all: backendUrl("all")
     }
-    live = apiBase() + "/api/matches/live"
+    live = backendUrl("live")
     if m.url <> live then requests.live = live
     m.api.requests = requests
     m.api.observeField("results", "onLoaded")
@@ -386,7 +386,7 @@ sub loadStreams(mt as Object, quiet as Boolean)
     requests = {}
     for i = 0 to mt.sources.Count() - 1
         s = mt.sources[i]
-        requests["s" + i.ToStr()] = apiBase() + "/api/stream/" + s.source + "/" + s.id
+        requests["s" + i.ToStr()] = backendUrl("stream", s.source, s.id)
     end for
     if m.streamsApi <> invalid then m.streamsApi.unobserveField("results")
     m.streamsApi = CreateObject("roSGNode", "ApiTask")
@@ -407,15 +407,30 @@ sub onStreamsLoaded()
     end for
     groups.SortBy("index")
     groups.SortBy("rank")
+    ' Regrouped by each stream's own source, in the order first met: on a site
+    ' with sources (streamed.pk's admin, golf...) that's the source; on one that
+    ' lists a game's feeds itself (ppv.st), the broadcaster.
+    bySource = {}
+    regrouped = []
+    for each g in groups
+        for each s in g.streams
+            if not bySource.DoesExist(s.source) then
+                bySource[s.source] = {source: s.source, streams: []}
+                regrouped.Push(bySource[s.source])
+            end if
+            bySource[s.source].streams.Push(s)
+        end for
+    end for
+    groups = regrouped
 
-    ' A heading row per source, as in the phone app ("ADMIN   Admin added
-    ' streams"), then its streams. m.streamItems holds the stream rows only.
+    ' A heading row per source, as in the phone app ("ESPN"), then its
+    ' streams. m.streamItems holds the stream rows only.
     content = CreateObject("roSGNode", "ContentNode")
     items = []
     total = 0
     sig = ""
     for each g in groups
-        source = mt.sources[g.index].source
+        source = g.source
         head = content.createChild("ContentNode")
         head.addFields({heading: UCase(source), description: sourceDescription(source)})
         for each s in g.streams
@@ -543,7 +558,7 @@ sub renderHeader(mt as Object, watching as Dynamic)
             badge = m.header.createChild("TeamBadge")
             badge.translation = [24, y]
             badge.fallback = icon
-            badge.uri = badgeUrl(teams[i].badge)
+            if teams[i].badge <> invalid then badge.badge = teams[i].badge
             badge.size = b
             mkLabel(m.header, teams[i].name, condensed("SemiBold", 50), t.text, 24 + b + 20, y, w - b - 68, b)
         end for
@@ -551,7 +566,6 @@ sub renderHeader(mt as Object, watching as Dynamic)
         badge = m.header.createChild("TeamBadge")
         badge.translation = [24, 16 + (2 * b + 10) / 2 - b / 2]   ' centred on the title's box below
         badge.fallback = icon
-        badge.uri = ""
         badge.cover = posterUrl(mt)
         badge.size = b
         l = mkLabel(m.header, mt.title, condensed("SemiBold", 46), t.text, 24 + b + 20, 16, w - b - 68, 2 * b + 10)

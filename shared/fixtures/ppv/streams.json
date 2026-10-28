@@ -1,0 +1,436 @@
+{
+ "success": true,
+ "timestamp": 1793208910,
+ "streams": [
+  {
+   "category": "American Football",
+   "id": 26,
+   "always_live": false,
+   "streams": [
+    {
+     "id": 18172,
+     "name": "NFL Network",
+     "tag": "24/7 channel",
+     "source_tag": "NFL Network (ESPN)",
+     "poster": "https://static.ppvservices.st/assets/thumb/5ed7ea60fe8e3842203b0741187f0fd7-thumbnail.jpg",
+     "uri_name": "nfl-network",
+     "starts_at": 0,
+     "ends_at": 0,
+     "always_live": 1,
+     "locale": "en",
+     "category_name": "American Football",
+     "iframe": "https://taifood-blog.asia/embed/nfl-network",
+     "substreams": [],
+     "viewers": "14"
+    },
+    {
+     "id": 31066,
+     "name": "Carolina Panthers at Green Bay Packers",
+     "tag": "NFL",
+     "source_tag": "Prime Video",
+     "poster": "https://static.ppvservices.st/assets/thumb/88b0c112edd9d19105dae562c5b37275-thumbnail.jpg",
+     "uri_name": "nfl/2026-10-29/car-gb",
+     "starts_at": 1793319300,
+     "ends_at": 1793333700,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "American Football",
+     "iframe": "https://taifood-blog.asia/embed/nfl/2026-10-29/car-gb",
+     "substreams": [],
+     "viewers": "0"
+    },
+    {
+     "id": 31091,
+     "name": "Notre Dame Fighting Irish at Navy Midshipmen",
+     "tag": "College Football",
+     "source_tag": "ABC",
+     "poster": "https://static.ppvservices.st/assets/thumb/86a39ab4ee4b472b06c3cd26bf55f829-thumbnail.jpg",
+     "uri_name": "cfb/2026-10-31/nd-navy",
+     "starts_at": 1793462400,
+     "ends_at": 1793476800,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "American Football",
+     "iframe": "https://taifood-blog.asia/embed/cfb/2026-10-31/nd-navy",
+     "substreams": [
+      {
+       "id": 31092,
+       "name": "Notre Dame Fighting Irish at Navy Midshipmen",
+       "tag": "College Football",
+       "uri_name": "cfb/2026-10-31/nd-navy/skycast",
+       "source_tag": "SkyCast",
+       "locale": "en",
+       "iframe": "https://taifood-blog.asia/embed/cfb/2026-10-31/nd-navy/skycast"
+      }
+     ],
+     "viewers": "0"
+    }
+   ]
+  },
+  {
+   "category": "Australian Football",
+   "id": 66,
+   "always_live": false,
+   "streams": [
+    {
+     "id": 27406,
+     "name": "Fox Footy",
+     "tag": "24/7 channel",
+     "source_tag": "Kayo",
+     "poster": "https://static.ppvservices.st/assets/thumb/514cf8272ec290889a5ce6fd299fb9c8-thumbnail.jpg",
+     "uri_name": "247-fox-footy",
+     "starts_at": -60,
+     "ends_at": 10740,
+     "always_live": 1,
+     "locale": "en",
+     "category_name": "Australian Football",
+     "iframe": "https://taifood-blog.asia/embed/247-fox-footy",
+     "substreams": [],
+     "viewers": "0"
+    }
+   ]
+  },
+  {
+   "category": "Baseball",
+   "id": 36,
+   "always_live": false,
+   "streams": [
+    {
+     "id": 31307,
+     "name": "Milwaukee Brewers vs. Tampa Bay Rays",
+     "tag": "MLB",
+     "source_tag": "Fox",
+     "poster": "https://static.ppvservices.st/assets/thumb/3222f84fc40d2517cdd102587b9ad16f-thumbnail.jpg",
+     "uri_name": "mlb/2026-10-28/mil-tb",
+     "starts_at": 1793232000,
+     "ends_at": 1793244600,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "Baseball",
+     "iframe": "https://taifood-blog.asia/embed/mlb/2026-10-28/mil-tb",
+     "substreams": [],
+     "viewers": "0"
+    }
+   ]
+  },
+  {
+   "category": "Basketball",
+   "id": 37,
+   "always_live": false,
+   "streams": [
+    {
+     "id": 31261,
+     "name": "Miami Heat vs. Atlanta Hawks",
+     "tag": "NBA",
+     "source_tag": "NBA League Pass (Home)",
+     "poster": "https://static.ppvservices.st/assets/thumb/f070ecc291fff4f69d8ba70e81c3b02f-thumbnail.jpg",
+     "uri_name": "nba/2026-10-28/mia-atl",
+     "starts_at": 1793228400,
+     "ends_at": 1793239200,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "Basketball",
+     "iframe": "https://taifood-blog.asia/embed/nba/2026-10-28/mia-atl",
+     "substreams": [
+      {
+       "id": 31262,
+       "name": "Miami Heat vs. Atlanta Hawks",
+       "tag": "NBA",
+       "uri_name": "nba/2026-10-28/mia-atl/away",
+       "source_tag": "NBA League Pass (Away)",
+       "locale": "en",
+       "iframe": "https://taifood-blog.asia/embed/nba/2026-10-28/mia-atl/away"
+      }
+     ],
+     "viewers": "0"
+    },
+    {
+     "id": 31263,
+     "name": "Washington Wizards vs. Cleveland Cavaliers",
+     "tag": "NBA",
+     "source_tag": "DAZN CLE (Home)",
+     "poster": "https://static.ppvservices.st/assets/thumb/7e7adb9d47b78097af1fcaa4bf2bad98-thumbnail.jpg",
+     "uri_name": "nba/2026-10-28/wsh-cle",
+     "starts_at": 1793228400,
+     "ends_at": 1793239200,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "Basketball",
+     "iframe": "https://taifood-blog.asia/embed/nba/2026-10-28/wsh-cle",
+     "substreams": [
+      {
+       "id": 31264,
+       "name": "Washington Wizards vs. Cleveland Cavaliers",
+       "tag": "NBA",
+       "uri_name": "nba/2026-10-28/wsh-cle/away",
+       "source_tag": "MNMT (Away)",
+       "locale": "en",
+       "iframe": "https://taifood-blog.asia/embed/nba/2026-10-28/wsh-cle/away"
+      }
+     ],
+     "viewers": "0"
+    }
+   ]
+  },
+  {
+   "category": "Cricket",
+   "id": 47,
+   "always_live": false,
+   "streams": [
+    {
+     "id": 27493,
+     "name": "Willow",
+     "tag": "24/7 channel",
+     "source_tag": "Willow",
+     "poster": "https://static.ppvservices.st/assets/thumb/2e3cba2a94ae6af4b958675e73fe91e9-thumbnail.jpg",
+     "uri_name": "247-willow",
+     "starts_at": -3600,
+     "ends_at": 10800,
+     "always_live": 1,
+     "locale": "en",
+     "category_name": "Cricket",
+     "iframe": "https://taifood-blog.asia/embed/247-willow",
+     "substreams": [
+      {
+       "id": 27494,
+       "name": "Willow",
+       "tag": "24/7 channel",
+       "uri_name": "247-willow-2",
+       "source_tag": "Willow 2",
+       "locale": "en",
+       "iframe": "https://taifood-blog.asia/embed/247-willow-2"
+      },
+      {
+       "id": 27495,
+       "name": "Willow",
+       "tag": "24/7 channel",
+       "uri_name": "247-willow-sports",
+       "source_tag": "Willow Sports",
+       "locale": "en",
+       "iframe": "https://taifood-blog.asia/embed/247-willow-sports"
+      }
+     ],
+     "viewers": "39"
+    },
+    {
+     "id": 27496,
+     "name": "Fox Cricket",
+     "tag": "24/7 channel",
+     "source_tag": "Kayo",
+     "poster": "https://static.ppvservices.st/assets/thumb/5dfe2fc8e56d59add47afb0f6e996e55-thumbnail.jpg",
+     "uri_name": "247-fox-cricket",
+     "starts_at": -3600,
+     "ends_at": 10800,
+     "always_live": 1,
+     "locale": "en",
+     "category_name": "Cricket",
+     "iframe": "https://taifood-blog.asia/embed/247-fox-cricket",
+     "substreams": [],
+     "viewers": "64"
+    }
+   ]
+  },
+  {
+   "category": "Football",
+   "id": 34,
+   "always_live": false,
+   "streams": [
+    {
+     "id": 31149,
+     "name": "AC Milan vs. Bologna",
+     "tag": "Serie A",
+     "source_tag": "Paramount+",
+     "poster": "https://static.ppvservices.st/assets/thumb/ed00aae83b945a2682aebd6b80c6a349-thumbnail.jpg",
+     "uri_name": "seriea/2026-10-28/mil-bol",
+     "starts_at": 1793208600,
+     "ends_at": 1793217600,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "Football",
+     "iframe": "https://taifood-blog.asia/embed/seriea/2026-10-28/mil-bol",
+     "substreams": [],
+     "viewers": "625"
+    },
+    {
+     "id": 31150,
+     "name": "Parma vs. Udinese",
+     "tag": "Serie A",
+     "source_tag": "Paramount+",
+     "poster": "https://static.ppvservices.st/assets/thumb/f97b2d3b715838661cb716d707ffdfcc-thumbnail.jpg",
+     "uri_name": "seriea/2026-10-28/par-udi",
+     "starts_at": 1793208600,
+     "ends_at": 1793217600,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "Football",
+     "iframe": "https://taifood-blog.asia/embed/seriea/2026-10-28/par-udi",
+     "substreams": [],
+     "viewers": "21"
+    }
+   ]
+  },
+  {
+   "category": "Golf",
+   "id": 64,
+   "always_live": false,
+   "streams": [
+    {
+     "id": 29059,
+     "name": "Sky Sports Golf",
+     "tag": "24/7 channel",
+     "source_tag": "NOWTV",
+     "poster": "https://static.ppvservices.st/assets/thumb/9950e3e6c1a19cad6a216ec1c6b50d71-thumbnail.jpg",
+     "uri_name": "sky-sports-golf-29059",
+     "starts_at": 0,
+     "ends_at": 0,
+     "always_live": 1,
+     "locale": "en",
+     "category_name": "Golf",
+     "iframe": "https://taifood-blog.asia/embed/sky-sports-golf-29059",
+     "substreams": [],
+     "viewers": "5"
+    }
+   ]
+  },
+  {
+   "category": "Ice Hockey",
+   "id": 39,
+   "always_live": false,
+   "streams": [
+    {
+     "id": 29780,
+     "name": "NHL Network",
+     "tag": "24/7 channel",
+     "source_tag": "NHL Network",
+     "poster": "https://static.ppvservices.st/assets/thumb/4a70bb8cf331b8ab0299fd836b56e2ed-thumbnail.jpg",
+     "uri_name": "nhl-network-29780",
+     "starts_at": 0,
+     "ends_at": 14400,
+     "always_live": 1,
+     "locale": "en",
+     "category_name": "Ice Hockey",
+     "iframe": "https://taifood-blog.asia/embed/nhl-network-29780",
+     "substreams": [],
+     "viewers": "1"
+    },
+    {
+     "id": 31297,
+     "name": "Philadelphia Flyers vs. Washington Capitals",
+     "tag": "NHL",
+     "source_tag": "TNT",
+     "poster": "https://static.ppvservices.st/assets/thumb/9442b9f518ba74c931dfa3c602e132b6-thumbnail.jpg",
+     "uri_name": "nhl/2026-10-28/phi-wsh",
+     "starts_at": 1793230200,
+     "ends_at": 1793241000,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "Ice Hockey",
+     "iframe": "https://taifood-blog.asia/embed/nhl/2026-10-28/phi-wsh",
+     "substreams": [],
+     "viewers": "0"
+    }
+   ]
+  },
+  {
+   "category": "Rugby",
+   "id": 42,
+   "always_live": false,
+   "streams": [
+    {
+     "id": 27405,
+     "name": "Fox League",
+     "tag": "24/7 channel",
+     "source_tag": "Kayo",
+     "poster": "https://static.ppvservices.st/assets/thumb/5ec4933f4ae6363e151dfe5c75ad24e3-thumbnail.jpg",
+     "uri_name": "247-fox-league",
+     "starts_at": -60,
+     "ends_at": 10740,
+     "always_live": 1,
+     "locale": "en",
+     "category_name": "Rugby",
+     "iframe": "https://taifood-blog.asia/embed/247-fox-league",
+     "substreams": [],
+     "viewers": "1"
+    }
+   ]
+  },
+  {
+   "category": "Wrestling",
+   "id": 38,
+   "always_live": false,
+   "streams": [
+    {
+     "id": 31240,
+     "name": "AEW Wednesday Night Dynamite",
+     "tag": "Wrestling",
+     "source_tag": "TBS",
+     "poster": "https://static.ppvservices.st/assets/thumb/b406ff9100d91b9210600260350246ff-thumbnail.jpg",
+     "uri_name": "aew/2026-10-28",
+     "starts_at": 1793232000,
+     "ends_at": 1793242800,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "Wrestling",
+     "iframe": "https://taifood-blog.asia/embed/aew/2026-10-28",
+     "substreams": [],
+     "viewers": "0"
+    },
+    {
+     "id": 31241,
+     "name": "TNA Impact",
+     "tag": "Wrestling",
+     "source_tag": "AMC",
+     "poster": "https://static.ppvservices.st/assets/thumb/78f581ee61589a76f6bcdeb095f95c12-thumbnail.jpg",
+     "uri_name": "tna/2026-10-29",
+     "starts_at": 1793322000,
+     "ends_at": 1793332800,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "Wrestling",
+     "iframe": "https://taifood-blog.asia/embed/tna/2026-10-29",
+     "substreams": [],
+     "viewers": "0"
+    }
+   ]
+  },
+  {
+   "category": "24/7 Streams",
+   "id": 14,
+   "always_live": true,
+   "streams": [
+    {
+     "id": 5112,
+     "name": "24/7 South Park",
+     "tag": "24/7 channel",
+     "source_tag": "24/7 channel",
+     "poster": "https://thumbs.poocloud.in/southpark/preview.jpg",
+     "uri_name": "247-south-park",
+     "starts_at": 0,
+     "ends_at": 0,
+     "always_live": 1,
+     "locale": "en",
+     "category_name": "24/7 Streams",
+     "iframe": "https://taifood-blog.asia/embed/247-south-park",
+     "substreams": [],
+     "viewers": "17"
+    },
+    {
+     "id": 3663,
+     "name": "24/7 COWS",
+     "tag": "24/7 channel",
+     "source_tag": "24/7 channel",
+     "poster": "https://static.ppvservices.st/assets/thumb/213d77252211e1926309f43b38263a4f-thumbnail.jpg",
+     "uri_name": "247-cows",
+     "starts_at": 1737176400,
+     "ends_at": 1740772800,
+     "always_live": 1,
+     "locale": "en",
+     "category_name": "24/7 Streams",
+     "iframe": "https://taifood-blog.asia/embed/247-cows",
+     "substreams": [],
+     "viewers": "0"
+    }
+   ]
+  }
+ ]
+}

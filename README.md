@@ -6,7 +6,9 @@ A Flutter app for watching live sports events with easy browsing, filtering, and
 
 ## About
 
-The Sports App is a wrapper around the [streamed.pk API](https://streamed.pk/docs). This app **does not host or stream any content**. All streaming is provided by the streamed.pk service. The app serves as a user-friendly interface to browse and watch events available through that platform.
+The Sports App is a friendlier way to browse and watch the games on a sports streaming site, currently [ppv.st](https://ppv.st). The app **does not host or stream any content**: everything comes from that site.
+
+The site can be swapped for another in one place in the code. Until October 2026 it was streamed.pk, which has since closed.
 
 ## Download
 
@@ -57,18 +59,18 @@ The Sports App is a wrapper around the [streamed.pk API](https://streamed.pk/doc
 
 ## Known Issues
 
-- **Live Status Limitation** - The "live" status indicator is based on the scheduled event start time. The streamed.pk API does not provide a real-time "live" flag, so this may not always reflect the actual streaming status
+- **Live Status Limitation** - The "live" status indicator is based on the scheduled event start and end times. The site's API does not provide a real-time "live" flag, so this may not always reflect the actual streaming status
 
 ## Important Disclaimers
 
 ### Content & Streaming
-This application is **not responsible for any content violations or streaming issues**. All streaming is handled by the [streamed.pk](https://streamed.pk) service. Any copyright or content-related concerns should be directed to streamed.pk, not this app.
+This application is **not responsible for any content violations or streaming issues**. All streaming is handled by the site the app uses ([ppv.st](https://ppv.st)). Any copyright or content-related concerns should be directed to that site, not this app.
 
 ### Feature Limitations
-Any missing functionality in this app is a direct limitation of the streamed.pk API. This app implements all available features provided by the API. Additional features would require API-level support.
+Any missing functionality in this app is a direct limitation of the site's API. This app implements the features its API provides. Additional features would require API-level support.
 
 ### Streaming Issues
-All streaming-related problems (buffering, disconnections, quality issues, etc.) are on the streamed.pk service side. This app simply provides an interface to access their streams.
+All streaming-related problems (buffering, disconnections, quality issues, etc.) are on the streaming site's side. This app simply provides an interface to access their streams.
 
 ## Attribution
 

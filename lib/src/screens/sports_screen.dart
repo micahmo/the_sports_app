@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../api/models.dart';
-import '../api/streamed_api.dart';
+import '../api/backend.dart';
 import '../car.dart';
 import '../theme.dart';
 import '../generated/app_data.dart' show TvLayout;
@@ -30,7 +30,7 @@ class _HomeData {
 }
 
 class _SportsScreenState extends State<SportsScreen> with KeepFresh {
-  final StreamedApi _api = StreamedApi();
+  final Backend _api = Backend.current;
   late Future<_HomeData> _future;
 
   // A background refresh: keep showing the current data while it loads.

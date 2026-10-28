@@ -638,7 +638,7 @@ sub checkCurrent()
     if m.currentAt <> invalid and m.currentAt.TotalSeconds() <= 60 then return
     m.currentAt = CreateObject("roTimespan")
     m.allApi = CreateObject("roSGNode", "ApiTask")
-    m.allApi.requests = {live: apiBase() + "/api/matches/live", all: apiBase() + "/api/matches/all"}
+    m.allApi.requests = {live: backendUrl("live"), all: backendUrl("all")}
     m.allApi.observeField("results", "onAllLoaded")
     m.allApi.control = "run"
 end sub
@@ -804,14 +804,13 @@ sub drawCard(c as Object, top as Integer, w as Integer, h as Integer, focused as
                 b = g.createChild("TeamBadge")
                 b.translation = [pad + i * 30, pad - 2]
                 b.fallback = icon
-                b.uri = badgeUrl(teams[i].badge)
+                if teams[i].badge <> invalid then b.badge = teams[i].badge
                 b.size = 44
             end for
         else
             b = g.createChild("TeamBadge")
             b.translation = [pad, pad - 2]
             b.fallback = icon
-            b.uri = ""
             b.cover = posterUrl(r.match)
             b.size = 44
         end if
@@ -856,7 +855,7 @@ sub refreshStreams(after as String)
     m.refreshAfter = after
     m.refreshFor = m.match.id
     m.refreshApi = CreateObject("roSGNode", "ApiTask")
-    m.refreshApi.requests = {all: apiBase() + "/api/matches/all", live: apiBase() + "/api/matches/live"}
+    m.refreshApi.requests = {all: backendUrl("all"), live: backendUrl("live")}
     m.refreshApi.observeField("results", "onRefreshAll")
     m.refreshApi.control = "run"
 end sub
@@ -894,7 +893,7 @@ sub onRefreshAll()
     requests = {}
     for i = 0 to found.sources.Count() - 1
         s = found.sources[i]
-        requests["s" + i.ToStr()] = apiBase() + "/api/stream/" + s.source + "/" + s.id
+        requests["s" + i.ToStr()] = backendUrl("stream", s.source, s.id)
     end for
     if requests.Count() = 0 then
         m.streams = []

@@ -1,0 +1,625 @@
+{
+ "sports": [
+  {
+   "id": "american-football",
+   "name": "Football"
+  },
+  {
+   "id": "afl",
+   "name": "AFL"
+  },
+  {
+   "id": "baseball",
+   "name": "Baseball"
+  },
+  {
+   "id": "basketball",
+   "name": "Basketball"
+  },
+  {
+   "id": "cricket",
+   "name": "Cricket"
+  },
+  {
+   "id": "football",
+   "name": "Soccer"
+  },
+  {
+   "id": "golf",
+   "name": "Golf"
+  },
+  {
+   "id": "hockey",
+   "name": "Hockey"
+  },
+  {
+   "id": "rugby",
+   "name": "Rugby"
+  },
+  {
+   "id": "fight",
+   "name": "Fight"
+  },
+  {
+   "id": "247",
+   "name": "24/7"
+  }
+ ],
+ "matches": [
+  {
+   "id": "18172",
+   "title": "NFL Network",
+   "category": "american-football",
+   "date": 0,
+   "poster": "https://static.ppvservices.st/assets/thumb/5ed7ea60fe8e3842203b0741187f0fd7-thumbnail.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/18172"
+   ],
+   "viewers": 14,
+   "live": true
+  },
+  {
+   "id": "31066",
+   "title": "Carolina Panthers at Green Bay Packers",
+   "category": "american-football",
+   "date": 1793319300000,
+   "poster": "https://static.ppvservices.st/assets/thumb/88b0c112edd9d19105dae562c5b37275-thumbnail.jpg",
+   "teams": [
+    [
+     "Green Bay Packers",
+     "logo1:https://static.ppvservices.st/assets/thumb/88b0c112edd9d19105dae562c5b37275-thumbnail.jpg"
+    ],
+    [
+     "Carolina Panthers",
+     "logo0:https://static.ppvservices.st/assets/thumb/88b0c112edd9d19105dae562c5b37275-thumbnail.jpg"
+    ]
+   ],
+   "sources": [
+    "ppv/31066"
+   ],
+   "viewers": 0,
+   "live": false
+  },
+  {
+   "id": "31091",
+   "title": "Notre Dame Fighting Irish at Navy Midshipmen",
+   "category": "american-football",
+   "date": 1793462400000,
+   "poster": "https://static.ppvservices.st/assets/thumb/86a39ab4ee4b472b06c3cd26bf55f829-thumbnail.jpg",
+   "teams": [
+    [
+     "Navy Midshipmen",
+     "logo1:https://static.ppvservices.st/assets/thumb/86a39ab4ee4b472b06c3cd26bf55f829-thumbnail.jpg"
+    ],
+    [
+     "Notre Dame Fighting Irish",
+     "logo0:https://static.ppvservices.st/assets/thumb/86a39ab4ee4b472b06c3cd26bf55f829-thumbnail.jpg"
+    ]
+   ],
+   "sources": [
+    "ppv/31091"
+   ],
+   "viewers": 0,
+   "live": false
+  },
+  {
+   "id": "27406",
+   "title": "Fox Footy",
+   "category": "afl",
+   "date": 0,
+   "poster": "https://static.ppvservices.st/assets/thumb/514cf8272ec290889a5ce6fd299fb9c8-thumbnail.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/27406"
+   ],
+   "viewers": 0,
+   "live": true
+  },
+  {
+   "id": "31307",
+   "title": "Milwaukee Brewers vs. Tampa Bay Rays",
+   "category": "baseball",
+   "date": 1793232000000,
+   "poster": "https://static.ppvservices.st/assets/thumb/3222f84fc40d2517cdd102587b9ad16f-thumbnail.jpg",
+   "teams": [
+    [
+     "Milwaukee Brewers",
+     "logo0:https://static.ppvservices.st/assets/thumb/3222f84fc40d2517cdd102587b9ad16f-thumbnail.jpg"
+    ],
+    [
+     "Tampa Bay Rays",
+     "logo1:https://static.ppvservices.st/assets/thumb/3222f84fc40d2517cdd102587b9ad16f-thumbnail.jpg"
+    ]
+   ],
+   "sources": [
+    "ppv/31307"
+   ],
+   "viewers": 0,
+   "live": false
+  },
+  {
+   "id": "31261",
+   "title": "Miami Heat vs. Atlanta Hawks",
+   "category": "basketball",
+   "date": 1793228400000,
+   "poster": "https://static.ppvservices.st/assets/thumb/f070ecc291fff4f69d8ba70e81c3b02f-thumbnail.jpg",
+   "teams": [
+    [
+     "Miami Heat",
+     "logo0:https://static.ppvservices.st/assets/thumb/f070ecc291fff4f69d8ba70e81c3b02f-thumbnail.jpg"
+    ],
+    [
+     "Atlanta Hawks",
+     "logo1:https://static.ppvservices.st/assets/thumb/f070ecc291fff4f69d8ba70e81c3b02f-thumbnail.jpg"
+    ]
+   ],
+   "sources": [
+    "ppv/31261"
+   ],
+   "viewers": 0,
+   "live": false
+  },
+  {
+   "id": "31263",
+   "title": "Washington Wizards vs. Cleveland Cavaliers",
+   "category": "basketball",
+   "date": 1793228400000,
+   "poster": "https://static.ppvservices.st/assets/thumb/7e7adb9d47b78097af1fcaa4bf2bad98-thumbnail.jpg",
+   "teams": [
+    [
+     "Washington Wizards",
+     "logo0:https://static.ppvservices.st/assets/thumb/7e7adb9d47b78097af1fcaa4bf2bad98-thumbnail.jpg"
+    ],
+    [
+     "Cleveland Cavaliers",
+     "logo1:https://static.ppvservices.st/assets/thumb/7e7adb9d47b78097af1fcaa4bf2bad98-thumbnail.jpg"
+    ]
+   ],
+   "sources": [
+    "ppv/31263"
+   ],
+   "viewers": 0,
+   "live": false
+  },
+  {
+   "id": "27493",
+   "title": "Willow",
+   "category": "cricket",
+   "date": 0,
+   "poster": "https://static.ppvservices.st/assets/thumb/2e3cba2a94ae6af4b958675e73fe91e9-thumbnail.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/27493"
+   ],
+   "viewers": 39,
+   "live": true
+  },
+  {
+   "id": "27496",
+   "title": "Fox Cricket",
+   "category": "cricket",
+   "date": 0,
+   "poster": "https://static.ppvservices.st/assets/thumb/5dfe2fc8e56d59add47afb0f6e996e55-thumbnail.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/27496"
+   ],
+   "viewers": 64,
+   "live": true
+  },
+  {
+   "id": "31149",
+   "title": "AC Milan vs. Bologna",
+   "category": "football",
+   "date": 1793208600000,
+   "poster": "https://static.ppvservices.st/assets/thumb/ed00aae83b945a2682aebd6b80c6a349-thumbnail.jpg",
+   "teams": [
+    [
+     "AC Milan",
+     "logo0:https://static.ppvservices.st/assets/thumb/ed00aae83b945a2682aebd6b80c6a349-thumbnail.jpg"
+    ],
+    [
+     "Bologna",
+     "logo1:https://static.ppvservices.st/assets/thumb/ed00aae83b945a2682aebd6b80c6a349-thumbnail.jpg"
+    ]
+   ],
+   "sources": [
+    "ppv/31149"
+   ],
+   "viewers": 625,
+   "live": true
+  },
+  {
+   "id": "31150",
+   "title": "Parma vs. Udinese",
+   "category": "football",
+   "date": 1793208600000,
+   "poster": "https://static.ppvservices.st/assets/thumb/f97b2d3b715838661cb716d707ffdfcc-thumbnail.jpg",
+   "teams": [
+    [
+     "Parma",
+     "logo0:https://static.ppvservices.st/assets/thumb/f97b2d3b715838661cb716d707ffdfcc-thumbnail.jpg"
+    ],
+    [
+     "Udinese",
+     "logo1:https://static.ppvservices.st/assets/thumb/f97b2d3b715838661cb716d707ffdfcc-thumbnail.jpg"
+    ]
+   ],
+   "sources": [
+    "ppv/31150"
+   ],
+   "viewers": 21,
+   "live": true
+  },
+  {
+   "id": "29059",
+   "title": "Sky Sports Golf",
+   "category": "golf",
+   "date": 0,
+   "poster": "https://static.ppvservices.st/assets/thumb/9950e3e6c1a19cad6a216ec1c6b50d71-thumbnail.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/29059"
+   ],
+   "viewers": 5,
+   "live": true
+  },
+  {
+   "id": "29780",
+   "title": "NHL Network",
+   "category": "hockey",
+   "date": 0,
+   "poster": "https://static.ppvservices.st/assets/thumb/4a70bb8cf331b8ab0299fd836b56e2ed-thumbnail.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/29780"
+   ],
+   "viewers": 1,
+   "live": true
+  },
+  {
+   "id": "31297",
+   "title": "Philadelphia Flyers vs. Washington Capitals",
+   "category": "hockey",
+   "date": 1793230200000,
+   "poster": "https://static.ppvservices.st/assets/thumb/9442b9f518ba74c931dfa3c602e132b6-thumbnail.jpg",
+   "teams": [
+    [
+     "Philadelphia Flyers",
+     "logo0:https://static.ppvservices.st/assets/thumb/9442b9f518ba74c931dfa3c602e132b6-thumbnail.jpg"
+    ],
+    [
+     "Washington Capitals",
+     "logo1:https://static.ppvservices.st/assets/thumb/9442b9f518ba74c931dfa3c602e132b6-thumbnail.jpg"
+    ]
+   ],
+   "sources": [
+    "ppv/31297"
+   ],
+   "viewers": 0,
+   "live": false
+  },
+  {
+   "id": "27405",
+   "title": "Fox League",
+   "category": "rugby",
+   "date": 0,
+   "poster": "https://static.ppvservices.st/assets/thumb/5ec4933f4ae6363e151dfe5c75ad24e3-thumbnail.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/27405"
+   ],
+   "viewers": 1,
+   "live": true
+  },
+  {
+   "id": "31240",
+   "title": "AEW Wednesday Night Dynamite",
+   "category": "fight",
+   "date": 1793232000000,
+   "poster": "https://static.ppvservices.st/assets/thumb/b406ff9100d91b9210600260350246ff-thumbnail.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/31240"
+   ],
+   "viewers": 0,
+   "live": false
+  },
+  {
+   "id": "31241",
+   "title": "TNA Impact",
+   "category": "fight",
+   "date": 1793322000000,
+   "poster": "https://static.ppvservices.st/assets/thumb/78f581ee61589a76f6bcdeb095f95c12-thumbnail.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/31241"
+   ],
+   "viewers": 0,
+   "live": false
+  },
+  {
+   "id": "5112",
+   "title": "24/7 South Park",
+   "category": "247",
+   "date": 0,
+   "poster": "https://thumbs.poocloud.in/southpark/preview.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/5112"
+   ],
+   "viewers": 17,
+   "live": true
+  },
+  {
+   "id": "3663",
+   "title": "24/7 COWS",
+   "category": "247",
+   "date": 0,
+   "poster": "https://static.ppvservices.st/assets/thumb/213d77252211e1926309f43b38263a4f-thumbnail.jpg",
+   "teams": null,
+   "sources": [
+    "ppv/3663"
+   ],
+   "viewers": 0,
+   "live": true
+  }
+ ],
+ "streams": {
+  "18172": [
+   {
+    "id": "18172",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/nfl-network",
+    "source": "NFL Network (ESPN)",
+    "viewers": 14
+   }
+  ],
+  "31066": [
+   {
+    "id": "31066",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/nfl/2026-10-29/car-gb",
+    "source": "Prime Video",
+    "viewers": 0
+   }
+  ],
+  "31091": [
+   {
+    "id": "31091",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/cfb/2026-10-31/nd-navy",
+    "source": "ABC",
+    "viewers": 0
+   },
+   {
+    "id": "31092",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/cfb/2026-10-31/nd-navy/skycast",
+    "source": "SkyCast",
+    "viewers": null
+   }
+  ],
+  "27406": [
+   {
+    "id": "27406",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/247-fox-footy",
+    "source": "Kayo",
+    "viewers": 0
+   }
+  ],
+  "31307": [
+   {
+    "id": "31307",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/mlb/2026-10-28/mil-tb",
+    "source": "Fox",
+    "viewers": 0
+   }
+  ],
+  "31261": [
+   {
+    "id": "31261",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/nba/2026-10-28/mia-atl",
+    "source": "NBA League Pass (Home)",
+    "viewers": 0
+   },
+   {
+    "id": "31262",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/nba/2026-10-28/mia-atl/away",
+    "source": "NBA League Pass (Away)",
+    "viewers": null
+   }
+  ],
+  "31263": [
+   {
+    "id": "31263",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/nba/2026-10-28/wsh-cle",
+    "source": "DAZN CLE (Home)",
+    "viewers": 0
+   },
+   {
+    "id": "31264",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/nba/2026-10-28/wsh-cle/away",
+    "source": "MNMT (Away)",
+    "viewers": null
+   }
+  ],
+  "27493": [
+   {
+    "id": "27493",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/247-willow",
+    "source": "Willow",
+    "viewers": 39
+   },
+   {
+    "id": "27494",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/247-willow-2",
+    "source": "Willow 2",
+    "viewers": null
+   },
+   {
+    "id": "27495",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/247-willow-sports",
+    "source": "Willow Sports",
+    "viewers": null
+   }
+  ],
+  "27496": [
+   {
+    "id": "27496",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/247-fox-cricket",
+    "source": "Kayo",
+    "viewers": 64
+   }
+  ],
+  "31149": [
+   {
+    "id": "31149",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/seriea/2026-10-28/mil-bol",
+    "source": "Paramount+",
+    "viewers": 625
+   }
+  ],
+  "31150": [
+   {
+    "id": "31150",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/seriea/2026-10-28/par-udi",
+    "source": "Paramount+",
+    "viewers": 21
+   }
+  ],
+  "29059": [
+   {
+    "id": "29059",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/sky-sports-golf-29059",
+    "source": "NOWTV",
+    "viewers": 5
+   }
+  ],
+  "29780": [
+   {
+    "id": "29780",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/nhl-network-29780",
+    "source": "NHL Network",
+    "viewers": 1
+   }
+  ],
+  "31297": [
+   {
+    "id": "31297",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/nhl/2026-10-28/phi-wsh",
+    "source": "TNT",
+    "viewers": 0
+   }
+  ],
+  "27405": [
+   {
+    "id": "27405",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/247-fox-league",
+    "source": "Kayo",
+    "viewers": 1
+   }
+  ],
+  "31240": [
+   {
+    "id": "31240",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/aew/2026-10-28",
+    "source": "TBS",
+    "viewers": 0
+   }
+  ],
+  "31241": [
+   {
+    "id": "31241",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/tna/2026-10-29",
+    "source": "AMC",
+    "viewers": 0
+   }
+  ],
+  "5112": [
+   {
+    "id": "5112",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/247-south-park",
+    "source": "24/7 channel",
+    "viewers": 17
+   }
+  ],
+  "3663": [
+   {
+    "id": "3663",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/247-cows",
+    "source": "24/7 channel",
+    "viewers": 0
+   }
+  ]
+ }
+}

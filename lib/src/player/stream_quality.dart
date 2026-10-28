@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../api/backend.dart';
 import '../generated/app_data.dart' show PlayerText, PlayerTuning;
 
 /// What a stream actually delivered when it was last played: resolution, frame
@@ -25,7 +26,8 @@ class StreamQuality {
   /// "1080p60", or "1080p" while the frame rate is unknown (0).
   String get resolution => '${height}p${fps > 0 ? fps : ''}';
 
-  static const String _key = 'streamQuality';
+  // Kept per backend (see Backend.savedKey).
+  static final String _key = Backend.savedKey('streamQuality');
 
   // Frame rates saved before they came from the stream itself (2026-09-30)
   // could be the device's decoding speed ("1080p2", "70"): drop those.
@@ -74,7 +76,8 @@ class StreamQuality {
 /// like their quality, through restarts, for [PlayerTuning.failedForMinutes]
 /// or until they play. The lists say so where the quality goes.
 abstract final class StreamFailures {
-  static const String _key = 'streamFailed';
+  // Kept per backend (see Backend.savedKey).
+  static final String _key = Backend.savedKey('streamFailed');
   static const Duration _keep = Duration(minutes: PlayerTuning.failedForMinutes);
 
   /// When each recently failed stream failed, by embed URL.

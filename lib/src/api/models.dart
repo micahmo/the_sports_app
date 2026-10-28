@@ -1,5 +1,9 @@
 import '../generated/app_data.dart' show sportDisplayNames;
 
+// The app's own models: what every screen, the recents and the player use,
+// whichever site they came from (see DESIGN_NOTES, Backends; the adapters in
+// backend.dart and <name>_backend.dart make them).
+
 class Sport {
   final String id;
   final String name;
@@ -14,7 +18,7 @@ class Sport {
 
 class TeamInfo {
   final String name;
-  final String? badge; // id used in images endpoint
+  final String? badge; // the backend's badge id (Backend.badgeImage), if any
   TeamInfo({required this.name, required this.badge});
   factory TeamInfo.fromJson(Map<String, dynamic> j) => TeamInfo(name: j['name'] as String, badge: j['badge'] as String?);
   Map<String, dynamic> toJson() => <String, dynamic>{'name': name, 'badge': badge};
@@ -29,8 +33,8 @@ class MatchTeams {
 }
 
 class MatchSourceRef {
-  final String source; // e.g. alpha, bravo
-  final String id; // source-specific match id
+  final String source; // where the streams come from (a source on the site, or the backend's name)
+  final String id; // the match's id there
   MatchSourceRef({required this.source, required this.id});
   factory MatchSourceRef.fromJson(Map<String, dynamic> j) => MatchSourceRef(source: j['source'] as String, id: j['id'] as String);
   Map<String, dynamic> toJson() => <String, dynamic>{'source': source, 'id': id};
@@ -40,15 +44,14 @@ class ApiMatch {
   final String id;
   final String title;
   final String category;
-  final int date; // unix ms
-  final String? poster; // url path (prefix with https://streamed.pk if starts with '/')
+  final int date; // unix ms; 0 for a 24/7 channel
+  final String? poster; // the backend's poster (Backend.posterUrl)
   final bool? popular;
   final MatchTeams? teams;
   final List<MatchSourceRef> sources;
 
-  /// Total viewers across the match's streams. Only /api/matches/live/popular-viewcount
-  /// returns this, and only for the handful of biggest live matches, so it is
-  /// null for most matches.
+  /// Total viewers across the match's streams, where the backend says (null
+  /// otherwise).
   final int? viewers;
 
   ApiMatch({required this.id, required this.title, required this.category, required this.date, required this.popular, required this.sources, this.poster, this.teams, this.viewers});
@@ -97,8 +100,7 @@ class StreamInfo {
   final String embedUrl;
   final String source;
 
-  /// Undocumented — it is not in the published Stream interface, but every
-  /// stream row currently carries it. Treated as optional in case it goes away.
+  /// Where the backend says.
   final int? viewers;
 
   StreamInfo({required this.id, required this.streamNo, required this.language, required this.hd, required this.embedUrl, required this.source, this.viewers});
@@ -114,9 +116,9 @@ class StreamInfo {
 
   Map<String, dynamic> toJson() => <String, dynamic>{'id': id, 'streamNo': streamNo, 'language': language, 'hd': hd, 'embedUrl': embedUrl, 'source': source};
 
-  /// "Admin 1": the source and stream number, as the player and its cards
-  /// name a stream.
-  String get name => '${sourceLabel(source)} $streamNo';
+  /// "ESPN", or "ESPN 2" for a source's second stream: as the player and its
+  /// cards name a stream.
+  String get name => streamNo > 1 ? '${sourceLabel(source)} $streamNo' : sourceLabel(source);
 }
 
 /// A source's name for display: "admin" -> "Admin".

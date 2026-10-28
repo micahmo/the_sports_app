@@ -7,6 +7,10 @@ import 'package:flutter/material.dart';
 const Map<String, String> sportDisplayNames = <String, String>{
   'football': 'Soccer',
   'american-football': 'Football',
+  'hockey': 'Hockey',
+  'fight': 'Fight',
+  'afl': 'AFL',
+  '247': '24/7',
 };
 
 /// Sport icons by sport id; [defaultSportIcon] for any other.
@@ -25,34 +29,52 @@ const Map<String, IconData> sportIcons = <String, IconData>{
   'cricket': Icons.sports_cricket,
   'billiards': Icons.adjust,
   'darts': Icons.track_changes,
+  '247': Icons.live_tv,
 };
 const IconData defaultSportIcon = Icons.sports;
 
 /// Stream sources, best first; sources not listed go last.
 const List<String> sourceOrder = <String>[
-  'admin',
-  'golf',
-  'foxtrot',
-  'hotel',
-  'delta',
-  'alpha',
-  'charlie',
-  'echo',
-  'intel',
 ];
 
 /// The site's description of each source.
 const Map<String, String> sourceDescriptions = <String, String>{
-  'admin': 'Admin added streams',
-  'golf': 'Very stable, good quality',
-  'foxtrot': 'High quality, sometimes 4K',
-  'hotel': 'Good backup, many motorsports events',
-  'delta': 'Okayish backup',
-  'alpha': 'Most reliable (720p 30fps)',
-  'charlie': 'Good backup (poor quality occasionally)',
-  'echo': 'Great quality overall',
-  'intel': 'Large event coverage, iffy quality',
 };
+
+/// The backend in use (see DESIGN_NOTES, Backends).
+abstract final class BackendConfig {
+  static const String name = 'ppv';
+  static const String api = 'https://api.ppv.st/api/streams';
+  /// The site's category names to our sport ids.
+  static const Map<String, String> sportIds = <String, String>{
+    'American Football': 'american-football',
+    'Australian Football': 'afl',
+    'Baseball': 'baseball',
+    'Basketball': 'basketball',
+    'Boxing': 'fight',
+    'Combat Sports': 'fight',
+    'Cricket': 'cricket',
+    'Darts': 'darts',
+    'Football': 'football',
+    'Golf': 'golf',
+    'Ice Hockey': 'hockey',
+    'MMA': 'fight',
+    'Motorsport': 'motor-sports',
+    'Motorsports': 'motor-sports',
+    'Rugby': 'rugby',
+    'Tennis': 'tennis',
+    'Wrestling': 'fight',
+    '24/7 Streams': '247',
+  };
+
+  /// Where each team's logo sits on a game poster, for a site without
+  /// team badges: the title's first and second team, as fractions of the
+  /// poster (left, top, width, height).
+  static const List<List<double>> logoCrops = <List<double>>[
+    <double>[0.0967, 0.2262, 0.3067, 0.5476],
+    <double>[0.5967, 0.2262, 0.3067, 0.5476],
+  ];
+}
 
 /// Colours both apps use: the dark theme, and the light theme's version where there is one.
 abstract final class AppPalette {

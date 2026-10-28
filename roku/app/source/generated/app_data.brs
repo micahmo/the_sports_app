@@ -2,12 +2,12 @@
 
 ' Sport display names that differ from the API's, by sport id.
 function appSportDisplayNames() as Object
-    return {"football": "Soccer", "american-football": "Football"}
+    return {"football": "Soccer", "american-football": "Football", "hockey": "Hockey", "fight": "Fight", "afl": "AFL", "247": "24/7"}
 end function
 
 ' Sport icons (Material icon names; images/icons/<name>.png) by sport id.
 function appSportIcons() as Object
-    return {"basketball": "sports_basketball", "football": "sports_soccer", "american-football": "sports_football", "hockey": "sports_hockey", "baseball": "sports_baseball", "motor-sports": "sports_motorsports", "fight": "sports_mma", "tennis": "sports_tennis", "rugby": "sports_rugby", "afl": "sports_rugby", "golf": "sports_golf", "cricket": "sports_cricket", "billiards": "adjust", "darts": "track_changes"}
+    return {"basketball": "sports_basketball", "football": "sports_soccer", "american-football": "sports_football", "hockey": "sports_hockey", "baseball": "sports_baseball", "motor-sports": "sports_motorsports", "fight": "sports_mma", "tennis": "sports_tennis", "rugby": "sports_rugby", "afl": "sports_rugby", "golf": "sports_golf", "cricket": "sports_cricket", "billiards": "adjust", "darts": "track_changes", "247": "live_tv"}
 end function
 
 function appDefaultSportIcon() as String
@@ -16,12 +16,20 @@ end function
 
 ' Stream sources, best first; sources not listed go last.
 function appSourceOrder() as Object
-    return ["admin", "golf", "foxtrot", "hotel", "delta", "alpha", "charlie", "echo", "intel"]
+    return []
 end function
 
 ' The site's description of each source.
 function appSourceDescriptions() as Object
-    return {"admin": "Admin added streams", "golf": "Very stable, good quality", "foxtrot": "High quality, sometimes 4K", "hotel": "Good backup, many motorsports events", "delta": "Okayish backup", "alpha": "Most reliable (720p 30fps)", "charlie": "Good backup (poor quality occasionally)", "echo": "Great quality overall", "intel": "Large event coverage, iffy quality"}
+    return {}
+end function
+
+' The backend in use (see DESIGN_NOTES, Backends): name, address, its
+' category names to our sport ids, and where each team's logo sits on a
+' game poster (logoCrops: the title's first and second team, as fractions
+' of the poster: left, top, width, height).
+function appBackend() as Object
+    return {name: "ppv", api: "https://api.ppv.st/api/streams", sportIds: {"American Football": "american-football", "Australian Football": "afl", "Baseball": "baseball", "Basketball": "basketball", "Boxing": "fight", "Combat Sports": "fight", "Cricket": "cricket", "Darts": "darts", "Football": "football", "Golf": "golf", "Ice Hockey": "hockey", "MMA": "fight", "Motorsport": "motor-sports", "Motorsports": "motor-sports", "Rugby": "rugby", "Tennis": "tennis", "Wrestling": "fight", "24/7 Streams": "247"}, logoCrops: [[0.0967, 0.2262, 0.3067, 0.5476], [0.5967, 0.2262, 0.3067, 0.5476]]}
 end function
 
 ' The dark theme's colours (the Roku's only theme).

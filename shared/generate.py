@@ -29,7 +29,13 @@ def load():
     with open(DATA, encoding='utf-8') as f:
         data = json.load(f)
     sports = {k: v for k, v in data['sports'].items() if not k.startswith('_')}
-    sources = data['sources']['order']
+    # The backend in use (see DESIGN_NOTES, Backends): its sources, and its
+    # name, address and category -> sport id table for the adapters.
+    global BACKEND
+    name = data['backend']
+    b = data['backends'][name]
+    BACKEND = {'name': name, 'api': b['api'], 'sportIds': b['sportIds'], 'logoCrops': b.get('logoCrops', [])}
+    sources = b['sources']
     palette = {k: v for k, v in data['palette'].items() if not k.startswith('_')}
     player = {k: v for k, v in data['player'].items() if not k.startswith('_')}
     player_text = {k: v for k, v in data['playerText'].items() if not k.startswith('_')}
@@ -69,7 +75,20 @@ def dart(sports, default_icon, sources, palette, player, player_text, player_ico
     out += [f'  {dq(s["id"])},' for s in sources]
     out += ['];', '', '/// The site\'s description of each source.', 'const Map<String, String> sourceDescriptions = <String, String>{']
     out += [f'  {dq(s["id"])}: {dq(s["description"])},' for s in sources]
-    out += ['};', '', '/// Colours both apps use: the dark theme, and the light theme\'s version where there is one.', 'abstract final class AppPalette {']
+    out += ['};', '', '/// The backend in use (see DESIGN_NOTES, Backends).', 'abstract final class BackendConfig {',
+            f'  static const String name = {dq(BACKEND["name"])};',
+            f'  static const String api = {dq(BACKEND["api"])};',
+            "  /// The site's category names to our sport ids.",
+            '  static const Map<String, String> sportIds = <String, String>{']
+    out += [f'    {dq(k)}: {dq(v)},' for k, v in BACKEND['sportIds'].items()]
+    out += ['  };', '',
+            "  /// Where each team's logo sits on a game poster, for a site without",
+            "  /// team badges: the title's first and second team, as fractions of the",
+            "  /// poster (left, top, width, height).",
+            '  static const List<List<double>> logoCrops = <List<double>>[']
+    out += ['    <double>[' + ', '.join(str(x) for x in c) + '],' for c in BACKEND['logoCrops']]
+    out += ['  ];', '}']
+    out += ['', '/// Colours both apps use: the dark theme, and the light theme\'s version where there is one.', 'abstract final class AppPalette {']
     for name, v in palette.items():
         out.append(f'  static const Color {name} = Color(0xFF{v["dark"][1:].upper()});')
         if 'light' in v:
@@ -110,6 +129,14 @@ def brs(sports, default_icon, sources, palette, player, player_text, player_icon
             "' The site's description of each source.",
             'function appSourceDescriptions() as Object',
             '    return ' + aa((s['id'], s['description']) for s in sources),
+            'end function', '',
+            "' The backend in use (see DESIGN_NOTES, Backends): name, address, its",
+            "' category names to our sport ids, and where each team's logo sits on a",
+            "' game poster (logoCrops: the title's first and second team, as fractions",
+            "' of the poster: left, top, width, height).",
+            'function appBackend() as Object',
+            f'    return {{name: {q(BACKEND["name"])}, api: {q(BACKEND["api"])}, sportIds: ' + aa(BACKEND['sportIds'].items())
+            + ', logoCrops: [' + ', '.join('[' + ', '.join(str(x) for x in c) + ']' for c in BACKEND['logoCrops']) + ']}',
             'end function', '',
             "' The dark theme's colours (the Roku's only theme).",
             'function appPalette() as Object',
