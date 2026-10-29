@@ -852,7 +852,12 @@ the phone and desktop already redrew it).
   "Switched to Admin 1 (HD)" note takes the pill's place. When nothing like it
   is left, the other kind (an SD stream beats nothing when every HD one is down;
   user, 2026-09-30), and only then "unavailable". Recently failed streams come
-  after every other: working ones of either kind first.
+  after every other: working ones of either kind first. "Unavailable" offers
+  a retry of the same stream: the Retry button on phone/desktop, OK on the
+  Roku ("Press OK to try again, or Back to pick another stream."; until
+  2026-10-28 the Roku only offered Back). A source's server can come back
+  minutes later: NFL Network's one server dropped, came back for three
+  minutes, and dropped again.
 - **Recently failed:** a stream that fails for good is remembered like its
   quality (`StreamFailures` / `failedNote()` in common.brs), through restarts,
   for `player.failedForMinutes` (an hour) or until it plays. Its quality line
@@ -988,6 +993,11 @@ Sessions: Home kills a Roku app outright (`EXIT_USER_NAV`) with no chance to
 clean up, so the app remembers its session id in the registry and deletes it on
 the next launch, and Selenium's idle session timeout reaps anything else.
 Selenium also needs `browserName: chrome` in the capabilities to route a session.
+Sessions ask for `pageLoadStrategy: "none"`, so loading the embed page doesn't
+wait for it to finish. ppv.st's pages, with their ad scripts, sometimes kept
+loading for minutes, and every command queued behind the load: the spinner ran
+86 s and 135 s (2026-10-28) where `findPlaylist` meant to give up after 20 s.
+Nothing needs the load: `findPlaylist` polls for the playlist request either way.
 
 Background refresh: every minute the screen on top reloads quietly, but only
 after 10 s without input. `roDeviceInfo.TimeSinceLastKeypress()` counts only

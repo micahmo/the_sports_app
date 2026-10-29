@@ -90,7 +90,7 @@
   },
 
   "playerText": {
-    "_about": "The player's wording, the same on every app. {stream} is a stream's name and HD/SD, e.g. \"Delta 1 (HD)\"; {quality} a feed's resolution, e.g. \"540p\"; {n} a number. failed*: a stream that recently failed, where its quality would go (see player.failedForMinutes). switching*, upAvailable, weakConnection and slow* are phone and desktop only (see player).",
+    "_about": "The player's wording, the same on every app. {stream} is a stream's name and HD/SD, e.g. \"Delta 1 (HD)\"; {quality} a feed's resolution, e.g. \"540p\"; {n} a number. failed*: a stream that recently failed, where its quality would go (see player.failedForMinutes). switching*, upAvailable, weakConnection, slow* and retry are phone and desktop only (see player); tv* the Roku's.",
     "streamsPill": "Streams",
     "thisGame": "THIS GAME",
     "recent": "RECENT",
@@ -106,7 +106,11 @@
     "upAvailable": "{quality} available",
     "weakConnection": "Weak connection",
     "slowConnection": "Still loading · your connection is slow",
-    "slowSource": "Still loading · the stream is slow to respond"
+    "slowSource": "Still loading · the stream is slow to respond",
+    "unavailable": "This stream is unavailable.",
+    "unavailableHint": "Try another stream or source.",
+    "retry": "Retry",
+    "tvRetryKeys": "Press OK to try again, or Back to pick another stream."
   },
 
   "palette": {

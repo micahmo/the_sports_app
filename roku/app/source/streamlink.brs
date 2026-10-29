@@ -83,7 +83,12 @@ function openSession() as Boolean
     q = Chr(34)
     args = ["--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--mute-audio", "--window-size=1280,720"]
     ' Built by hand: WebDriver needs "alwaysMatch" and "goog:chromeOptions" exactly.
-    caps = "{" + q + "capabilities" + q + ":{" + q + "alwaysMatch" + q + ":{" + q + "browserName" + q + ":" + q + "chrome" + q + "," + q + "goog:chromeOptions" + q + ":{" + q + "args" + q + ":" + FormatJson(args) + "}}}}"
+    ' pageLoadStrategy "none": don't wait for the page to finish loading. Its ad
+    ' scripts kept ppv.st's pages loading for minutes (86 s and 135 s on
+    ' 2026-10-28), and every command queued behind the load, so the spinner
+    ' outlasted findPlaylist's 20 s. Nothing here needs the load: findPlaylist
+    ' polls for the playlist request.
+    caps = "{" + q + "capabilities" + q + ":{" + q + "alwaysMatch" + q + ":{" + q + "browserName" + q + ":" + q + "chrome" + q + "," + q + "pageLoadStrategy" + q + ":" + q + "none" + q + "," + q + "goog:chromeOptions" + q + ":{" + q + "args" + q + ":" + FormatJson(args) + "}}}}"
     session = wd(m.driver, "POST", "/session", caps)
     if session = invalid or session.sessionId = invalid then return false
     m.sid = session.sessionId

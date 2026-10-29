@@ -151,6 +151,10 @@ abstract final class PlayerText {
   static const String weakConnection = 'Weak connection';
   static const String slowConnection = 'Still loading · your connection is slow';
   static const String slowSource = 'Still loading · the stream is slow to respond';
+  static const String unavailable = 'This stream is unavailable.';
+  static const String unavailableHint = 'Try another stream or source.';
+  static const String retry = 'Retry';
+  static const String tvRetryKeys = 'Press OK to try again, or Back to pick another stream.';
 }
 
 /// The player's icons, the same on every app.

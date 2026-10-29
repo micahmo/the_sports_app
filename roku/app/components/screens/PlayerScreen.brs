@@ -4,6 +4,7 @@ sub init()
     m.holdCover = m.top.findNode("holdCover")
     m.backdrop = m.top.findNode("backdrop")
     m.status = m.top.findNode("status")
+    m.canRetry = false
     m.status.font = bodyFont(32)
     m.status.color = t.textDim
     m.top.findNode("barBg").color = overlayColor()
@@ -265,7 +266,8 @@ sub pickFallback(reason as String)
     if left.Count() = 0 then
         m.trying = ""
         m.fallbackFrom = ""
-        showFinal(reason + Chr(10) + "Press Back to pick another stream.")
+        showFinal(reason + Chr(10) + playerText("tvRetryKeys"))
+        m.canRetry = true
         return
     end if
     nxt = left[0]
@@ -297,6 +299,7 @@ end function
 ' Play s in place of what's playing: the same screen, a fresh start. A pick from
 ' the streams row starts a new round of falling back; a fallback carries on.
 sub switchTo(s as Object, fallback as Boolean)
+    m.canRetry = false
     saveBest()
     m.best = invalid
     m.savedAt = invalid
@@ -1396,6 +1399,12 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
         return true
     end if
     if key = "back" then return false
+    ' Unavailable: OK tries the same stream again, as the phone's Retry. A
+    ' source's server can come back minutes later (NFL Network, 2026-10-28).
+    if key = "OK" and m.canRetry = true then
+        switchTo(m.stream, false)
+        return true
+    end if
     if key = "down" and m.bar.shown then
         openRow()
         return true

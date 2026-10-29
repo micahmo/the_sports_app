@@ -54,7 +54,7 @@ end function
 
 ' The player's wording, the same on every app; {stream} is filled in.
 function appPlayerText() as Object
-    return {"streamsPill": "Streams", "thisGame": "THIS GAME", "recent": "RECENT", "notPlayed": "Not played yet", "failedJustNow": "Failed just now", "failedMinutesAgo": "Failed {n} min ago", "failedHoursAgo": "Failed {n} hr ago", "stoppedWorking": "{stream} stopped working", "trying": "Trying {stream}…", "switchedTo": "Switched to {stream}", "switchingDown": "Weak connection · Switching to {quality}…", "switchingUp": "Switching to {quality}…", "upAvailable": "{quality} available", "weakConnection": "Weak connection", "slowConnection": "Still loading · your connection is slow", "slowSource": "Still loading · the stream is slow to respond"}
+    return {"streamsPill": "Streams", "thisGame": "THIS GAME", "recent": "RECENT", "notPlayed": "Not played yet", "failedJustNow": "Failed just now", "failedMinutesAgo": "Failed {n} min ago", "failedHoursAgo": "Failed {n} hr ago", "stoppedWorking": "{stream} stopped working", "trying": "Trying {stream}…", "switchedTo": "Switched to {stream}", "switchingDown": "Weak connection · Switching to {quality}…", "switchingUp": "Switching to {quality}…", "upAvailable": "{quality} available", "weakConnection": "Weak connection", "slowConnection": "Still loading · your connection is slow", "slowSource": "Still loading · the stream is slow to respond", "unavailable": "This stream is unavailable.", "unavailableHint": "Try another stream or source.", "retry": "Retry", "tvRetryKeys": "Press OK to try again, or Back to pick another stream."}
 end function
 
 ' The player's icons (Material icon names; images/icons/<name>.png).
