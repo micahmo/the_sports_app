@@ -766,6 +766,14 @@ sub onAllLoaded()
     end for
     m.currentIds = ids
     if m.rowOpen then renderRow()
+    syncPill()
+end sub
+
+' The pill only while there's a row behind it: the row can empty after the pill
+' shows (the recent game that put it there turns out finished once the site's
+' list arrives), and a pill that opened nothing looked broken (2026-10-28).
+sub syncPill()
+    if m.bar.shown and not m.rowOpen and not m.note.shown then setShown(m.pill, hasRow(), 0)
 end sub
 
 sub closeRow()
@@ -1034,6 +1042,7 @@ sub afterRefresh()
     after = m.refreshAfter
     m.refreshing = false
     m.refreshAfter = ""
+    syncPill()
     if after = "fallback" then
         pickFallback(m.pendingReason)
     else if after = "recent" then

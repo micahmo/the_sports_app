@@ -821,7 +821,11 @@ taps as `pointer:down`), Back (the phone's gesture too, via `PopScope`), Esc on
 desktop, or Up on the Roku; otherwise it goes when the title bar does (a
 little longer while it's open). The menu button makes way for it. The title
 bar and pill also come up over the loading, fallback and unavailable screens,
-so another stream can be picked without waiting out a fallback.
+so another stream can be picked without waiting out a fallback. The pill
+shows only while the row has something in it, and is checked again when the
+site's lists arrive: on the Roku it used to stay up after its only recent game
+turned out finished, and Down then opened nothing (NFL Network, 2026-10-28;
+the phone and desktop already redrew it).
 
 - **THIS GAME** (left): the match's other streams, the same HD/SD as what's
   playing first, best sources first; recently failed ones last, so they only
