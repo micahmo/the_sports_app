@@ -19,6 +19,16 @@ sub work()
     ' For measure(): segment lengths from the playlists, recent bitrates, and
     ' what the first segments showed.
     m.segDur = {}
+    ' What the player has in hand (servedSecs): each segment's place in the list
+    ' (first seen), the ones this player asked for and is still waiting on, and
+    ' ones handed over but not playable yet (an earlier one still coming). See
+    ' countServed.
+    m.segOrder = {}
+    m.orderNext = 0
+    m.pend = {}
+    m.held = []
+    m.counted = {}
+    m.acctGen = 0
     ' Segment downloads (see "segments" below): by URL, which transfer belongs to
     ' which URL, what's already been served, and a counter for file names.
     m.dl = {}
@@ -27,6 +37,9 @@ sub work()
     m.fileSeq = 0
     ' The last few segments' picture clocks (checkClock).
     m.stamps = []
+    ' Recent jumps ahead ({at, gap}, at on m.jumpClock), added up (checkClock).
+    m.jumps = []
+    m.jumpClock = CreateObject("roTimespan")
     ' Each connection's start of the player (startedAgain when it connected).
     m.sockGen = {}
     ' Segments the source's server refused (403) before any played, with none
@@ -162,6 +175,11 @@ function rewritePlaylist(url as String, text as String) as String
             else
                 line = "/seg?u=" + esc.Escape(target)
                 m.segDur[target] = dur
+                if not m.segOrder.DoesExist(target) then
+                    if m.segOrder.Count() > 400 then m.segOrder = {}
+                    m.segOrder[target] = m.orderNext
+                    m.orderNext = m.orderNext + 1
+                end if
                 segs.Push(target)
             end if
         end if
@@ -617,6 +635,8 @@ sub onDownload(ev as Object)
         respond(sock, "502 Bad Gateway", "text/plain", invalid)
         finish(sock)
     end for
+    ' Not waited on any more: the ones after it count (see countServed).
+    countServed(u, false)
     m.dl.Delete(u)
 end sub
 
@@ -664,7 +684,25 @@ sub checkClock(u as String, path as String)
             ' it had, stuck, then asked again for segments it had played (an 80 s
             ' jump after an outage, 2026-10-17; a 25 s one, 2026-10-19, replayed
             ' segments too). See PlayerScreen's onJumped.
-            if gap >= 20 then m.top.jumped = gap
+            ' Several smaller ones close together do the same: 5.5, 9, 10 and 6 s
+            ' within 20 s raced, replayed and ran dry (black) like one 30 s jump
+            ' (TNF, 2026-10-29). So they add up over 30 s.
+            now = m.jumpClock.TotalSeconds()
+            recent = []
+            total = 0
+            for each j in m.jumps
+                if now - j.at <= 30 then
+                    recent.Push(j)
+                    total = total + j.gap
+                end if
+            end for
+            recent.Push({at: now, gap: gap})
+            total = total + gap
+            m.jumps = recent
+            if total >= 20 then
+                m.jumps = []
+                m.top.jumped = total
+            end if
         end if
     else if m.stamps.Count() > 0 and m.top.servedSecs > 30 then
         ' Earlier than every recent one: the first segments finishing out of
@@ -725,11 +763,58 @@ sub serveSegment(u as String)
     end if
     DeleteFile(d.file)
     m.dl.Delete(u)
-    if ba <> invalid and m.segDur[u] <> invalid then m.top.servedSecs = m.top.servedSecs + m.segDur[u]
+    ' Counted only when it goes to the player now running: one asked for by the
+    ' player from before a restart is dropped (pumpAll), and counting it made
+    ' the TV think it had 4-8 s more in hand than it did, so it ran dry (black)
+    ' instead of pausing (2026-10-29 21:19:53 and 22:18:44).
+    current = d.waiters.Count() = 0
+    for each sock in d.waiters
+        ' (No generation: the list was cleared since; pumpAll doesn't drop it.)
+        g = m.sockGen[sock.GetID().ToStr()]
+        if g = invalid or g = m.top.startedAgain then current = true
+    end for
+    countServed(u, ba <> invalid and current)
     m.served[u] = true
     m.anyServed = true
     if m.served.Count() > 60 then m.served = {}
 end sub
+
+' servedSecs, what the player now running has been handed that it can play:
+' a segment counts once, and only when every earlier one it asked for has come
+' too. It asks for several at once, and one slow to come left it dry while the
+' later ones, already counted, read as 8 s in hand (2026-10-29 21:54:09 and
+' 22:27:28, temporary in-hand log); one asked for again counted twice.
+sub countServed(u as String, ok as Boolean)
+    syncCount()
+    if ok and m.segDur[u] <> invalid and m.counted[u] <> m.acctGen then
+        if m.counted.Count() > 200 then m.counted = {}
+        m.counted[u] = m.acctGen
+        m.held.Push({o: segPlace(u), d: m.segDur[u]})
+    end if
+    m.pend.Delete(u)
+    first = invalid
+    for each k in m.pend
+        if first = invalid or m.pend[k] < first then first = m.pend[k]
+    end for
+    keep = []
+    for each h in m.held
+        if first = invalid or h.o < first then m.top.servedSecs = m.top.servedSecs + h.d else keep.Push(h)
+    end for
+    m.held = keep
+end sub
+
+' A new start of the player (restartAtLive): what the old one was owed is gone.
+sub syncCount()
+    if m.acctGen = m.top.startedAgain then return
+    m.acctGen = m.top.startedAgain
+    m.pend = {}
+    m.held = []
+end sub
+
+function segPlace(u as String) as Integer
+    if m.segOrder.DoesExist(u) then return m.segOrder[u]
+    return m.orderNext
+end function
 
 ' The player asked for a segment: serve it now if it's here, else when it is.
 ' True if the request was answered (so the connection can close).
@@ -738,6 +823,9 @@ function askSegment(sock as Object, u as String) as Boolean
     ' segments from the end of the list, and with the source stalled those are
     ' ones it has played (~20 s again, 2026-10-17 and -18). Logged, to see when.
     if m.served.DoesExist(u) then print logTime(); "[stream] the player asked again for a segment it had"
+    syncCount()
+    g = m.sockGen[sock.GetID().ToStr()]
+    if (g = invalid or g = m.top.startedAgain) and m.counted[u] <> m.acctGen then m.pend[u] = segPlace(u)
     d = m.dl[u]
     if d = invalid then d = startDownload(u)
     if d.done then

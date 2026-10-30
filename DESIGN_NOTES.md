@@ -1079,6 +1079,17 @@ picture up, and banks the cushion as rampUp did. Tested on a staged 50 s
 playlist freeze, then a real one (ppv.st segment 404s, 19 s): frozen picture
 and spinner, then straight back to live. If it runs dry anyway (Roku
 buffering), the old path (rampUp, a hold) is as before.
+`servedSecs` counts a segment only when it goes to the player now running:
+after a restart, segments the old player had asked for finish and are dropped
+(`pumpAll`), and counting them read 4-8 s too much in hand, so the TV ran dry
+(black) 10-15 s after restarts instead of pausing (TNF, 2026-10-29: 4 s extra
+at 22:18:44, 8 s at 21:19:53, seen with a temporary in-hand log line).
+And a segment counts only once every earlier one this player asked for has
+come too (`countServed`, by each segment's place in the list), and once per
+player. The Roku asks for several at once; one slow to come left it dry while
+the later ones, already counted, read as ~8 s in hand (21:54:09, a segment
+slow 4 s; 22:27:28, the earliest of three took 3.2 s). A segment that fails
+for good stops being waited on.
 
 **Reconnects keep the picture**: the old player is paused, dimmed, under
 "Reconnecting..." (nothing it does counts meanwhile: `keptPicture`), and is
@@ -1095,6 +1106,12 @@ fitted where the video goes, fetched ahead when the streams page opens).
 `Backend.backdropUrl`: the adapter's `backdrop` (ppv.st's poster without
 "-thumbnail": 1280x720 rather than 300x168), else the poster. Black for a
 game with neither. Not over a kept picture: the real frozen frame first.
+On the TV it stays through a hold that follows running dry, until the
+"playing" after it: the player had drawn no new frame before the hold paused
+it, so taking it down at the first "playing" left the dimmed picture black for
+the hold (2026-10-29). And from the moment a restart at live stops the old
+player (`restartAtLive`): until the new one buffered, nothing covered it, a
+moment of black (2026-10-29 22:39:01).
 
 **Holds**: muted from when one's due until the picture's uncovered (a blip of
 sound got out before the pause, 2026-10-26); the cover stays until the
@@ -1102,7 +1119,9 @@ player says "playing" after the hold, past any replay skip (it came down on a
 rewound picture for an instant); dimmed rather than black unless a replay may
 be skipped. A new link found while the player spins restarts the 20 s stall
 timer (`newLink`), which had thrown away a link found a second earlier
-(2026-10-25 14:32).
+(2026-10-25 14:32). Paused before running dry counts as spinning too: there
+the timer reconnected 4 s after a new link had the video coming again, a 6 s
+restart for nothing (TNF, 2026-10-29).
 
 ### Frozen while "playing" (TV, 1.0.140)
 
@@ -1312,6 +1331,11 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
   downloaded again isn't checked twice). Smaller jumps it plays over, and one
   it runs dry at is still onStuck's. Tested with a staged 18 s skip (threshold
   lowered for the test): jump seen, playing again 1.3 s later.
+  Jumps add up over 30 s (2026-10-29): TNF's source skipped 5.5, 9, 10 and
+  6 s within 20 s, each played over, and together they did what one big jump
+  does: the player raced ("major speedup"), asked again for segments it had,
+  and ran dry with its cushion thrown away (black, past the pause before
+  running dry). So 20 s in all within 30 s counts as one jump.
 - **A restart drops what was going to the old player.** Stopped mid-segment,
   that player stops reading, and `sendAll` waited out its 10 s for it while
   the whole proxy served nothing: the new player sat on its spinner, then

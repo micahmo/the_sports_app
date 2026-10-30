@@ -417,7 +417,10 @@ sub onVideoState()
     ' The old stream, paused under a reconnect (see reconnect): nothing it
     ' does counts.
     if m.keptPicture then return
-    if st = "playing" then m.backdrop.visible = false
+    ' Not when a hold is about to pause it: no new frame drawn yet, the dimmed
+    ' picture was black for the hold (2026-10-29 21:54, "poster for a bit then
+    ' black"). The "playing" after the hold takes it down.
+    if st = "playing" and not m.holdPending then m.backdrop.visible = false
     if st = "playing" then
         m.afterRestart = false
         m.seeking = false
@@ -1207,6 +1210,9 @@ sub restartAtLive(skipShown as Boolean)
     m.skipAfterStart = skipShown
     if m.dryPaused then endDryPause()
     m.video.control = "stop"
+    ' The poster at once: stopped, the player shows nothing until the new one
+    ' buffers, which was black for a moment (2026-10-29 22:39:01).
+    showBackdrop()
     m.served0 = m.task.servedSecs
     m.video.content = streamContent(url)
     m.video.control = "play"
@@ -1275,8 +1281,10 @@ end sub
 ' A new link found while the player spins: the stall's 20 s start again, to
 ' give it time to play (the stall reconnected a second after one came,
 ' throwing it away, 2026-10-25 14:32).
+' Paused before running dry counts too: there the stall reconnected 4 s after a
+' fresh link had the video coming again, adding a 6 s restart (TNF, 2026-10-29).
 sub onNewLink()
-    if m.video.state <> "buffering" then return
+    if m.video.state <> "buffering" and not m.dryPaused then return
     print logTime(); "[player] a new link: waiting for it"
     m.stall.control = "stop"
     m.stall.control = "start"
