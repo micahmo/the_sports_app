@@ -867,6 +867,9 @@ the phone and desktop already redrew it).
   forgotten when the player closed, so it came back as an untried stream.
   On the Roku the row card puts the note and the language on separate lines
   (a label has one colour).
+- **Stream rows are one height:** room for the quality line whether or not a
+  stream has one, the name centered when it's alone (the TV's fixed 92 px rows
+  always did; `_StreamRow` grew a line taller once played until 2026-10-30).
 - The numbers (cards per side, recents kept, the note's time) and the wording
   are in `shared/app_data.json` (`player`, `playerText`).
 

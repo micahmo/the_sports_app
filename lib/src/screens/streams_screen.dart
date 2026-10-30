@@ -362,34 +362,54 @@ class _StreamRow extends StatelessWidget {
                 child: Text(stream.hd ? 'HD' : 'SD', style: condensed(15, FontWeight.w700, color: theme.scaffoldBackgroundColor, letterSpacing: 0.6)),
               ),
               const SizedBox(width: 12),
+              // Every row is two lines tall, as on the TV: a lone name sits
+              // centered rather than the row growing when a quality arrives.
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                child: Stack(
+                  alignment: AlignmentDirectional.centerStart,
                   children: <Widget>[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: <Widget>[
-                        Text('Stream ${stream.streamNo}', style: condensed(19, lastPlayed ? FontWeight.w700 : FontWeight.w500, color: accent ?? cs.onSurface)),
-                        if (stream.language.isNotEmpty) ...<Widget>[
-                          const SizedBox(width: 10),
-                          Flexible(
-                            child: Text(stream.language, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: accent ?? cs.onSurfaceVariant)),
-                          ),
+                    Visibility(
+                      visible: false,
+                      maintainSize: true,
+                      maintainAnimation: true,
+                      maintainState: true,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text('', style: condensed(19, FontWeight.w700)),
+                          const Padding(padding: EdgeInsets.only(top: 2), child: Text('', style: TextStyle(fontSize: 12))),
                         ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: <Widget>[
+                            Text('Stream ${stream.streamNo}', style: condensed(19, lastPlayed ? FontWeight.w700 : FontWeight.w500, color: accent ?? cs.onSurface)),
+                            if (stream.language.isNotEmpty) ...<Widget>[
+                              const SizedBox(width: 10),
+                              Flexible(
+                                child: Text(stream.language, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: accent ?? cs.onSurfaceVariant)),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (failedAt != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(StreamFailures.note(failedAt!), style: TextStyle(fontSize: 12, color: failedColor(context))),
+                          )
+                        else if (quality != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(quality!.label, style: TextStyle(fontSize: 12, color: cs.outline)),
+                          ),
                       ],
                     ),
-                    if (failedAt != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(StreamFailures.note(failedAt!), style: TextStyle(fontSize: 12, color: failedColor(context))),
-                      )
-                    else if (quality != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(quality!.label, style: TextStyle(fontSize: 12, color: cs.outline)),
-                      ),
                   ],
                 ),
               ),
