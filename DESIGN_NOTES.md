@@ -1106,6 +1106,10 @@ fitted where the video goes, fetched ahead when the streams page opens).
 `Backend.backdropUrl`: the adapter's `backdrop` (ppv.st's poster without
 "-thumbnail": 1280x720 rather than 300x168), else the poster. Black for a
 game with neither. Not over a kept picture: the real frozen frame first.
+Every copy of a match carries `backdrop` along: `withViewers` (the phone and
+desktop lists' counts) and the TV's saved recents dropped it, so the biggest
+games and anything reopened from recents showed the thumbnail stretched
+(2026-10-30, Bulls-Celtics on desktop).
 On the TV it stays through a hold that follows running dry, until the
 "playing" after it: the player had drawn no new frame before the hold paused
 it, so taking it down at the first "playing" left the dimmed picture black for

@@ -317,7 +317,7 @@ end function
 
 sub recordRecent(match as Object, stream as Object)
     keep = appPlayer().recentsKept
-    slim = {id: match.id, title: match.title, category: match.category, date: match.date, poster: match.poster, teams: match.teams, sources: match.sources}
+    slim = {id: match.id, title: match.title, category: match.category, date: match.date, poster: match.poster, backdrop: match.backdrop, teams: match.teams, sources: match.sources}
     entry = {match: slim, stream: {id: stream.id, streamNo: stream.streamNo, language: stream.language, hd: stream.hd, embedUrl: stream.embedUrl, source: stream.source}, at: nowSeconds()}
     list = [entry]
     for each r in recentGames()

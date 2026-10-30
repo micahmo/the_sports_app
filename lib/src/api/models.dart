@@ -90,6 +90,7 @@ class ApiMatch {
     popular: popular,
     sources: sources,
     poster: poster,
+    backdrop: backdrop,
     teams: teams,
     viewers: v,
   );
