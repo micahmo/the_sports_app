@@ -73,14 +73,14 @@ class PpvBackend extends Backend {
         // languages), each named by broadcaster.
         final List<StreamInfo> list = <StreamInfo>[];
         void add(Map<String, dynamic> f, int? v) {
-          final String source = ((f['source_tag'] as String?) ?? '').trim();
+          final (String source, bool hd) = splitQuality(((f['source_tag'] as String?) ?? '').trim());
           final String name = source.isEmpty ? 'Stream' : source;
           final int no = list.where((StreamInfo s) => s.source == name).length + 1;
           list.add(StreamInfo(
             id: '${f['id']}',
             streamNo: no,
             language: languageName(f['locale'] as String?),
-            hd: true,
+            hd: hd,
             embedUrl: f['iframe'] as String,
             source: name,
             viewers: v,
@@ -95,6 +95,16 @@ class PpvBackend extends Backend {
       }
     }
     return PpvSnapshot(sports, matches, streams, live);
+  }
+
+  /// "SD | ESPN" -> ("ESPN", false): the site leads its source names with the
+  /// feed's quality (since 2026-10-31; its 540p copies are SD). A name
+  /// without one is HD, as every feed was before.
+  static (String, bool) splitQuality(String tag) {
+    final int bar = tag.indexOf('|');
+    final String q = bar < 0 ? '' : tag.substring(0, bar).trim().toUpperCase();
+    if (q != 'HD' && q != 'SD') return (tag, true);
+    return (tag.substring(bar + 1).trim(), q == 'HD');
   }
 
   /// Our sport id for the site's category name (shared/app_data.json); else

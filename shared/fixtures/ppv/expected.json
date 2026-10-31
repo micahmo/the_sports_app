@@ -107,6 +107,29 @@
    "live": false
   },
   {
+   "id": "31093",
+   "title": "Arizona Wildcats at Texas Tech Red Raiders",
+   "category": "american-football",
+   "date": 1793462400000,
+   "poster": "https://static.ppvservices.st/assets/thumb/3c3d617a9a6aed5dd3e42acea607219e-thumbnail.jpg",
+   "backdrop": "https://static.ppvservices.st/assets/thumb/3c3d617a9a6aed5dd3e42acea607219e.jpg",
+   "teams": [
+    [
+     "Texas Tech Red Raiders",
+     "logo1:https://static.ppvservices.st/assets/thumb/3c3d617a9a6aed5dd3e42acea607219e-thumbnail.jpg"
+    ],
+    [
+     "Arizona Wildcats",
+     "logo0:https://static.ppvservices.st/assets/thumb/3c3d617a9a6aed5dd3e42acea607219e-thumbnail.jpg"
+    ]
+   ],
+   "sources": [
+    "ppv/31093"
+   ],
+   "viewers": 763,
+   "live": false
+  },
+  {
    "id": "27406",
    "title": "Fox Footy",
    "category": "afl",
@@ -424,6 +447,44 @@
     "language": "English",
     "hd": true,
     "embedUrl": "https://taifood-blog.asia/embed/cfb/2026-10-31/nd-navy/skycast",
+    "source": "SkyCast",
+    "viewers": null
+   }
+  ],
+  "31093": [
+   {
+    "id": "31093",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/cfb/2026-10-31/ariz-ttu",
+    "source": "ESPN",
+    "viewers": 763
+   },
+   {
+    "id": "1031093",
+    "streamNo": 2,
+    "language": "English",
+    "hd": false,
+    "embedUrl": "https://taifood-blog.asia/embed/cfb/2026-10-31/ariz-ttu_540p",
+    "source": "ESPN",
+    "viewers": null
+   },
+   {
+    "id": "31094",
+    "streamNo": 1,
+    "language": "English",
+    "hd": true,
+    "embedUrl": "https://taifood-blog.asia/embed/cfb/2026-10-31/ariz-ttu/skycast",
+    "source": "SkyCast",
+    "viewers": null
+   },
+   {
+    "id": "1031094",
+    "streamNo": 2,
+    "language": "English",
+    "hd": false,
+    "embedUrl": "https://taifood-blog.asia/embed/cfb/2026-10-31/ariz-ttu/skycast_540p",
     "source": "SkyCast",
     "viewers": null
    }

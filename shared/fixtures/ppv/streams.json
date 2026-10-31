@@ -64,6 +64,55 @@
       }
      ],
      "viewers": "0"
+    },
+    {
+     "id": 31093,
+     "name": "Arizona Wildcats at Texas Tech Red Raiders",
+     "tag": "College Football",
+     "source_tag": "HD | ESPN",
+     "poster": "https://static.ppvservices.st/assets/thumb/3c3d617a9a6aed5dd3e42acea607219e-thumbnail.jpg",
+     "blurhash": "L4H[jp49n4*ev~Rifkoz00*xXmT{",
+     "colors": [
+      "#cc0033",
+      "#da291c"
+     ],
+     "uri_name": "cfb/2026-10-31/ariz-ttu",
+     "starts_at": 1793462400,
+     "ends_at": 1793476800,
+     "always_live": 0,
+     "locale": "en",
+     "category_name": "American Football",
+     "iframe": "https://taifood-blog.asia/embed/cfb/2026-10-31/ariz-ttu",
+     "substreams": [
+      {
+       "id": 1031093,
+       "name": "Arizona Wildcats at Texas Tech Red Raiders",
+       "tag": "College Football",
+       "uri_name": "cfb/2026-10-31/ariz-ttu_540p",
+       "source_tag": "SD | ESPN",
+       "locale": "en",
+       "iframe": "https://taifood-blog.asia/embed/cfb/2026-10-31/ariz-ttu_540p"
+      },
+      {
+       "id": 31094,
+       "name": "Arizona Wildcats at Texas Tech Red Raiders",
+       "tag": "College Football",
+       "uri_name": "cfb/2026-10-31/ariz-ttu/skycast",
+       "source_tag": "HD | SkyCast",
+       "locale": "en",
+       "iframe": "https://taifood-blog.asia/embed/cfb/2026-10-31/ariz-ttu/skycast"
+      },
+      {
+       "id": 1031094,
+       "name": "Arizona Wildcats at Texas Tech Red Raiders",
+       "tag": "College Football",
+       "uri_name": "cfb/2026-10-31/ariz-ttu/skycast_540p",
+       "source_tag": "SD | SkyCast",
+       "locale": "en",
+       "iframe": "https://taifood-blog.asia/embed/cfb/2026-10-31/ariz-ttu/skycast_540p"
+      }
+     ],
+     "viewers": "763"
     }
    ]
   },

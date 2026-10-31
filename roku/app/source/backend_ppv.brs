@@ -74,6 +74,17 @@ function ppvStreams(ev as Object, viewers as Dynamic) as Object
         f = feeds[i]
         source = ""
         if f.source_tag <> invalid then source = f.source_tag.Trim()
+        ' "SD | ESPN": the site leads with the feed's quality (since
+        ' 2026-10-31; its 540p copies are SD). Without one, HD as before.
+        hd = true
+        bar = Instr(1, source, "|")
+        if bar > 0 then
+            q = UCase(Left(source, bar - 1).Trim())
+            if q = "HD" or q = "SD" then
+                hd = (q = "HD")
+                source = Mid(source, bar + 1).Trim()
+            end if
+        end if
         if source = "" then source = "Stream"
         n = 1
         for each s in list
@@ -81,7 +92,7 @@ function ppvStreams(ev as Object, viewers as Dynamic) as Object
         end for
         v = invalid
         if i = 0 then v = viewers
-        list.Push({id: f.id.ToStr(), streamNo: n, language: ppvLanguage(f.locale), hd: true, embedUrl: f.iframe, source: source, viewers: v})
+        list.Push({id: f.id.ToStr(), streamNo: n, language: ppvLanguage(f.locale), hd: hd, embedUrl: f.iframe, source: source, viewers: v})
     end for
     return list
 end function

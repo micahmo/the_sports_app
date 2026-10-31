@@ -80,7 +80,12 @@ streamed.pk never gave). Category names map to our sport ids and icons through t
 ("American Football" -> american-football, "Football" -> football (soccer),
 "Ice Hockey" -> hockey, "24/7 Streams" -> other). An event's streams are its
 `iframe` and each of its `substreams`, named by broadcaster (`source_tag`:
-ESPN, ABC, SkyCast), language from `locale`. No team badges, but every game
+ESPN, ABC, SkyCast), language from `locale`. Since 2026-10-31 each
+broadcaster's feed comes twice, "HD | ESPN" and a 540p copy "SD | ESPN": the
+prefix sets the HD/SD badge and is cut from the name, so both list under ESPN
+as Streams 1 and 2. A name without one counts as HD, as every feed did
+before: the site gave no quality, and the ones we played measured 1080p60
+(not a survey of every feed). No team badges, but every game
 poster checked (17 leagues, 2026-10-28) has the same layout: the first-named
 team's logo centered at a quarter of the width, the league's in the middle,
 the other team's at three quarters, so the badges are cut from it
