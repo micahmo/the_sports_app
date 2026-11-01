@@ -571,6 +571,20 @@ Things that differ from Android and were each found the hard way:
   `--autoplay-policy=no-user-gesture-required` to
   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` before the app starts, keeping anything
   already there (a debug port).
+- **Without DirectComposition** (`--disable-direct-composition`, same place).
+  With it, a window snapped to half the screen (958x1120 on dprec11's Iris Xe)
+  showed the overlay until it first hid, then never again; clicks didn't bring
+  it back either, and maximized was fine. Traced live (2026-11-01): the page
+  got the mouse, told the app, the app sent `render(chrome: true)`, and the
+  page's own screenshot (CDP) had the title bar and pill, but the screen showed
+  only the video; a red box drawn over the picture didn't show either. So the
+  page's layer stopped reaching the screen while the video kept its own path.
+  Not the window's place (screenX right), not two windows, not a resize, not
+  `--disable-direct-composition-video-overlays`. Without DirectComposition it
+  works, and it still looked a smooth 60 (about 1% of frames dropped in a
+  quiet 30 s); the picture pauses for a moment while the window is resized
+  (the page counts as hidden, see playOnAfterPause). Not reproducible over
+  Remote Desktop, which has no such video path.
 - **The viewer's mute stays** (1.0.129, phone too). Every new player started
   with sound (`play()` set `muted = false`): a switch to another feed (built
   afresh, see "Separate feeds") or a reload unmuted a muted game (2026-10-18,

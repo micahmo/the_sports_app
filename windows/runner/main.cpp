@@ -28,6 +28,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     std::wstring args = existing;
     if (!args.empty()) args += L" ";
     args += L"--autoplay-policy=no-user-gesture-required";
+    // Without DirectComposition: with it, a window snapped to half the screen
+    // showed only the video once the overlay had hidden; the page (title bar,
+    // pill, anything drawn over the picture) no longer reached the screen,
+    // though the page drew it (2026-11-01, dprec11's Iris Xe; maximized was
+    // fine). Still 60 fps; the picture pauses for a moment while resizing.
+    args += L" --disable-direct-composition";
     // A debug port, only on a PC that asks for one: a file named debug-port
     // in the app's settings folder, holding the port number. WebView2 listens
     // on that PC alone (127.0.0.1), and lets the player be looked at live,
