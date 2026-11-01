@@ -108,6 +108,7 @@ abstract final class PlayerTuning {
   static const int rowThisGame = 3;
   static const int tvDryPauseAt = 2;
   static const int tvCushionSecs = 12;
+  static const int tvStartFillSecs = 22;
   static const int rowRecent = 3;
   static const int recentsKept = 12;
   static const int stuckDownloadMs = 4000;
@@ -161,6 +162,7 @@ abstract final class PlayerText {
   static const String unavailableHint = 'Try another stream or source.';
   static const String retry = 'Retry';
   static const String tvRetryKeys = 'Press OK to try again, or Back to pick another stream.';
+  static const String tvFillPercent = '{n}%';
 }
 
 /// The player's icons, the same on every app.

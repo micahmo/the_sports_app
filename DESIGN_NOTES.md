@@ -1120,6 +1120,44 @@ nothing more for 5 s, and segments downloaded that the player hasn't asked for
 buffer full short of 12, as a higher-bitrate stream may be), on anyway. The
 first build went on after 5 s of nothing without that check: the source had
 stalled, it went on at 7 s, and it froze again (14:00:27).
+
+**Filled at the start too** (`fillFirst`): a start (new stream, reconnect,
+restart) played with ~9 s in hand, and with the cushion in, most pauses came
+10-45 s into one: six in 40 minutes (14:00:21 to 14:38:20), each well under a
+minute after a start, while once refilled it went many minutes without. So at
+its first "playing" it pauses again under the poster and spinner the start
+already has, muted, until it has `tvCushionSecs` in hand (or 8 s with its
+buffer full), as the pause before running dry does: usually ~3 s more, not a
+set wait (12 s at every start, 1.0.135, was "painfully slow"). The user: "the
+beginning is the best time to build up time since the user expects a spinner
+there anyway". Not before a hold (it fills its own way); after a restart's
+seek past what it had shown, over the dimmed picture.
+
+**And deeper at the start** (`tvStartFillSecs`, 22 s): the user, once this
+was in: "i don't care how long the initial spinner is ... i'd much rather
+have no spinners once live", and "only raise if it helps". Past the ~13 s the
+player holds (its buffer fills by size), what StreamTask has downloaded for it
+and it hasn't taken counts too (`readySecs`): a stall uses that up before the
+player's own. 22 because the pauses after a refill were holes in the source
+(12 s at 14:14:40, 18 s at 14:18:40, 12 s at 14:22:44), which a cushion has to
+outlast, and a hole of 20 s or more restarts at live (`onJumped`) and throws
+the cushion away regardless: 20 plus the 2 s pause line, and no more.
+Mid-game refills stay at `tvCushionSecs`. If nothing more comes for 6 s
+(the paused player not asking for its playlist, say), on with 12 or more.
+Seen working 14:57:46: 9 s in hand, on 6.7 s later with 17 in hand and 6
+more in StreamTask. While it fills, how far along shows inside the spinner
+(`tvFillPercent`, "64%"; on trial, the user: "if we don't like it, we zap
+it"; kept: "helps the user be more patient during the longer initial
+load"): what it has over `tvStartFillSecs`, from the first video it's handed
+while the player buffers (counted only from its first "playing", after the
+player's own ~9-12 s, it came up late and at 40-55%). It glides to
+each new figure (`onPctTick`, every 0.1 s): video comes in 3 s pieces, and the
+first try jumped ~14% at a time ("it showed like 3 different numbers"). And it
+runs to 100, up a tenth of a second, before the picture starts, also when it
+goes on short of the fill (the first try stopped at 95). Only this part of a
+start can say; finding the stream and its link can't tell how long they'll
+take. Muted from before a start first plays (`muteForFill`): it sounded for
+the moment before the fill paused it ("a blip of audio", 15:04:16).
 `servedSecs` counts a segment only when it goes to the player now running:
 after a restart, segments the old player had asked for finish and are dropped
 (`pumpAll`), and counting them read 4-8 s too much in hand, so the TV ran dry
@@ -1156,7 +1194,14 @@ On the TV it stays through a hold that follows running dry, until the
 it, so taking it down at the first "playing" left the dimmed picture black for
 the hold (2026-10-29). And from the moment a restart at live stops the old
 player (`restartAtLive`): until the new one buffered, nothing covered it, a
-moment of black (2026-10-29 22:39:01).
+moment of black (2026-10-29 22:39:01). And before it: a restart, or a
+reconnect's new link over the kept picture, puts the poster up and stops the
+player 0.2 s later behind it (`startOver`, `onSwap`). Stopped first, the
+player's picture went black at once and the poster came a moment later, a
+flash of black, though the poster was already loaded (2026-11-01 14:25:53,
+logged: "poster up (ready)" 1 ms after "stopped"). The restart's short list
+(`trim`) is asked for only once the old player has stopped, so a playlist it
+fetches in that 0.2 s doesn't take it; the spinner goes up with the poster (a restart from a pause before running dry had taken it down, and it was gone 0.7 s until the new player buffered, 14:35:48). Tested 14:35:48: no black.
 
 **Holds**: muted from when one's due until the picture's uncovered (a blip of
 sound got out before the pause, 2026-10-26); the cover stays until the
@@ -1398,6 +1443,13 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
   does: the player raced ("major speedup"), asked again for segments it had,
   and ran dry with its cushion thrown away (black, past the pause before
   running dry). So 20 s in all within 30 s counts as one jump.
+  Each pair of neighbors in the list is compared once (`clockGap`, when the
+  second of the two is here), not each segment with the one before it in
+  time (2026-11-01): finishing out of order after an 18 s hole, the three
+  segments after it each measured from the one before the hole, read as 24,
+  21 and 18 s, added up past 20, and started the player again twice, 30 s
+  apart (14:18:52 and 14:19:22), the second over a hole long played over;
+  each restart put the poster up and threw away the cushion.
 - **A restart drops what was going to the old player.** Stopped mid-segment,
   that player stops reading, and `sendAll` waited out its 10 s for it while
   the whole proxy served nothing: the new player sat on its spinner, then

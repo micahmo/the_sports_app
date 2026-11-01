@@ -3,6 +3,7 @@ sub init()
     m.video = m.top.findNode("video")
     m.holdCover = m.top.findNode("holdCover")
     m.backdrop = m.top.findNode("backdrop")
+    m.backdrop.observeField("loadStatus", "onBackdropLoad")
     m.status = m.top.findNode("status")
     m.canRetry = false
     m.status.font = bodyFont(32)
@@ -36,6 +37,16 @@ sub init()
     m.dryStill = CreateObject("roTimespan")
     m.keptPicture = false
     m.served0 = 0
+    ' The player stopped a moment after the poster's up (see startOver).
+    m.swapTimer = m.top.createChild("Timer")
+    m.swapTimer.duration = 0.2
+    m.swapTimer.observeField("fire", "onSwap")
+    m.swapUrl = ""
+    m.swapTrim = false
+    ' Filling to the cushion before it first plays (see onVideoState).
+    m.startFill = false
+    m.fillMuted = false
+    m.fillAll = false
     m.dryCheck = m.top.createChild("Timer")
     m.dryCheck.duration = 0.5
     m.dryCheck.repeat = true
@@ -80,6 +91,17 @@ sub init()
     ' the status under it) and buffering.
     ' In the true centre whether or not there's text; the text goes under it.
     m.spinner = mkSpinner(m.top, 960, 540)
+    ' Inside it while filling at the start, how far along (see fillFirst).
+    m.fillPct = mkLabel(m.top, "", condensed("SemiBold", 24), t.text, 924, 504, 72, 72, "center")
+    m.fillPct.visible = false
+    m.pctTimer = m.top.createChild("Timer")
+    m.pctTimer.duration = 0.1
+    m.pctTimer.repeat = true
+    m.pctTimer.observeField("fire", "onPctTick")
+    m.pctShown = 0
+    m.pctTarget = 0
+    m.pctBase = invalid
+    m.fillFinishing = false
     hideStatus()
 
     m.restarts = 0
@@ -167,6 +189,8 @@ sub start()
         setShown(m.bar, true)
         setShown(m.pill, hasRow())
     end if
+    m.startFill = true
+    muteForFill()
     m.task = CreateObject("roSGNode", "StreamTask")
     m.task.embedUrl = m.stream.embedUrl
     m.task.driver = driver
@@ -282,7 +306,14 @@ end sub
 ' No picture (starting, a new link, buffering): the game's poster, darkened,
 ' rather than black (user, 2026-10-28). None for a game without one.
 sub showBackdrop()
+    if not m.backdrop.visible then print logTime(); "[player] poster up ("; m.backdrop.loadStatus; ")"
     m.backdrop.visible = m.backdrop.uri <> ""
+end sub
+
+' (For a moment of black before the poster on a restart, 2026-11-01: whether
+' it's loading the picture again.)
+sub onBackdropLoad()
+    print logTime(); "[player] poster "; m.backdrop.loadStatus
 end sub
 
 sub showSpinner()
@@ -303,6 +334,7 @@ end sub
 sub hideStatus()
     m.spinner.visible = false
     m.spinner.control = "stop"
+    m.fillPct.visible = false
     m.status.visible = false
 end sub
 
@@ -404,6 +436,7 @@ sub switchTo(s as Object, fallback as Boolean)
     m.retry.control = "stop"
     m.keptPicture = false
     m.dryDim.visible = false
+    m.swapUrl = ""
     m.video.control = "stop"
     m.video.content = invalid
     if m.task <> invalid then
@@ -448,11 +481,41 @@ sub onStreamUrl()
     if m.keptPicture then
         m.keptPicture = false
         m.dryDim.visible = false
-        m.video.control = "stop"
-        showBackdrop()
+        m.swapTrim = false
+        startOver(m.task.streamUrl)
+        return
     end if
     m.served0 = m.task.servedSecs
     m.video.content = streamContent(m.task.streamUrl)
+    ' Our spinner and the last status stay up until it plays (onVideoState).
+    m.video.control = "play"
+end sub
+
+' Over a picture: the poster up, then the player stopped behind it and started
+' on url. Stopped first, its picture went black at once while the poster came
+' a moment later, a flash of black (the poster already loaded, 2026-11-01
+' 14:25:53). The spinner with it: a pause before running dry, ended by a
+' restart, took it down, and it came back only as the new player buffered,
+' 0.7 s on (14:35:48).
+sub startOver(url as String)
+    showBackdrop()
+    showSpinner()
+    m.swapUrl = url
+    m.swapTimer.control = "stop"
+    m.swapTimer.control = "start"
+end sub
+
+sub onSwap()
+    if m.swapUrl = "" or m.task = invalid then return
+    url = m.swapUrl
+    m.swapUrl = ""
+    m.video.control = "stop"
+    if m.swapTrim then m.task.trim = true
+    m.swapTrim = false
+    m.startFill = true
+    muteForFill()
+    m.served0 = m.task.servedSecs
+    m.video.content = streamContent(url)
     ' Our spinner and the last status stay up until it plays (onVideoState).
     m.video.control = "play"
 end sub
@@ -516,10 +579,31 @@ sub onVideoState()
     ' Not when a hold is about to pause it: no new frame drawn yet, the dimmed
     ' picture was black for the hold (2026-10-29 21:54, "poster for a bit then
     ' black"). The "playing" after the hold takes it down.
-    if st = "playing" and not m.holdPending then m.backdrop.visible = false
+    ' Starting (a new stream, a reconnect or a restart), it plays with ~9 s in
+    ' hand, and most pauses before running dry came 10-45 s into a start, six
+    ' times in 40 minutes (2026-11-01). So it fills to the cushion first, under
+    ' the poster and spinner the start already has ("the beginning is the
+    ' best time to build up time since the user expects a spinner there
+    ' anyway"): on as soon as it's in, ~3 s, not a set wait (12 s at every
+    ' start, 1.0.135, was "painfully slow"). Not before a hold (it fills its
+    ' own way), nor before the seek past what a restart had shown (filled
+    ' after it, over the dimmed picture).
+    fill = false
+    if st = "playing" and m.startFill and not m.holdPending and not m.seeking and m.task <> invalid then
+        if not (m.skipAfterStart and m.task.skipSecs > 0.5) then
+            m.startFill = false
+            fill = m.task.servedSecs - m.served0 - m.video.position + m.task.readySecs < appPlayer().tvStartFillSecs
+            if not fill then unmuteFill()
+        end if
+    end if
+    if st = "playing" and not m.holdPending and not fill then m.backdrop.visible = false
     if st = "playing" then
         m.afterRestart = false
         m.seeking = false
+    end if
+    if fill then
+        fillFirst()
+        return
     end if
     ' A replay is moved past first, then any hold: holding first left the
     ' rewound picture up for the hold (2026-10-22 00:02:45, "flashed back").
@@ -539,6 +623,9 @@ sub onVideoState()
         ' behind live with that much more in hand.
         m.holdPending = false
         m.holding = true
+        m.startFill = false
+        ' (Its own mute, till it's uncovered.)
+        m.fillMuted = false
         m.stall.control = "stop"
         ' Dimmed, the picture showing as when it pauses before running dry;
         ' black if a replay may be skipped once it's over (see uncover).
@@ -725,16 +812,45 @@ end sub
 sub onDryCheck()
     if m.task = invalid or m.video.content = invalid then return
     ahead = m.task.servedSecs - m.served0 - m.video.position
+    ' Starting, 0% while the player buffers, before the fill (see showFillPct).
+    if m.startFill and m.video.state = "buffering" then
+        if not m.fillPct.visible then
+            m.pctShown = 0
+            m.pctTarget = 0
+            m.pctBase = invalid
+            m.fillPct.text = playerText("tvFillPercent").Replace("{n}", "0")
+            m.fillPct.visible = true
+        end if
+        return
+    end if
     if m.dryPaused then
+        if m.fillFinishing then return
+        ' Filling at the start, what StreamTask holds for it counts too (see
+        ' fillFirst).
+        have = ahead
+        if m.fillAll then have = ahead + m.task.readySecs
         ' Still coming: not stalled, however long the cushion takes.
-        if ahead > m.dryLast + 0.1 then
-            m.dryLast = ahead
+        if m.fillAll then showFillPct(have, m.dryResumeAt)
+        if have > m.dryLast + 0.1 then
+            m.dryLast = have
             m.dryStill.Mark()
             m.stall.control = "stop"
             m.stall.control = "start"
         end if
-        full = ahead >= m.dryFloor and m.dryStill.TotalMilliseconds() >= 5000 and m.task.readySecs > 0
-        if ahead >= m.dryResumeAt or full then
+        if m.fillAll then
+            ' Nothing more for 6 s: on with what it has rather than wait for
+            ' the stall's reconnect.
+            full = have >= m.dryFloor and m.dryStill.TotalMilliseconds() >= 6000
+        else
+            full = ahead >= m.dryFloor and m.dryStill.TotalMilliseconds() >= 5000 and m.task.readySecs > 0
+        end if
+        if m.fillAll and (have >= m.dryResumeAt or full) then
+            print logTime(); "[player] "; Int(ahead); " s in hand and "; Int(m.task.readySecs); " s more here: on"
+            ' The count runs to 100 first, then it plays (see onPctTick).
+            m.fillFinishing = true
+            m.pctTarget = 100
+            m.pctTimer.control = "start"
+        else if not m.fillAll and (ahead >= m.dryResumeAt or full) then
             if full and ahead < m.dryResumeAt then
                 print logTime(); "[player] "; Int(ahead); " s in hand, buffer full ("; Int(m.task.readySecs); " s more here untaken): on again"
             else
@@ -768,9 +884,107 @@ end sub
 
 sub endDryPause()
     m.dryPaused = false
+    m.fillAll = false
+    m.fillPct.visible = false
     m.dryDim.visible = false
     m.stall.control = "stop"
+    unmuteFill()
     hideStatus()
+end sub
+
+' Paused at its first "playing" until it has the cushion in hand (see
+' onVideoState): onDryCheck's pause, under the poster (no frame drawn yet) or,
+' after a restart's seek, the dimmed picture; muted, so no blip of sound gets
+' through first. Past what the player holds (~13 s at 12.8 Mbps, its buffer
+' full by size), the segments StreamTask has downloaded for it and it hasn't
+' taken count too (readySecs): a stall uses those up before the player's own.
+' To tvStartFillSecs in all (the user: "i don't care how long the initial
+' spinner is ... i'd much rather have no spinners once live"), or on with 12 s
+' or more if nothing more comes for 6 s.
+sub fillFirst()
+    ahead = m.task.servedSecs - m.served0 - m.video.position
+    c = appPlayer().tvStartFillSecs
+    m.fillAll = true
+    m.fillFinishing = false
+    m.pctBase = invalid
+    m.dryPaused = true
+    m.video.control = "pause"
+    muteForFill()
+    m.dryDim.visible = not m.backdrop.visible
+    showSpinner()
+    m.stall.control = "stop"
+    m.stall.control = "start"
+    m.dryFloor = appPlayer().tvCushionSecs
+    m.dryResumeAt = c
+    m.dryLast = ahead + m.task.readySecs
+    m.dryStill.Mark()
+    showFillPct(m.dryLast, c)
+    print logTime(); "[player] "; Int(ahead); " s in hand at the start: filling to "; c; " s first"
+end sub
+
+' How much of the start's fill is in, inside the spinner (the user: "some idea
+' when it'll load"). Only this part of a start can say: finding the stream and
+' its link can't tell how long they'll take.
+' How much of the wait is done, not of the video: what it has when the fill
+' starts (base) counts as 0. StreamTask downloads the source's three newest
+' segments at once, ~9 s arriving within a second, so a count of the video
+' always opened at ~40% (2026-11-01 15:24); what comes after arrives about as
+' fast as it plays, so this moves evenly with the clock, a fair "how long".
+' It glides to each new figure rather than jumping: video comes in 3 s pieces
+' ("it showed like 3 different numbers"). And it runs to 100 before the
+' picture starts, also when it goes on short of the fill: it stopped at 95
+' (2026-11-01 15:04:26).
+sub showFillPct(have as Float, target as Float)
+    if m.pctBase = invalid then m.pctBase = have
+    n = 99
+    if target > m.pctBase then n = 100 * (have - m.pctBase) / (target - m.pctBase)
+    if n > 99 then n = 99
+    if n < 0 then n = 0
+    if not m.fillPct.visible then
+        m.pctShown = n
+        m.fillPct.text = playerText("tvFillPercent").Replace("{n}", Int(n).ToStr())
+        m.fillPct.visible = true
+    end if
+    m.pctTarget = n
+    m.pctTimer.control = "start"
+end sub
+
+sub onPctTick()
+    if not (m.dryPaused and m.fillAll) and not (m.startFill and m.fillPct.visible) then
+        m.pctTimer.control = "stop"
+        m.fillFinishing = false
+        return
+    end if
+    if m.fillFinishing and m.pctShown >= 100 then
+        ' 100 has been up a tick: on.
+        m.pctTimer.control = "stop"
+        m.fillFinishing = false
+        m.fillAll = false
+        endDryPause()
+        m.video.control = "resume"
+        return
+    end if
+    gap = m.pctTarget - m.pctShown
+    if gap <= 0 then return
+    stepBy = gap * 0.2
+    if stepBy < 0.5 then stepBy = 0.5
+    if m.fillFinishing and stepBy < 10 then stepBy = 10
+    m.pctShown = m.pctShown + stepBy
+    if m.pctShown > m.pctTarget then m.pctShown = m.pctTarget
+    m.fillPct.text = playerText("tvFillPercent").Replace("{n}", Int(m.pctShown).ToStr())
+end sub
+
+' Silent from before a start first plays: it sounded for the moment before
+' the fill paused it (15:04:16, "a blip of audio").
+sub muteForFill()
+    m.video.mute = true
+    m.fillMuted = true
+end sub
+
+sub unmuteFill()
+    if not m.fillMuted then return
+    m.fillMuted = false
+    m.video.mute = false
 end sub
 
 sub onHoldTimer()
@@ -1316,7 +1530,9 @@ sub restartAtLive(skipShown as Boolean)
     ' player, sound and no picture, until its timer ran out (2026-10-25).
     if m.holding then endHold()
     m.task.startedAgain = m.task.startedAgain + 1
-    m.task.trim = true
+    ' (Asked for once the old player's stopped (onSwap): a playlist it fetched
+    ' meanwhile would have taken the newest few meant for the new one.)
+    m.swapTrim = true
     m.task.skipSecs = 0
     m.afterRestart = true
     ' At the edge again: only the hold it's about to do (rampUp) is banked,
@@ -1329,13 +1545,9 @@ sub restartAtLive(skipShown as Boolean)
     ' when stuck: it showed none of what it took, and that's game not yet seen.
     m.skipAfterStart = skipShown
     if m.dryPaused then endDryPause()
-    m.video.control = "stop"
-    ' The poster at once: stopped, the player shows nothing until the new one
-    ' buffers, which was black for a moment (2026-10-29 22:39:01).
-    showBackdrop()
-    m.served0 = m.task.servedSecs
-    m.video.content = streamContent(url)
-    m.video.control = "play"
+    ' The poster: stopped, the player shows nothing until the new one buffers,
+    ' which was black for a moment (2026-10-29 22:39:01).
+    startOver(url)
 end sub
 
 ' The source came back with its picture's clock far ahead (an 80 s jump after
@@ -1440,6 +1652,7 @@ sub reconnect(reason as String)
     else
         m.keptPicture = false
         m.dryDim.visible = false
+        m.swapUrl = ""
         m.video.control = "stop"
         ' And let go of it, so none of the player's own UI (its buffering
         ' spinner) lingers under ours.
@@ -1487,6 +1700,7 @@ sub onClosing()
     m.stall.control = "stop"
     m.stuck.control = "stop"
     m.retry.control = "stop"
+    m.swapUrl = ""
     m.video.control = "stop"
     if m.task <> invalid then m.task.quit = true
 end sub

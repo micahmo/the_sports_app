@@ -37,6 +37,8 @@ sub work()
     m.fileSeq = 0
     ' The last few segments' picture clocks (checkClock).
     m.stamps = []
+    ' The same by the segment's place in the list (checkClock's neighbors).
+    m.stampAt = {}
     ' Recent jumps ahead ({at, gap}, at on m.jumpClock), added up (checkClock).
     m.jumps = []
     m.jumpClock = CreateObject("roTimespan")
@@ -698,8 +700,8 @@ end sub
 ' reconnected 20 s later (see PlayerScreen's onStuck). Marking the jump for the
 ' player (#EXT-X-DISCONTINUITY) was tried: the Roku's player went back to the
 ' top of the list and replayed it. Segments can finish out of order (two at
-' once, or a second copy), so each is compared with the one just before it in
-' time, and only a jump of more than a segment counts.
+' once, or a second copy), so each is compared with its neighbors in the list
+' (clockGap), and only a jump of more than a segment counts.
 sub checkClock(u as String, path as String)
     head = CreateObject("roByteArray")
     head.ReadFile(path, 0, 2048 + 188 * 200)
@@ -723,40 +725,24 @@ sub checkClock(u as String, path as String)
     for each r in m.stamps
         if r.st = st then return
     end for
+    ' Compared with its neighbors in the list, each pair once, when the second
+    ' of them is here: by time, with segments finishing out of order, one 18 s
+    ' hole read as 24, 21 and 18 s jumps (each newer one measured from the
+    ' segment before the hole), added up past 20 s, and started the player
+    ' again twice, 30 s apart, the second time with the hole long played
+    ' over (2026-11-01 14:18:52 and 14:19:22).
+    p = segPlace(u)
+    if m.stampAt.Count() > 60 then m.stampAt = {}
+    m.stampAt[p.ToStr()] = {st: st, d: d}
+    before = m.stampAt[(p - 1).ToStr()]
+    after = m.stampAt[(p + 1).ToStr()]
+    if before <> invalid then clockGap(before, st)
+    if after <> invalid then clockGap({st: st, d: d}, after.st)
     pred = invalid
     for each r in m.stamps
         if r.st < st and (pred = invalid or r.st > pred.st) then pred = r
     end for
-    if pred <> invalid then
-        gap = (st - pred.st) / 90000 - pred.d
-        if gap > pred.d + 0.5 then
-            print logTime(); "[stream] picture clock jumps ahead "; Int(gap * 10) / 10; " s at this segment"
-            noteTrouble()
-            ' Far enough that the player won't play over it: it raced through what
-            ' it had, stuck, then asked again for segments it had played (an 80 s
-            ' jump after an outage, 2026-10-17; a 25 s one, 2026-10-19, replayed
-            ' segments too). See PlayerScreen's onJumped.
-            ' Several smaller ones close together do the same: 5.5, 9, 10 and 6 s
-            ' within 20 s raced, replayed and ran dry (black) like one 30 s jump
-            ' (TNF, 2026-10-29). So they add up over 30 s.
-            now = m.jumpClock.TotalSeconds()
-            recent = []
-            total = 0
-            for each j in m.jumps
-                if now - j.at <= 30 then
-                    recent.Push(j)
-                    total = total + j.gap
-                end if
-            end for
-            recent.Push({at: now, gap: gap})
-            total = total + gap
-            m.jumps = recent
-            if total >= 20 then
-                m.jumps = []
-                m.top.jumped = total
-            end if
-        end if
-    else if m.stamps.Count() > 0 and m.top.servedSecs > 30 then
+    if pred = invalid and m.stamps.Count() > 0 and m.top.servedSecs > 30 then
         ' Earlier than every recent one: the first segments finishing out of
         ' order (so not in the first 30 s), unless it's well back (the
         ' source's clock starting over).
@@ -770,6 +756,39 @@ sub checkClock(u as String, path as String)
     end if
     m.stamps.Push({st: st, d: d})
     if m.stamps.Count() > 6 then m.stamps.Shift()
+end sub
+
+' The picture's clock from one segment (a, {st, d}) to the next in the list
+' (st): logged, and added up, when it skips more than a segment's length.
+sub clockGap(a as Object, st as Double)
+    gap = (st - a.st) / 90000 - a.d
+    if gap > a.d + 0.5 then
+        print logTime(); "[stream] picture clock jumps ahead "; Int(gap * 10) / 10; " s at this segment"
+        noteTrouble()
+        ' Far enough that the player won't play over it: it raced through what
+        ' it had, stuck, then asked again for segments it had played (an 80 s
+        ' jump after an outage, 2026-10-17; a 25 s one, 2026-10-19, replayed
+        ' segments too). See PlayerScreen's onJumped.
+        ' Several smaller ones close together do the same: 5.5, 9, 10 and 6 s
+        ' within 20 s raced, replayed and ran dry (black) like one 30 s jump
+        ' (TNF, 2026-10-29). So they add up over 30 s.
+        now = m.jumpClock.TotalSeconds()
+        recent = []
+        total = 0
+        for each j in m.jumps
+            if now - j.at <= 30 then
+                recent.Push(j)
+                total = total + j.gap
+            end if
+        end for
+        recent.Push({at: now, gap: gap})
+        total = total + gap
+        m.jumps = recent
+        if total >= 20 then
+            m.jumps = []
+            m.top.jumped = total
+        end if
+    end if
 end sub
 
 ' The page's answer for a segment (WebDriver's {"value": "..."}): written to
