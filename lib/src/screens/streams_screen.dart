@@ -165,7 +165,7 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
           return ListView(children: <Widget>[header, const SizedBox(height: 120), const Center(child: CircularProgressIndicator())]);
         }
         if (snap.hasError) {
-          return ListView(children: <Widget>[header, const SizedBox(height: 80), Center(child: Text('Error: ${snap.error}'))]);
+          return ListView(children: <Widget>[header, const SizedBox(height: 80), Center(child: Text(loadErrorText(snap.error)))]);
         }
         if (groups.isEmpty) {
           return ListView(children: <Widget>[header, const SizedBox(height: 80), const Center(child: Text('No streams available.'))]);

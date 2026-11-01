@@ -25,6 +25,12 @@ adapter), thedaddy.pk (no API, the schedule only in its page), pitsport.st
 adapter was removed: git history has it, and the notes below keep what it
 taught (its API notes are now history).
 
+**When the site answers with an error,** the lists say "Couldn't reach the
+stream site." (`playerText.siteUnreachable`) with the status, e.g. "(HTTP
+502)", and Retry; the TV the same, with "Press OK to retry." The server's
+own error page isn't shown: a 502 from ppv's nginx went on screen as raw HTML
+(2026-11-01, desktop Home).
+
 **The layers.**
 - **The app's own models** (`lib/src/api/models.dart`; on the TV the same
   field names in BrightScript associative arrays): Sport (id, name), Match

@@ -126,7 +126,7 @@ class _SportsScreenState extends State<SportsScreen> with KeepFresh {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Text('Error: ${snap.error}'),
+                      Text(loadErrorText(snap.error)),
                       const SizedBox(height: 12),
                       TextButton(onPressed: _refresh, child: const Text('Retry')),
                     ],

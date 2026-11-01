@@ -82,7 +82,7 @@ sub onLoaded()
     cleanTitles(live)
     if type(sports) <> "roArray" then
         if m.quiet and m.rows.Count() > 0 then return
-        showMessage("Couldn't reach the stream site. Press OK to retry.")
+        showMessage(playerText("siteUnreachable") + " Press OK to retry.")
         m.rows = []
         return
     end if

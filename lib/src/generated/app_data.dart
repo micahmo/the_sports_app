@@ -167,6 +167,7 @@ abstract final class PlayerText {
   static const String tvFillPercent = '{n}%';
   static const String streamBack = '{stream} is back';
   static const String tvBackKeys = 'OK to switch';
+  static const String siteUnreachable = 'Couldn\'t reach the stream site.';
 }
 
 /// The player's icons, the same on every app.

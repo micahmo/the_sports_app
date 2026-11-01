@@ -99,7 +99,7 @@
   },
 
   "playerText": {
-    "_about": "The player's wording, the same on every app. {stream} is a stream's name and HD/SD, e.g. \"Delta 1 (HD)\"; {quality} a feed's resolution, e.g. \"540p\"; {n} a number. failed*: a stream that recently failed, where its quality would go (see player.failedForMinutes). switching*, upAvailable, weakConnection, slow* and retry are phone and desktop only (see player); streamBack: the stream picked works again after a fallback (TV only for now, see player.tvBackCheckMs). tv* the Roku's (tvFillPercent: inside the spinner while a start fills to player.tvStartFillSecs).",
+    "_about": "The player's wording, the same on every app. {stream} is a stream's name and HD/SD, e.g. \"Delta 1 (HD)\"; {quality} a feed's resolution, e.g. \"540p\"; {n} a number. failed*: a stream that recently failed, where its quality would go (see player.failedForMinutes). switching*, upAvailable, weakConnection, slow* and retry are phone and desktop only (see player); siteUnreachable: the lists couldn't be loaded (the site's API answered with an error), on Home and the game and stream lists. streamBack: the stream picked works again after a fallback (TV only for now, see player.tvBackCheckMs). tv* the Roku's (tvFillPercent: inside the spinner while a start fills to player.tvStartFillSecs).",
     "streamsPill": "Streams",
     "thisGame": "THIS GAME",
     "recent": "RECENT",
@@ -122,7 +122,8 @@
     "tvRetryKeys": "Press OK to try again, or Back to pick another stream.",
     "tvFillPercent": "{n}%",
     "streamBack": "{stream} is back",
-    "tvBackKeys": "OK to switch"
+    "tvBackKeys": "OK to switch",
+    "siteUnreachable": "Couldn't reach the stream site."
   },
 
   "palette": {

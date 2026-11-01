@@ -455,7 +455,7 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
           children: <Widget>[
             header,
             const SizedBox(height: 120),
-            Center(child: Text('Error: ${snap.error}')),
+            Center(child: Text(loadErrorText(snap.error))),
           ],
         ),
       );

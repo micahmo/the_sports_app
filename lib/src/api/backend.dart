@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../generated/app_data.dart' show BackendConfig, sourceOrder;
+import '../generated/app_data.dart' show BackendConfig, PlayerText, sourceOrder;
 import 'models.dart';
 import 'ppv_backend.dart';
 
@@ -178,8 +178,21 @@ abstract class Backend {
   }
 
   static void ensureOk(http.Response r) {
-    if (r.statusCode < 200 || r.statusCode >= 300) {
-      throw Exception('HTTP ${r.statusCode}: ${r.body}');
-    }
+    if (r.statusCode < 200 || r.statusCode >= 300) throw SiteError(r.statusCode);
   }
 }
+
+/// The site's API answered with an error. Only its status is kept: the body
+/// is the server's own error page, and it went on screen as raw HTML (a 502
+/// from ppv's nginx, 2026-11-01).
+class SiteError implements Exception {
+  const SiteError(this.status);
+  final int status;
+
+  @override
+  String toString() => '${PlayerText.siteUnreachable} (HTTP $status)';
+}
+
+/// How a failed load reads on screen: the site's errors in words, anything
+/// else as it comes.
+String loadErrorText(Object? e) => e is SiteError ? e.toString() : 'Error: $e';
