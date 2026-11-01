@@ -19,8 +19,11 @@ sub work()
             while parts.Count() < 3
                 parts.Push("")
             end while
-            wanted[name] = {kind: parts[0], a: parts[1], b: parts[2]}
-            urls["backend:" + backendRealUrl()] = backendRealUrl()
+            w = {kind: parts[0], a: parts[1], b: parts[2], src: backendRealUrl()}
+            ' A match's own entry instead of the lists (the player's viewer count).
+            if w.kind = "viewers" then w.src = backendViewersUrl(w.a)
+            wanted[name] = w
+            if w.src <> "" then urls["backend:" + w.src] = w.src
         else
             urls[name] = url
         end if
@@ -57,7 +60,7 @@ sub work()
     end for
     for each name in wanted
         w = wanted[name]
-        text = results["backend:" + backendRealUrl()]
+        text = results["backend:" + w.src]
         if text = invalid or text = "" then
             results[name] = ""
         else

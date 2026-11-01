@@ -279,6 +279,27 @@ class PosterDisc extends StatelessWidget {
   }
 }
 
+/// A game's two badges, overlapped as on the player's recents cards; its
+/// poster in a disc without two teams. For the player's title bar.
+class TitleDiscs extends StatelessWidget {
+  const TitleDiscs({super.key, required this.match, this.size = 32});
+  final ApiMatch match;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<TeamInfo>? teams = orderedTeams(match);
+    if (teams == null) return PosterDisc(match: match, size: size);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        TeamBadge(badgeId: teams[0].badge, category: match.category, size: size),
+        Transform.translate(offset: Offset(-size / 4, 0), child: TeamBadge(badgeId: teams[1].badge, category: match.category, size: size)),
+      ],
+    );
+  }
+}
+
 /// One game: each team on its own line at full name, LIVE and viewers on the
 /// right, sport and start time underneath.
 class MatchRow extends StatelessWidget {

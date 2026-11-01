@@ -16,6 +16,8 @@
     <field id="quality" type="assocarray" />
     <!-- Seconds of video the player has been given so far. -->
     <field id="servedSecs" type="float" />
+    <!-- Seconds of video downloaded that the player hasn't asked for yet (noteReady). -->
+    <field id="readySecs" type="float" />
     <!-- The player is starting again: list only the newest few (longerWindow). -->
     <field id="trim" type="boolean" />
     <!-- How much of that list, from the top, the player has had (s): PlayerScreen

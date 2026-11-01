@@ -140,6 +140,16 @@ class MainActivity : FlutterActivity() {
         }
         // The app carried over from the other screen: tell it where it is now.
         if (engineReused) carChannel.invokeMethod("attached", isOnCar())
+
+        // ------ Link channel: started straight into a stream ------
+        // am start ... --es link "match=<id>&stream=<embed address>", the
+        // TV's form (see lib/src/deep_link.dart).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sports/link").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "initial" -> result.success(intent?.getStringExtra("link"))
+                else -> result.notImplemented()
+            }
+        }
     }
 
     // The car's display this activity is on, if it is (see onDestroy).

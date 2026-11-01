@@ -517,7 +517,12 @@ const String _takeoverJs = r'''
       // centre). Beside text (the pill, notes) it already lines up as Flutter's.
       ".ao-btn .ic{transform:translateY(.12em)}" +
       ".cd{font-family:'BarlowSemiCondensed',sans-serif;line-height:1.15}" +
-      ".ao-bar{position:absolute;left:0;right:0;top:0;background:rgba(0,0,0,__OVERLAY__);padding:10px 16px}" +
+      ".ao-bar{position:absolute;left:0;right:0;top:0;background:rgba(0,0,0,__OVERLAY__);padding:10px 16px;display:flex;align-items:center;gap:12px}" +
+      ".ao-bar .m{flex:1;min-width:0}" +
+      // The game's badges, bigger than on the cards (TitleDiscs).
+      ".ao-bar .lg{display:flex;flex:none}.ao-bar .lg .ao-disc{width:32px;height:32px;padding:4px}.ao-bar .lg .ao-disc.poster{padding:0}.ao-bar .lg .ao-disc+.ao-disc{margin-left:-8px!important}" +
+      // The viewer count, as the lists show it (ViewerCount).
+      ".ao-bar .v{display:flex;align-items:center;gap:4px;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}" +
       ".ao-bar .t{font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
       ".ao-bar .s{font-size:12px;color:rgba(255,255,255,.7);margin-top:2px}" +
       ".ao-pill{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,__OVERLAY__);border-radius:999px;padding:7px 16px 7px 12px;display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap}" +
@@ -638,11 +643,17 @@ const String _takeoverJs = r'''
       return "<img class='crop' src='" + esc(b.url) + "' style='width:" + 100 / c[2] + "%;height:" + 100 / c[3] + "%;left:" + -100 * c[0] / c[2] + "%;top:" + -100 * c[1] / c[3] + "%'>";
     }
 
+    // A game's badges, overlapped (its poster in a disc without two teams, else
+    // its sport's icon): the recents cards and the title bar.
+    function discs(c) {
+      return c.badges ? c.badges.map(function (b, k) { return "<span class='ao-disc" + (b && b.crop ? " poster" : "") + "' style='" + (k ? "margin-left:-6px" : "") + "'>" + (b ? badgeImg(b) : icon(c.sportIcon, 15, "#55585F")) + "</span>"; }).join("")
+        : (c.poster ? "<span class='ao-disc poster'><img src='" + esc(c.poster) + "'></span>" : "<span class='ao-disc'>" + icon(c.sportIcon, 15, "#55585F") + "</span>");
+    }
+
     function card(c, i, kind) {
       var top = c.tag
         ? "<span class='tag cd' style='background:" + c.tagColor + "'>" + esc(c.tag) + "</span>"
-        : (c.badges ? c.badges.map(function (b, k) { return "<span class='ao-disc" + (b && b.crop ? " poster" : "") + "' style='" + (k ? "margin-left:-6px" : "") + "'>" + (b ? badgeImg(b) : icon(c.sportIcon, 15, "#55585F")) + "</span>"; }).join("")
-          : (c.poster ? "<span class='ao-disc poster'><img src='" + esc(c.poster) + "'></span>" : "<span class='ao-disc'>" + icon(c.sportIcon, 15, "#55585F") + "</span>"));
+        : discs(c);
       var lines = c.detailLines || 1;
       var detail = (c.warning ? "<span style='color:" + c.warningColor + "'>" + esc(c.warning) + "</span>" + (c.detail ? " · " : "") : "") + esc(c.detail);
       return "<div class='ao-card hit' data-ui='" + kind + ":" + i + "'><div class='top'>" + top + "</div>" +
@@ -657,7 +668,8 @@ const String _takeoverJs = r'''
       // Spinners, status and "unavailable" are the app's own: the page is
       // only in place over a playing stream (see _reveal), so this draws only
       // what sits over a video.
-      part("aoBar", "<div class='ao-bar'><div class='t cd'>" + esc(s.title) + "</div><div class='s'>" + esc(s.subtitle) + "</div></div>", "f" + (s.chrome ? "" : " off"));
+      part("aoBar", "<div class='ao-bar'><div class='lg'>" + discs(s.discs) + "</div><div class='m'><div class='t cd'>" + esc(s.title) + "</div><div class='s'>" + esc(s.subtitle) + "</div></div>" +
+        (s.viewers ? "<div class='v cd'>" + icon(s.icons.viewers, 17, "rgba(255,255,255,.7)") + "<span>" + esc(s.viewers) + "</span></div>" : "") + "</div>", "f" + (s.chrome ? "" : " off"));
       part("aoPill", s.pill ? "<div class='ao-pill hit' data-ui='pill'>" + icon(s.icons.pill, 17) + "<span>" + esc(s.pillLabel) + "</span></div>" : "", "f" + (s.chrome ? "" : " off"));
       // The better feed on offer: left of the Streams pill, which stays put;
       // the first time, "1080p available" by itself where the notes go.
@@ -1964,6 +1976,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // that never started.
   // What's playing (from the page), for the title bar.
   StreamQuality? _quality;
+  // How many are watching, for the title bar (see _refreshViewers).
+  int? _viewers;
+  Timer? _viewersTimer;
   // What the streams list keeps: the best resolution and frame rate this
   // viewing reached, with the average bitrate while at it (see _onQuality).
   int _bestHeight = 0;
@@ -2044,6 +2059,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _loadRecent();
     _loadFailures();
     _checkCurrent();
+    _viewers = _match.viewers;
+    _refreshViewers();
+    _viewersTimer = Timer.periodic(const Duration(milliseconds: PlayerTuning.viewersRefreshMs), (_) => _refreshViewers());
 
     _web = PlayerWebView(
       url: _allowedUri,
@@ -2355,13 +2373,26 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _loadPage(Uri.parse(inner));
   }
 
+  // The title bar's viewer count, asked for when the game opens and every
+  // viewersRefreshMs after (shared/app_data.json), so it's never the count
+  // from when the stream started. A failed ask keeps the last.
+  Future<void> _refreshViewers() async {
+    final ApiMatch m = _match;
+    try {
+      final int? v = await _api.fetchViewers(m);
+      if (mounted && identical(m, _match) && v != null && v != _viewers) setState(() => _viewers = v);
+    } catch (_) {}
+  }
+
   // A recent game's stream: that game becomes the one playing, and its other
   // streams load for the row and for falling back.
   Future<void> _playRecent(RecentGame r) async {
     setState(() {
       _match = r.match;
       _streams = <StreamInfo>[r.stream];
+      _viewers = null;
     });
+    _refreshViewers();
     _switchTo(r.stream);
     try {
       await _nowPlaying.invokeMethod('show', <String, dynamic>{'title': r.match.title});
@@ -2756,6 +2787,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _peekTimer?.cancel();
     _noteTimer?.cancel();
     _upTimer?.cancel();
+    _viewersTimer?.cancel();
     _saveQuality();
     // Leaving the player gives the window back its title bar.
     if (_fullscreen) _leaveFullscreen().catchError((_) {});
@@ -2949,10 +2981,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       };
     }
 
-    Map<String, Object?> recentCard(RecentGame r) {
-      final StreamQuality? q = _qualities[r.stream.embedUrl];
-      final List<TeamInfo>? teams = orderedTeams(r.match);
-      final String poster = Backend.current.posterUrl(r.match);
+    // A game's badges for the page (its poster without two teams, else its
+    // sport's icon): the recents cards and the title bar.
+    Map<String, Object?> discs(ApiMatch m) {
+      final List<TeamInfo>? teams = orderedTeams(m);
+      final String poster = Backend.current.posterUrl(m);
       Map<String, Object?>? badge(TeamInfo t) {
         final BadgeImage? b = Backend.current.badgeImage(t.badge);
         return b == null ? null : <String, Object?>{'url': b.url, 'crop': b.crop};
@@ -2961,7 +2994,14 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       return <String, Object?>{
         'badges': teams == null ? null : <Map<String, Object?>?>[badge(teams[0]), badge(teams[1])],
         'poster': teams == null && poster.isNotEmpty ? poster : null,
-        'sportIcon': sportIcon(r.match.category).codePoint,
+        'sportIcon': sportIcon(m.category).codePoint,
+      };
+    }
+
+    Map<String, Object?> recentCard(RecentGame r) {
+      final StreamQuality? q = _qualities[r.stream.embedUrl];
+      return <String, Object?>{
+        ...discs(r.match),
         'title': r.match.title,
         'detail': q == null ? r.stream.name : '${q.resolution} · ${r.stream.name}',
         'detailLines': 1,
@@ -2972,6 +3012,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       'chrome': chrome && !_inPip,
       'title': _match.title,
       'subtitle': <String>[if (_quality != null) _quality!.label, sourceLabel(_stream.source), 'Stream ${_stream.streamNo}'].join(' · '),
+      'viewers': _viewers == null ? null : formatViewers(_viewers!),
+      'discs': discs(_match),
       'pill': _hasRow && !_rowOpen && _switchedNote == null,
       'pillLabel': PlayerText.streamsPill,
       'up': _upTo != null && !_rowOpen && _switchedNote == null
@@ -2998,6 +3040,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         'volumeOn': Icons.volume_up.codePoint,
         'volumeOff': Icons.volume_off.codePoint,
         'refresh': Icons.refresh.codePoint,
+        'viewers': Icons.visibility.codePoint,
       },
     };
   }
@@ -3222,6 +3265,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                                           icon: const Icon(Icons.arrow_back, color: Colors.white),
                                           onPressed: () => Navigator.of(context).maybePop(),
                                         ),
+                                      Padding(padding: const EdgeInsets.only(right: 12), child: TitleDiscs(match: _match)),
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3244,6 +3288,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                                           ],
                                         ),
                                       ),
+                                      if (_viewers != null) Padding(padding: const EdgeInsets.only(left: 12), child: ViewerCount(_viewers!, size: 19, color: Colors.white)),
                                     ],
                                   ),
                                 ),

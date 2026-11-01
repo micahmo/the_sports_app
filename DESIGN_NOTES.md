@@ -374,6 +374,8 @@ the others or is added here as a deliberate gap.
 | Updates | through Obtainium | checks only on Home: at start, when the window gets focus, and on coming back to Home, at most hourly (`updates.checkEveryMinutes`); a version you said "Not now" to waits for the next start; installs itself and restarts | checks at start and hourly, says one is available; installing is up to the user |
 | Asks before exiting on Back | no | no | yes: TV convention |
 | Needs the Chrome stream server | no | no | yes (see Roku) |
+| Viewer count and team logos in the player's title bar | yes: the count asked afresh every `viewersRefreshMs` from the game's own entry (fresher than the list's) | same | same |
+| Deep link straight into a stream (`match=<id>&stream=<embed address>`) | `am start ... --es link "..."` (`lib/src/deep_link.dart`) | a command-line argument, `sports.exe "match=..."` | ECP `/launch/dev` or `/input` with `match`, `sport`, `stream` |
 | `golf` streams | play (inner page opened directly) | play | play; since 1.0.123 its segments come through the page (see "Segments only the page may fetch") |
 
 ## Android Auto (1.0.119)
@@ -846,6 +848,18 @@ the phone and desktop already redrew it).
 - Cards are all one size with the same three slots (top row, name, details);
   details lead with quality ("720p60 · Admin 1"). The title bar's second line
   too: "1080p30 · 6.2 Mbps · Admin · Stream 1".
+- The title bar (user's ideas, 2026-11-01) also carries the game's badges at
+  its left, overlapped as on the recent cards (its poster in a disc without
+  two teams), and how many are watching at its right, eye and count as in the
+  lists. The count is asked for afresh when the game opens and every
+  `viewersRefreshMs` (30 s) while it plays (`Backend.fetchViewers`, ppv: the
+  event's own entry, ~2 KB, `/api/streams/<id>`), so it's never the number
+  from when the stream started; a backend without counts shows none. The
+  event's entry and the list don't agree exactly (7.6k vs 8.7k the same
+  minute), the entry being the fresher.
+- On the Roku, a reconnect after a restart that hadn't played yet keeps the
+  darkened poster as it is; it used to dim it again under the spinner, then
+  lighten it when the new link came, in one wait (user, 2026-11-01).
 - Picking switches in place (the same player; `PlayerWebView.load` on
   phone/desktop, a fresh StreamTask on the Roku). Back still returns to the
   list, which then marks whichever of the game's streams played last.
@@ -1087,6 +1101,25 @@ picture up, and banks the cushion as rampUp did. Tested on a staged 50 s
 playlist freeze, then a real one (ppv.st segment 404s, 19 s): frozen picture
 and spinner, then straight back to live. If it runs dry anyway (Roku
 buffering), the old path (rampUp, a hold) is as before.
+
+**The cushion** (2026-11-01, `tvCushionSecs`, 12 s): on again only with
+`tvCushionSecs` in hand (or the old target, if more). ppv's RedZone paused
+about every couple of minutes: refilled to 6-8 s, the next stall in the source
+drained it again. Measured over 25 minutes of the TV's log, the source keeps
+real time (40 three-second segments every 2 minutes) but stalls and bursts:
+the stalls it caught up from went at most 9 s deep, nearly all 7 s or less, so
+12 s rides out every one, and stays under the ~13 s the player was seen to hold
+at that bitrate (its buffer fills by size, so 15 s might never come). It only
+drops for good (~8 s) at a new link or a restart, so that pause still happens,
+refilling to 12. Paused this way it's near live (nothing left to hand over),
+so the cushion is how far behind it plays and doesn't add up the way holds
+bank. While it's coming in, the stall timer starts over (a source that takes
+over 20 s to refill isn't a stalled player); with at least the old target,
+nothing more for 5 s, and segments downloaded that the player hasn't asked for
+(`readySecs`: it asks for each as soon as it's listed while it has room, so a
+buffer full short of 12, as a higher-bitrate stream may be), on anyway. The
+first build went on after 5 s of nothing without that check: the source had
+stalled, it went on at 7 s, and it froze again (14:00:27).
 `servedSecs` counts a segment only when it goes to the player now running:
 after a restart, segments the old player had asked for finish and are dropped
 (`pumpAll`), and counting them read 4-8 s too much in hand, so the TV ran dry
@@ -1177,6 +1210,23 @@ while the proxy keeps giving the player the last good playlist; the player
 plays on through its buffer and carries on from the new link. The full
 reconnect stays as the backstop. At start, a link that doesn't answer gets two
 more fresh sessions before the stream is called unavailable.
+
+A server can also struggle without dropping the stream. ppv hands each fresh
+link one of several servers (netanyahu, vishnu, bharat), and at RedZone's
+kickoff on 2026-11-01 the TV's link sat on the busiest one for 20 minutes:
+playlists ~1 s with 6-8 s spikes, the picture's clock skipping 6-9 s about
+once a minute, dry pauses, restarts at live and one full reconnect. Over the
+same minute a fresh link on bharat answered in ~0.2 s and skipped nothing. So
+on the Roku, 3 signs of trouble within a minute (a playlist slow enough that
+the player gets the last one, or a clock jump) also start `MintTask`, and its
+link is used only if it's on another server that hasn't struggled in the last
+5 minutes; at most every 2 minutes, sooner after a link it turned down
+(`tvRoam*` in shared/app_data.json). A link that dies meanwhile takes whatever
+comes, as before. The log names each link's server. Tested on RedZone: 13:01-13:25
+without it, five freezes (one 11.5 s), a restart and a 30 s reconnect; then
+four switches in 10 minutes, none noticed, and no pauses. With 4 signs it
+went looking only as a 7 s freeze began, and once landed back on the worst
+server, hence 3 and the 5 minutes.
 
 Not on the phone or desktop yet (parked, 2026-09-25): they'd load the page in
 a hidden same-site iframe inside the player page (tested: its link can be read,

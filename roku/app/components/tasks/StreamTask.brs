@@ -68,6 +68,13 @@ sub work()
     m.plWaiters = []
     m.minter = invalid
     m.mintTry = invalid
+    ' Signs the link's server is struggling, and when we last went looking for
+    ' another (see noteTrouble).
+    m.trouble = []
+    m.troubleClock = CreateObject("roTimespan")
+    m.roamAt = invalid
+    m.roaming = false
+    m.struggled = {}
     m.port = CreateObject("roMessagePort")
     m.top.observeField("quit", m.port)
 
@@ -354,6 +361,7 @@ sub checkPlaylist()
             if f <> invalid and not f.slow then
                 f.slow = true
                 print logTime(); "[stream] playlist slow: serving the last one meanwhile"
+                noteTrouble()
             end if
             answerPlaylist(w.sock, m.lastPlaylist)
         else
@@ -399,6 +407,8 @@ sub playlistFetched(f as Object, text as Dynamic)
             startPlaylistFetch(true)
             return
         end if
+        ' Dead now: any new link will do, whatever its server.
+        m.roaming = false
         startMint()
         if m.lastPlaylist <> invalid then print logTime(); "[stream] serving the last playlist while a new link is found"
         result = m.lastPlaylist
@@ -425,11 +435,11 @@ end sub
 
 ' A new link from a fresh browser session (MintTask), while this one keeps
 ' serving. One at a time, and not more often than every 10 seconds.
-sub startMint()
+sub startMint(why = "the link stopped working" as String)
     if m.minter <> invalid or quitRequested() then return
     if m.mintTry <> invalid and m.mintTry.TotalSeconds() < 10 then return
     m.mintTry = CreateObject("roTimespan")
-    print logTime(); "[stream] the link stopped working: finding a new one"
+    print logTime(); "[stream] "; why; ": finding a new one"
     m.minter = CreateObject("roSGNode", "MintTask")
     m.minter.driver = m.driver
     ' The page this session plays (for a nested source, the inner one already
@@ -439,14 +449,55 @@ sub startMint()
     m.minter.control = "run"
 end sub
 
+' A link whose server struggles while still answering: playlists slow enough
+' that the player gets the last one, or the picture's clock skipping ahead.
+' The site hands each fresh link one of several servers, and on 2026-11-01
+' (RedZone at kickoff) the busiest skipped 6-9 s of the game every minute and
+' kept the TV near dry, while a fresh link on another answered in ~0.2 s with
+' nothing skipped. So enough of these close together find a new link in the
+' background, as a dead link does, and switch only if it's on another server,
+' and not one that struggled lately (a switch landed on the worst again,
+' 13:36, and froze 7 s at 13:39). (shared/app_data.json, tvRoam*.)
+sub noteTrouble()
+    p = appPlayer()
+    now = m.troubleClock.TotalMilliseconds()
+    recent = []
+    for each t in m.trouble
+        if now - t <= p.tvRoamWindowMs then recent.Push(t)
+    end for
+    recent.Push(now)
+    m.trouble = recent
+    if recent.Count() < p.tvRoamTroubles or m.minter <> invalid then return
+    if m.roamAt <> invalid and now - m.roamAt < p.tvRoamEveryMs then return
+    m.roamAt = now
+    m.trouble = []
+    m.roaming = true
+    m.struggled[hostOf(m.playlistUrl)] = now
+    startMint("the link's server (" + hostOf(m.playlistUrl) + ") is struggling")
+end sub
+
 ' The new link, if there is one: use it and its session from here on.
 sub onMinted(r as Object)
     m.minter = invalid
     if r = invalid or r.sid = invalid then
         print logTime(); "[stream] couldn't find a new link"
+        m.roaming = false
         return
     end if
+    if m.roaming then
+        m.roaming = false
+        host = hostOf(r.url)
+        at = m.struggled[host]
+        if host = hostOf(m.playlistUrl) or (at <> invalid and m.troubleClock.TotalMilliseconds() - at < appPlayer().tvRoamAvoidMs) then
+            print logTime(); "[stream] the new link is on a server that's been struggling ("; host; "): keeping this one"
+            closeSession(m.driver, r.sid)
+            ' Free to try again at the next signs of trouble.
+            m.roamAt = invalid
+            return
+        end if
+    end if
     old = m.sid
+    m.trouble = []
     m.sid = r.sid
     m.playlistUrl = r.url
     rememberSession(m.driver, m.sid)
@@ -578,7 +629,7 @@ sub onDownload(ev as Object)
             if mine.id <> d.xfers[0].id then which = "second"
             print logTime(); "[stream] segment: the "; which; " copy won"
         end if
-        if d.waiters.Count() > 0 then serveSegment(u)
+        if d.waiters.Count() > 0 then serveSegment(u) else noteReady()
         return
     end if
     DeleteFile(mine.path)
@@ -680,6 +731,7 @@ sub checkClock(u as String, path as String)
         gap = (st - pred.st) / 90000 - pred.d
         if gap > pred.d + 0.5 then
             print logTime(); "[stream] picture clock jumps ahead "; Int(gap * 10) / 10; " s at this segment"
+            noteTrouble()
             ' Far enough that the player won't play over it: it raced through what
             ' it had, stuck, then asked again for segments it had played (an 80 s
             ' jump after an outage, 2026-10-17; a 25 s one, 2026-10-19, replayed
@@ -777,6 +829,26 @@ sub serveSegment(u as String)
     m.served[u] = true
     m.anyServed = true
     if m.served.Count() > 60 then m.served = {}
+    noteReady()
+end sub
+
+' readySecs: segments here, downloaded, past the newest the player has had,
+' that it hasn't asked for. It asks for each as soon as it's listed while its
+' buffer has room, so these staying put means its buffer is full; nothing here
+' means the source is what it's waiting on (PlayerScreen's onDryCheck tells
+' the two apart).
+sub noteReady()
+    top = -1
+    for each u in m.served
+        p = segPlace(u)
+        if p > top then top = p
+    end for
+    secs = 0
+    for each u in m.dl
+        d = m.dl[u]
+        if d.done and d.waiters.Count() = 0 and m.segDur[u] <> invalid and segPlace(u) > top then secs = secs + m.segDur[u]
+    end for
+    if secs <> m.top.readySecs then m.top.readySecs = secs
 end sub
 
 ' servedSecs, what the player now running has been handed that it can play:
@@ -929,7 +1001,7 @@ sub serve()
     end if
     srv.SetMessagePort(m.port)
     srv.NotifyReadable(true)
-    print logTime(); "[stream] serving on port "; portNum
+    print logTime(); "[stream] serving on port "; portNum; " (source server "; hostOf(m.playlistUrl); ")"
     m.top.streamUrl = "http://127.0.0.1:" + portNum.ToStr() + "/live.m3u8"
     conns = {}
     m.out = {}

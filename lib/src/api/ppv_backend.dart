@@ -173,6 +173,16 @@ class PpvBackend extends Backend {
   @override
   Future<List<StreamInfo>> fetchStreams(MatchSourceRef ref) async => (await _snapshot()).streams[ref.id] ?? <StreamInfo>[];
 
+  /// One event's own entry (~2 KB, `{data: {viewers}}`) rather than the whole
+  /// list (~70 KB).
+  @override
+  Future<int?> fetchViewers(ApiMatch m) async {
+    final http.Response r = await _client.get(Uri.parse('${BackendConfig.api}/${m.id}'), headers: <String, String>{'User-Agent': Backend.browserAgent});
+    Backend.ensureOk(r);
+    final dynamic data = (jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>)['data'];
+    return data is Map<String, dynamic> ? int.tryParse('${data['viewers'] ?? ''}') : null;
+  }
+
   @override
   String posterUrl(ApiMatch m) => m.poster ?? '';
 

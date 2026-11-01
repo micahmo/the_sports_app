@@ -15,8 +15,17 @@ function posterLogos(poster as Dynamic) as Object
     return ["logo0:" + poster, "logo1:" + poster]
 end function
 
+' The address that says how many watch a match right now (the player's title
+' bar; kind "viewers"), or "" if this backend doesn't count. As
+' Backend.fetchViewers in the phone app.
+function backendViewersUrl(matchId as String) as String
+    if appBackend().name = "ppv" then return appBackend().api + "/" + matchId
+    return ""
+end function
+
 ' kind: sports, live, all, popular, counts, sport (a: sport id), stream (a:
-' source, b: match id). JSON text in the shapes the screens read.
+' source, b: match id), viewers (a: match id; from backendViewersUrl's answer,
+' the count or ""). JSON text in the shapes the screens read.
 function backendConvert(kind as String, a as String, b as String, text as String) as String
     name = appBackend().name
     if name = "ppv" then return ppvConvert(kind, a, b, text)

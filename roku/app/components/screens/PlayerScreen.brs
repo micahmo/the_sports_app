@@ -33,6 +33,7 @@ sub init()
     ' Pausing just before it runs dry (see onDryCheck).
     m.dryDim = m.top.findNode("dryDim")
     m.dryPaused = false
+    m.dryStill = CreateObject("roTimespan")
     m.keptPicture = false
     m.served0 = 0
     m.dryCheck = m.top.createChild("Timer")
@@ -51,6 +52,24 @@ sub init()
     m.bar = m.top.findNode("bar")
     m.barTitle = mkLabel(m.bar, "", condensed("SemiBold", 48), t.text, 96, 26, 1728, 60)
     m.barQuality = mkLabel(m.bar, "", bodyFont(28), t.textDim, 96, 88, 1728, 40)
+    ' How many are watching, at the bar's right as the lists show it: asked for
+    ' afresh when a game opens and every viewersRefreshMs (shared/app_data.json),
+    ' so it's never the count from when the stream started (see refreshViewers).
+    ' The game's badges at its left (see showBarLogos), where the title starts
+    ' without them.
+    m.barLogos = m.bar.createChild("Group")
+    m.barLeft = 96
+    m.shownViewers = invalid
+    m.barViewers = mkLabel(m.bar, "", condensed("SemiBold", 44), t.text, 0, 47, 0, 60)
+    m.barEye = mkPoster(m.bar, "pkg:/images/icons/visibility.png", 0, 0, 36, 36, t.outline)
+    m.barEye.visible = false
+    m.viewersFor = ""
+    m.viewersApi = invalid
+    m.viewersTimer = m.top.createChild("Timer")
+    m.viewersTimer.duration = appPlayer().viewersRefreshMs / 1000
+    m.viewersTimer.repeat = true
+    m.viewersTimer.observeField("fire", "refreshViewers")
+    m.viewersTimer.control = "start"
     m.barTimer = m.top.findNode("barTimer")
     m.barTimer.observeField("fire", "onBarTimer")
     ' The bar is up from the start until the first quality reading, so what's
@@ -130,6 +149,12 @@ sub start()
     end if
     m.barTitle.text = m.match.title
     m.barQuality.text = barLine("")
+    if m.viewersFor <> m.match.id then
+        m.viewersFor = m.match.id
+        m.shownViewers = m.match.viewers
+        showBarLogos()
+        refreshViewers()
+    end if
     m.backdrop.uri = backdropUrl(m.match)
     ' Reconnecting, the frozen picture stays until the new link's ready
     ' (onStreamUrl): over it, the poster hid the game from the start.
@@ -158,6 +183,77 @@ end sub
 sub onStatus()
     ' While falling back, the spinner says what stopped and what's next.
     if m.spinner.visible and m.trying = "" then m.status.text = m.task.status
+end sub
+
+sub refreshViewers()
+    if m.match.id = "" or m.viewersApi <> invalid then return
+    m.viewersApi = CreateObject("roSGNode", "ApiTask")
+    m.viewersApi.addFields({matchId: m.match.id})
+    m.viewersApi.requests = {v: backendUrl("viewers", m.match.id)}
+    m.viewersApi.observeField("results", "onViewers")
+    m.viewersApi.control = "run"
+end sub
+
+' A failed ask (or a backend that doesn't count) keeps what's shown.
+sub onViewers()
+    asked = m.viewersApi.matchId
+    text = m.viewersApi.results.v
+    m.viewersApi = invalid
+    if asked <> m.match.id then
+        refreshViewers()
+        return
+    end if
+    if text <> invalid and text <> "" then showViewers(Val(text))
+end sub
+
+' The game's badges at the bar's left, overlapped as on the recents cards (its
+' poster in a disc for a game without two teams); the title and its line move
+' over for them.
+sub showBarLogos()
+    while m.barLogos.getChildCount() > 0
+        m.barLogos.removeChildIndex(0)
+    end while
+    ' As big beside the two lines as on the phone (32 px by 19 px text).
+    size = 80
+    teams = orderedTeams(m.match)
+    n = 1
+    if teams <> invalid then n = 2
+    for i = 0 to n - 1
+        b = m.barLogos.createChild("TeamBadge")
+        b.translation = [96 + i * 60, 37]
+        b.fallback = sportIcon(m.match.category)
+        if teams <> invalid then
+            if teams[i].badge <> invalid then b.badge = teams[i].badge
+        else
+            b.cover = posterUrl(m.match)
+        end if
+        b.size = size
+    end for
+    m.barLeft = 96 + 60 * (n - 1) + size + 24
+    m.barTitle.translation = [m.barLeft, 26]
+    m.barQuality.translation = [m.barLeft, 88]
+    m.barQuality.width = 1824 - m.barLeft
+    showViewers(m.shownViewers)
+end sub
+
+' The count and its eye at the bar's right, the title making room; nothing
+' for invalid.
+sub showViewers(n as Dynamic)
+    m.shownViewers = n
+    right = 1824
+    if n = invalid then
+        m.barViewers.text = ""
+        m.barEye.visible = false
+        m.barTitle.width = right - m.barLeft
+        return
+    end if
+    m.barViewers.text = formatViewers(n)
+    nw = m.barViewers.boundingRect().width
+    ' Centred on the bar's two lines, beside the badges, as on the phone.
+    m.barViewers.translation = [right - nw, 47]
+    m.barEye.translation = [right - nw - 46, besideY(m.barViewers, 36, "condensed", 44)]
+    m.barEye.visible = true
+    m.barTitle.width = right - nw - 46 - 24 - m.barLeft
 end sub
 
 ' The title bar's second line, what you glance for first: quality, then which
@@ -615,15 +711,35 @@ end sub
 ' steady stream, 2026-10-28). Near none and nothing new coming: pause it
 ' ourselves, a spinner over the dimmed picture, before it runs dry, which
 ' blanks the picture (the Roku's buffering, "definitely jarring", 2026-10-23)
-' and often replays. On again with the next hold's step in hand (see rampUp):
-' the hold, with the picture up. If it runs dry anyway, buffering's path
-' (rampUp, the hold) is as before.
+' and often replays. On again with a cushion in hand (tvCushionSecs, or the
+' next hold's step if more; see rampUp): the hold, with the picture up. ppv's
+' source stalls up to ~9 s and catches up again; refilled to 6-8 s, the next
+' stall drained it and it paused again, about every couple of minutes
+' (2026-11-01). Paused here it's near live (nothing more to hand over), so the
+' cushion is how far behind it plays, not adding up like the holds. If the
+' player's buffer is full short of it (a higher-bitrate stream), on once
+' nothing more has come for 5 s while StreamTask holds segments it hasn't
+' asked for (readySecs); with none there it's the source that's stalled, and
+' going on then at 7 s froze it again (14:00:27). If it runs dry anyway,
+' buffering's path (rampUp, the hold) is as before.
 sub onDryCheck()
     if m.task = invalid or m.video.content = invalid then return
     ahead = m.task.servedSecs - m.served0 - m.video.position
     if m.dryPaused then
-        if ahead >= m.dryResumeAt then
-            print logTime(); "[player] "; Int(ahead); " s in hand: on again"
+        ' Still coming: not stalled, however long the cushion takes.
+        if ahead > m.dryLast + 0.1 then
+            m.dryLast = ahead
+            m.dryStill.Mark()
+            m.stall.control = "stop"
+            m.stall.control = "start"
+        end if
+        full = ahead >= m.dryFloor and m.dryStill.TotalMilliseconds() >= 5000 and m.task.readySecs > 0
+        if ahead >= m.dryResumeAt or full then
+            if full and ahead < m.dryResumeAt then
+                print logTime(); "[player] "; Int(ahead); " s in hand, buffer full ("; Int(m.task.readySecs); " s more here untaken): on again"
+            else
+                print logTime(); "[player] "; Int(ahead); " s in hand: on again"
+            end if
             endDryPause()
             m.video.control = "resume"
         end if
@@ -642,7 +758,11 @@ sub onDryCheck()
     n = 0
     if m.banked < 30 then n = nextStep()
     m.banked = m.banked + n
-    m.dryResumeAt = at + n
+    m.dryFloor = at + n
+    m.dryResumeAt = appPlayer().tvCushionSecs
+    if m.dryResumeAt < m.dryFloor then m.dryResumeAt = m.dryFloor
+    m.dryLast = ahead
+    m.dryStill.Mark()
     print logTime(); "[player] "; ahead; " s in hand: paused before running dry, on at "; m.dryResumeAt; " s ("; m.banked; " s banked)"
 end sub
 
@@ -1313,7 +1433,10 @@ sub reconnect(reason as String)
         ' (user, 2026-10-28). Nothing it does counts meanwhile (onVideoState).
         if not m.keptPicture then m.video.control = "pause"
         m.keptPicture = true
-        m.dryDim.visible = true
+        ' Over the poster (a restart that hadn't played yet) it's darkened
+        ' already: dimming it again, then not once the new link came, made it
+        ' darker, then lighter, through one wait (2026-11-01 13:20).
+        m.dryDim.visible = not m.backdrop.visible
     else
         m.keptPicture = false
         m.dryDim.visible = false

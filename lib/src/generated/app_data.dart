@@ -107,6 +107,7 @@ abstract final class AppPalette {
 abstract final class PlayerTuning {
   static const int rowThisGame = 3;
   static const int tvDryPauseAt = 2;
+  static const int tvCushionSecs = 12;
   static const int rowRecent = 3;
   static const int recentsKept = 12;
   static const int stuckDownloadMs = 4000;
@@ -118,6 +119,11 @@ abstract final class PlayerTuning {
   static const int upOfferMs = 8000;
   static const int slowStartMs = 20000;
   static const int failedForMinutes = 60;
+  static const int tvRoamTroubles = 3;
+  static const int tvRoamWindowMs = 60000;
+  static const int tvRoamEveryMs = 120000;
+  static const int tvRoamAvoidMs = 300000;
+  static const int viewersRefreshMs = 30000;
 }
 
 /// Screen spacing, in pixels of a 1920-wide TV screen (see the JSON).

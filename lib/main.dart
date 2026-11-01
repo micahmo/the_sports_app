@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'src/car.dart';
+import 'src/deep_link.dart';
 import 'src/desktop/updater.dart';
 import 'src/desktop/window_scale.dart';
 import 'src/desktop/window_state.dart';
@@ -11,7 +12,7 @@ import 'src/screens/sports_screen.dart';
 import 'src/widgets/keep_fresh.dart';
 import 'src/theme.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   // Lets the player take the window fullscreen, and the window come back the
   // way it was left.
@@ -22,6 +23,14 @@ Future<void> main() async {
   await loadThemeMode();
   await loadCarScreen();
   runApp(const SportsApp());
+  // Started with a link into a stream (see DeepLink): open it once Home is up.
+  final String? link = await DeepLink.initial(args);
+  if (link != null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final NavigatorState? nav = _navigatorKey.currentState;
+      if (nav != null) DeepLink.open(nav, link);
+    });
+  }
   // Desktop: a newer release? Asked a little after startup, so it doesn't hold
   // up the first screen, then again later on Home (see Updater.checkAutomatically).
   if (Updater.available) {

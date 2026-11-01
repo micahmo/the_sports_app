@@ -8,6 +8,14 @@
 ' our sport id), stream (b: the match id).
 function ppvConvert(kind as String, a as String, b as String, text as String) as String
     d = ParseJson(text)
+    ' One event's own entry: {data: {viewers}}.
+    if kind = "viewers" then
+        if type(d) <> "roAssociativeArray" or type(d.data) <> "roAssociativeArray" then return ""
+        v = d.data.viewers
+        if type(v) = "roString" or type(v) = "String" then return Int(Val(v)).ToStr()
+        if type(v) = "roInt" or type(v) = "Integer" then return v.ToStr()
+        return ""
+    end if
     if type(d) <> "roAssociativeArray" or type(d.streams) <> "roArray" then return ""
     now = d.timestamp
     if now = invalid then now = CreateObject("roDateTime").AsSeconds()

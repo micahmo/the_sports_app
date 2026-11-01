@@ -55,6 +55,11 @@ abstract class Backend {
   /// The streams one of a match's sources has right now.
   Future<List<StreamInfo>> fetchStreams(MatchSourceRef ref);
 
+  /// How many are watching the match right now, asked afresh (the lists are
+  /// kept a minute), for the player's title bar; null if this backend doesn't
+  /// count.
+  Future<int?> fetchViewers(ApiMatch m) async => null;
+
   /// The match's poster image, or '' for none.
   String posterUrl(ApiMatch m);
 
