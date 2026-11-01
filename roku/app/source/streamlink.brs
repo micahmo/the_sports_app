@@ -126,7 +126,7 @@ function findPlaylist() as Boolean
         ' No playlist after 2 s and the player sits in another site's frame:
         ' play the real player page inside it, if there is one. By what the
         ' page does, not by source, so a source that starts nesting is covered.
-        if i = 4 and not tried and exec(framed) = true then
+        if i = 4 and not tried and isTrue(exec(framed)) then
             tried = true
             inner = playerPageUrl(m.top.embedUrl)
             if inner <> m.top.embedUrl then
@@ -187,6 +187,13 @@ end function
 
 function exec(js as String) as Dynamic
     return wd(m.driver, "POST", "/session/" + m.sid + "/execute/sync", {script: js, args: []})
+end function
+
+' A script's answer is whatever came back, an error object when the page hangs
+' (2026-11-01, the embed host down: comparing that to true stopped the app).
+function isTrue(v as Dynamic) as Boolean
+    if type(v) <> "Boolean" and type(v) <> "roBoolean" then return false
+    return v
 end function
 
 function isString(v as Dynamic) as Boolean
