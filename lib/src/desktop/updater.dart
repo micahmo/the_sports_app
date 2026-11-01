@@ -45,10 +45,10 @@ class Updater {
   /// when the window gets focus with Home showing, and when the user comes back
   /// to Home. At most every UpdateTuning.checkEveryMinutes, as a window left
   /// open never starts again. Only if it's switched on in Settings.
-  static void checkAutomatically(GlobalKey<NavigatorState> navigator) {
+  static void checkAutomatically(GlobalKey<NavigatorState> navigator, {bool now = true}) {
     if (!available) return;
     _navigator = navigator;
-    _checkIfDue();
+    if (now) _checkIfDue();
     AppLifecycleListener(onResume: _checkIfDue);
   }
 
@@ -107,6 +107,9 @@ class Updater {
     _offering = true;
     final bool? update = await showDialog<bool>(
       context: context,
+      // Only its buttons answer: a click beside it, meant for the app, closed
+      // it as "Not now" until the next start (2026-11-01).
+      barrierDismissible: false,
       builder: (BuildContext c) => AlertDialog(
         title: Text('Version ${release.version} is available'),
         content: SizedBox(

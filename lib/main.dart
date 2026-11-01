@@ -31,12 +31,13 @@ Future<void> main(List<String> args) async {
       if (nav != null) DeepLink.open(nav, link);
     });
   }
-  // Desktop: a newer release? Asked a little after startup, so it doesn't hold
-  // up the first screen, then again later on Home (see Updater.checkAutomatically).
+  // Desktop: a newer release? Asked once the first screen is up (the ask
+  // doesn't hold it up), then again later on Home (see Updater.checkAutomatically).
+  // It was 3 s on, and the offer came after the user had started clicking
+  // around (2026-11-01). Not when starting into a stream (a link): asked once
+  // back on Home.
   if (Updater.available) {
-    Future<void>.delayed(const Duration(seconds: 3), () {
-      Updater.checkAutomatically(_navigatorKey);
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => Updater.checkAutomatically(_navigatorKey, now: link == null));
   }
 }
 
