@@ -109,6 +109,8 @@ abstract final class PlayerTuning {
   static const int tvDryPauseAt = 2;
   static const int tvCushionSecs = 12;
   static const int tvStartFillSecs = 22;
+  static const int tvBackCheckMs = 60000;
+  static const int tvBackChecks = 2;
   static const int rowRecent = 3;
   static const int recentsKept = 12;
   static const int stuckDownloadMs = 4000;
@@ -163,6 +165,8 @@ abstract final class PlayerText {
   static const String retry = 'Retry';
   static const String tvRetryKeys = 'Press OK to try again, or Back to pick another stream.';
   static const String tvFillPercent = '{n}%';
+  static const String streamBack = '{stream} is back';
+  static const String tvBackKeys = 'OK to switch';
 }
 
 /// The player's icons, the same on every app.

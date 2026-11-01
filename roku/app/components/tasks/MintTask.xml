@@ -2,11 +2,14 @@
 <!-- A fresh link for a stream whose link stopped working, found in a new
      browser session while StreamTask keeps serving (see its playlist()). Set
      embedUrl + driver, run; `result` is {sid, url}, or {} if there's none. The
-     session then belongs to StreamTask. Set `quit` to give up. -->
+     session then belongs to StreamTask. Set `quit` to give up. With `probe`,
+     only whether the stream works now: the session is closed, and `result`
+     is {ok: true} or {} (PlayerScreen's watch for a stream to come back). -->
 <component name="MintTask" extends="Task">
   <interface>
     <field id="embedUrl" type="string" />
     <field id="driver" type="string" />
+    <field id="probe" type="boolean" />
     <field id="quit" type="boolean" alwaysNotify="true" />
     <field id="result" type="assocarray" />
   </interface>

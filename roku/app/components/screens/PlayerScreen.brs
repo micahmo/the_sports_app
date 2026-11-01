@@ -142,6 +142,17 @@ sub init()
     m.tried = {}
     m.trying = ""
     m.fallbackFrom = ""
+    ' Watching for the stream picked to come back after a fallback (see
+    ' startBackWatch).
+    m.picked = invalid
+    m.backTask = invalid
+    m.backOk = 0
+    m.backReady = false
+    m.backOffered = false
+    m.backNote = false
+    m.backTimer = m.top.createChild("Timer")
+    m.backTimer.duration = appPlayer().tvBackCheckMs / 1000
+    m.backTimer.observeField("fire", "onBackTimer")
 end sub
 
 ' First open: what to play and what else this game has.
@@ -154,6 +165,7 @@ sub onParams()
     m.streams = p.streams
     if m.streams = invalid then m.streams = [m.stream]
     m.tried[m.stream.embedUrl] = true
+    m.picked = m.stream
     checkCurrent()
     start()
 end sub
@@ -454,7 +466,9 @@ sub switchTo(s as Object, fallback as Boolean)
         m.tried = {}
         m.trying = ""
         m.fallbackFrom = ""
+        m.picked = s
     end if
+    stopBackWatch()
     m.tried[s.embedUrl] = true
     m.stream = s
     m.restarts = 0
@@ -676,6 +690,7 @@ sub onVideoState()
             showNote(playerText("switchedTo", streamLabel(m.stream)))
             m.trying = ""
             m.fallbackFrom = ""
+            if m.picked <> invalid and m.picked.embedUrl <> m.stream.embedUrl then startBackWatch()
         end if
     else if st = "buffering" then
         ' Mid-game, our spinner alone; while starting, the status is under it.
@@ -1004,6 +1019,8 @@ sub onBarTimer()
 end sub
 
 sub showBar()
+    ' The stream picked is back: offered with the bar, where the pill goes.
+    if m.backReady and not m.rowOpen and not m.note.shown then showBackNote(5000)
     setShown(m.bar, true)
     setShown(m.pill, not m.rowOpen and not m.note.shown and hasRow())
     m.barTimer.control = "stop"
@@ -1397,7 +1414,8 @@ sub afterRefresh()
 end sub
 
 ' After falling back: which stream took over, briefly, where the pill sits.
-sub showNote(text as String)
+sub showNote(text as String, ms = 0 as Integer)
+    m.backNote = false
     t = theme()
     m.note.removeChildrenIndex(m.note.getChildCount(), 0)
     ' Measure the text, then draw the background first and the text over it.
@@ -1414,7 +1432,93 @@ sub showNote(text as String)
     ' The note takes the pill's place at once, as on the phone.
     setShown(m.pill, false, 0)
     m.noteTimer.control = "stop"
+    if ms = 0 then ms = appPlayer().switchedNoteMs
+    m.noteTimer.duration = ms / 1000
     m.noteTimer.control = "start"
+end sub
+
+' ---- the stream picked, back ---------------------------------------------------
+
+' Fallen back from the stream picked: every tvBackCheckMs, a browser session in
+' the background (MintTask, probe) looks for a working playlist on its page, as
+' when finding a new link, and closes again. tvBackChecks in a row and it's
+' offered (offerBack): a note, "NFL RedZone (HD) is back · OK to switch", by
+' itself the first time, then with the title bar; OK while it's up goes back.
+' Offered, not switched to: switching is a fresh start, poster and fill, and
+' the user would rather no spinners once live. (RedZone's HD feed was gone
+' for ~10 minutes, 2026-11-01 15:26, the fallback on 540p, and the user had to
+' keep trying it by hand.) TV only: phone and desktop have no stream server
+' to look with (the page has to run to hand out its playlist), and their
+' quality-up button already sits where the offer would.
+sub startBackWatch()
+    m.backOk = 0
+    m.backReady = false
+    m.backOffered = false
+    m.backTimer.control = "stop"
+    m.backTimer.control = "start"
+end sub
+
+sub stopBackWatch()
+    m.backTimer.control = "stop"
+    if m.backTask <> invalid then
+        m.backTask.unobserveField("result")
+        m.backTask.quit = true
+        m.backTask = invalid
+    end if
+    m.backOk = 0
+    m.backReady = false
+end sub
+
+sub onBackTimer()
+    if m.backTask <> invalid or m.picked = invalid then return
+    m.backTask = CreateObject("roSGNode", "MintTask")
+    m.backTask.driver = getDriver()
+    m.backTask.embedUrl = m.picked.embedUrl
+    m.backTask.probe = true
+    m.backTask.observeField("result", "onBackResult")
+    m.backTask.control = "run"
+end sub
+
+sub onBackResult()
+    if m.backTask = invalid then return
+    r = m.backTask.result
+    m.backTask.unobserveField("result")
+    m.backTask = invalid
+    ok = r <> invalid and r.ok <> invalid
+    if ok then m.backOk = m.backOk + 1 else m.backOk = 0
+    print logTime(); "[player] "; streamLabel(m.picked); " back? "; ok; " ("; m.backOk; " in a row)"
+    if m.backOk >= appPlayer().tvBackChecks then
+        offerBack()
+    else if m.backReady then
+        withdrawBack()
+    end if
+    ' Still looked for once offered: one failed look takes the offer back.
+    m.backTimer.control = "start"
+end sub
+
+' The stream picked failed a look after being offered: no longer offered (nor
+' its note, if up) until tvBackChecks in a row again, then offered afresh.
+sub withdrawBack()
+    m.backReady = false
+    m.backOffered = false
+    if m.backNote and m.note.shown then setShown(m.note, false, 250)
+    m.backNote = false
+end sub
+
+sub offerBack()
+    if m.backReady then return
+    m.backReady = true
+    ' It works again: no longer "Failed … ago" in the row.
+    clearFailed(m.picked.embedUrl)
+    if not m.backOffered then
+        m.backOffered = true
+        showBackNote(appPlayer().upOfferMs)
+    end if
+end sub
+
+sub showBackNote(ms as Integer)
+    showNote(playerText("streamBack", streamLabel(m.picked)) + " · " + playerText("tvBackKeys"), ms)
+    m.backNote = true
 end sub
 
 sub onNoteTimer()
@@ -1701,6 +1805,7 @@ sub onClosing()
     m.stuck.control = "stop"
     m.retry.control = "stop"
     m.swapUrl = ""
+    stopBackWatch()
     m.video.control = "stop"
     if m.task <> invalid then m.task.quit = true
 end sub
@@ -1714,6 +1819,13 @@ end sub
 ' behind live (the phone and desktop apps have no pause either).
 function onKeyEvent(key as String, press as Boolean) as Boolean
     if not press then return false
+    ' The stream picked is back (offerBack): OK while it's offered goes back.
+    if key = "OK" and m.backReady and m.backNote and m.note.shown and not m.rowOpen then
+        setShown(m.note, false, 250)
+        switchTo(m.picked, false)
+        showBar()
+        return true
+    end if
     ' Any press: the "Switched to" note has done its job, and would sit where
     ' the pill and row go.
     if m.note.shown then

@@ -12,7 +12,12 @@ sub work()
         if not openSession() then exit for
         if findPlaylist() then
             if pickMedia() and not quitRequested() then
-                m.top.result = {sid: m.sid, url: m.playlistUrl}
+                if m.top.probe then
+                    wd(m.driver, "DELETE", "/session/" + m.sid, invalid, 5000)
+                    m.top.result = {ok: true}
+                else
+                    m.top.result = {sid: m.sid, url: m.playlistUrl}
+                end if
                 return
             end if
             print logTime(); "[stream] new link didn't answer: "; Left(m.playlistUrl, 30)

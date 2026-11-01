@@ -376,6 +376,7 @@ the others or is added here as a deliberate gap.
 | Needs the Chrome stream server | no | no | yes (see Roku) |
 | Viewer count and team logos in the player's title bar | yes: the count asked afresh every `viewersRefreshMs` from the game's own entry (fresher than the list's) | same | same |
 | Deep link straight into a stream (`match=<id>&stream=<embed address>`) | `am start ... --es link "..."` (`lib/src/deep_link.dart`) | a command-line argument, `sports.exe "match=..."` | ECP `/launch/dev` or `/input` with `match`, `sport`, `stream` |
+| The stream picked offered again after a fallback | no: no stream server to look with, and the quality-up button sits where the offer would (a known difference, to close some day) | no, same | yes: looked for every `tvBackCheckMs` in the background, "… is back · OK to switch" (see "The stream picked, back") |
 | `golf` streams | play (inner page opened directly) | play | play; since 1.0.123 its segments come through the page (see "Segments only the page may fetch") |
 
 ## Android Auto (1.0.119)
@@ -1278,6 +1279,33 @@ a hidden same-site iframe inside the player page (tested: its link can be read,
 ~1 s) and switch hls.js over with a playlist loader that swaps the dead URL for
 the new one. The iframe tended to land on the same server as the page, so it
 would need retries too.
+
+### The stream picked, back (TV)
+
+On 2026-11-01 RedZone's HD feed died for ~10 minutes (15:26-15:38; its page
+gave no playlist), the TV fell back to the 540p copy, and the user kept
+switching back by hand to see whether HD had returned. Now, fallen back from
+the stream picked, the TV looks for it in the background every
+`tvBackCheckMs` (60 s): `MintTask` with `probe` opens a browser session on its
+page, as when finding a new link, and closes it once a working playlist turns
+up. After `tvBackChecks` (2) in a row it's offered: "NFL RedZone (HD) is back
+· OK to switch", alone for `upOfferMs` the first time, then each time the
+title bar comes up, where the pill goes. OK while it shows switches back, as
+picking it from the row would; the stream's "Failed … ago" is cleared.
+It's still looked for while offered, and one failed look takes the offer
+back (its note too, if up) until it works twice in a row again.
+
+- **Offered, not switched to:** switching is a fresh start (poster, fill,
+  spinner), and the user would rather pick the moment than get a spinner
+  mid-play (see the start fill under the cushion). Two in a row because ppv's
+  page can hand out a playlist that dies a minute later.
+- **One check at a time,** on the same Chrome server as playback; a check takes
+  the 7-20 s a link does and holds one session meanwhile.
+- **TV only, for now.** Phone and desktop have no stream server: the page
+  must run to hand out its playlist, and a hidden iframe beside the player
+  (see "Servers that drop a stream") would be the way. Their quality-up offer
+  ("canup", the up pill) also sits where this would, and the two would need
+  to be one offer. A known difference, in the parity table, to close some day.
 
 ### Short playlists and high bitrates
 
