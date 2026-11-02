@@ -454,6 +454,15 @@ const String _takeoverJs = r'''
   var feeds = [];
   var cur = 0;
   var ownSwitching = false;
+  // No lower feed of its own, but the game has an SD stream (ppv lists each
+  // 540p copy as a stream of its own): the app switches to that instead
+  // (down()). And the stream stepped down from, {bw, h}, offered back.
+  var lowerStream = __LOWER__;
+  var upStream = __UP_STREAM__;
+  var askedLower = false;
+  // When the picture froze for want of video (hls.js's stalls), for
+  // stuttering().
+  var stalls = [];
   var startedAt = 0;
   var slowRun = 0;
   // Offering the better feed (see adapt()): since when it's looked good
@@ -1272,12 +1281,13 @@ const String _takeoverJs = r'''
         }
         if (ms > 0 && d.frag.duration > 0) {
           lastRatio = d.frag.duration * 1000 / ms;
-          adapt(lastRatio, flowMs > 0 ? bytes * 8000 / flowMs : 0);
+          adapt(lastRatio);
         }
       } catch (e) {}
     });
     hls.on(OurHls.Events.ERROR, function (_, d) {
       log((d.fatal ? "fatal " : "") + d.type + " " + d.details);
+      if (/^bufferStalledError$|^bufferNudgeOnStall$/.test(d.details) && announced && judging()) stalls.push(Date.now());
       // The playlist stops loading once the stream has played: its link has
       // died (the phone changed networks, or the source's server dropped it).
       if (/^(level|manifest)Load/.test(d.details)) {
@@ -1327,6 +1337,7 @@ const String _takeoverJs = r'''
     lastProgressAt = Date.now();
     startedAt = Date.now();
     slowRun = 0;
+    stalls = [];
     upOkSince = 0;
     offering = false;
     slowStartTold = false;
@@ -1393,26 +1404,31 @@ const String _takeoverJs = r'''
     }, function () { post("hls-load-failed"); });
   }
 
-  // A segment came `ratio` times faster than it plays, at `bps` once it was
-  // coming. Down a feed after two in a row that barely kept up. Never back up
+  // A segment came `ratio` times faster than it plays. Down a feed after two in a row that barely kept up. Never back up
   // by itself: a switch loads the other feed afresh, a gap in a stream that's
   // playing fine, and on a connection that swings it went up and down over
   // and over (2026-10-14). Instead, once for upHold straight the connection
   // has been well above what the better feed needs, the app offers it (a
   // button, "1080p available"), for as long as that holds. An up that
   // doesn't hold (down again within upHold) doubles the wait.
-  function adapt(ratio, bps) {
-    if (!ownSwitching || !judging()) return;
+  function adapt(ratio) {
+    if (!judging()) return;
     if (ratio * 100 < __DOWN_PCT__) {
       upOkSince = 0;
       offer(false);
-      if (++slowRun >= 2 && cur < feeds.length - 1 && networkSuspect()) switchFeed(cur + 1);
+      if (++slowRun >= 2 && canDown() && networkSuspect()) down();
       return;
     }
     slowRun = 0;
-    if (cur === 0) return;
-    var better = feeds[cur - 1].bw;
-    if (!better || bps * 100 < better * __UP_PCT__) { upOkSince = 0; offer(false); return; }
+    var b = better();
+    if (!b) return;
+    // The middle of the last few segments' rates once coming, not each
+    // one's: 540p's small segments came in at anywhere from 9 to 60 Mbps on a
+    // fast line, and the one slow one started the minute over every time
+    // (2026-11-01).
+    var r = rates.slice().sort(function (x, y) { return x - y; });
+    var mid = r.length >= 3 ? r[Math.floor((r.length - 1) / 2)] : 0;
+    if (!b.bw || mid * 100 < b.bw * __UP_PCT__) { upOkSince = 0; offer(false); return; }
     if (!upOkSince) upOkSince = Date.now();
     if (Date.now() - upOkSince >= upHold && Date.now() - switchedAt >= upHold) offer(true);
   }
@@ -1420,16 +1436,53 @@ const String _takeoverJs = r'''
   function offer(on) {
     if (on === offering) return;
     offering = on;
-    var b = feeds[cur - 1];
+    var b = better();
     post("canup:" + (on && b ? (b.h ? b.h + "p" : "a higher quality") : ""));
   }
 
   // The app's button.
-  window.__appPlayer.up = function () { if (offering && cur > 0) switchFeed(cur - 1); };
+  window.__appPlayer.up = function () {
+    if (!offering) return;
+    if (ownSwitching) { if (cur > 0) switchFeed(cur - 1); return; }
+    if (better()) { log("quality up: back to the stream stepped down from"); post("upstream"); }
+  };
+
+  // Somewhere lower to go: the source's next feed, or the game's SD stream.
+  function canDown() {
+    return ownSwitching ? cur < feeds.length - 1 : feeds.length < 2 && lowerStream && !askedLower;
+  }
+
+  function down() {
+    if (ownSwitching) { switchFeed(cur + 1); return; }
+    askedLower = true;
+    log("quality down: asking for the game's SD stream");
+    post("lower:" + Math.round(needBps()) + ":" + (video.videoHeight || 0));
+  }
+
+  // The better one to offer: the source's next feed up, or the stream
+  // stepped down from.
+  function better() {
+    if (ownSwitching) return cur > 0 ? feeds[cur - 1] : null;
+    return feeds.length < 2 ? upStream : null;
+  }
+
+  // Freezing over and over, however briefly: 2 s in every 5 for minutes on a
+  // weak phone connection never made one 3 s freeze, and "Weak connection"
+  // came four minutes in (2026-11-01, in the car).
+  function stuttering() {
+    var now = Date.now();
+    while (stalls.length && now - stalls[0] > __WEAK_STALL_WINDOW_MS__) stalls.shift();
+    return stalls.length >= __WEAK_STALLS__;
+  }
 
   // To the lowest feed, if not there already: ours, or hls.js's where the
   // feeds line up (back to its own choice once something has come in).
   function stepToLowest() {
+    if (!ownSwitching && canDown()) {
+      log("nothing coming in: the game's SD stream");
+      down();
+      return true;
+    }
     if (ownSwitching) {
       if (cur >= feeds.length - 1) return false;
       log("nothing coming in: lowest feed");
@@ -1617,22 +1670,23 @@ const String _takeoverJs = r'''
   }
 
   function checkConnection() {
-    if (!judging()) return;
+    // (Asked the app for the SD stream: this page is on its way out.)
+    if (!judging() || askedLower) return;
     var f = inflight(), need = needBps();
     var slow = !!f && f.ms > 2000 && f.bytes > 0 && need > 0 && f.bytes * 8000 / f.ms < need;
     var dead = (!!f && f.ms > 3000 && f.bytes === 0) || Date.now() - lastLinkErrorAt < 20000;
-    var canDown = ownSwitching && cur < feeds.length - 1;
     // Struggling now: no better feed on offer, and the minute it must hold
     // starts over. Only finished segments used to count (adapt), and in a
     // weak zone few finish: "1080p" was offered while 540p was stuck, and
     // taken, it held 5 s (2026-10-18, phone).
+    var stutter = announced && stuttering();
     var stuck = announced && Date.now() - lastProgressAt >= 3000 && video.readyState < 3;
-    if (slow || dead || stuck) {
+    if (slow || dead || stuck || stutter) {
       upOkSince = 0;
       offer(false);
     }
     if (!announced) {
-      if (slow && canDown && Date.now() - startedAt > 6000) { switchFeed(cur + 1); return; }
+      if (slow && canDown() && Date.now() - startedAt > 6000) { down(); return; }
       if (!slowStartTold && Date.now() - startedAt > __SLOW_START_MS__) {
         slowStartTold = true;
         // (A segment that just came in slowly says so too: checked the moment
@@ -1643,7 +1697,8 @@ const String _takeoverJs = r'''
     }
     // Stuck right now (not just resuming: the last progress reading lags a
     // moment behind, and the note came up just as the stream came back).
-    if (!(slow || dead) || Date.now() - lastProgressAt < 3000 || video.readyState >= 3) {
+    // Or stuttering, however short each freeze.
+    if (!stutter && (!(slow || dead) || Date.now() - lastProgressAt < 3000 || video.readyState >= 3)) {
       // Playing again: the app lets the note go once it's held a while.
       if (weakTold && video.readyState >= 3) {
         weakTold = false;
@@ -1654,7 +1709,7 @@ const String _takeoverJs = r'''
     // The source being slow: no lower feed (it was no help) and no note
     // blaming the viewer's connection; the stall watch carries on as before.
     if (!networkSuspect()) return;
-    if (slow && canDown) { switchFeed(cur + 1); return; }
+    if ((slow || stutter) && canDown()) { down(); return; }
     // Up for as long as it struggles (a 4 s note once a minute was missed on
     // the first pass through a dead zone, 2026-10-25).
     if (!weakTold) {
@@ -1743,6 +1798,9 @@ const String _takeoverJs = r'''
     // word for as long as the network was gone.
     var moved = video.currentTime - lastTime;
     if (lastTime < 0 || moved < 0 || moved >= 3) {
+      // A segment played again in a dead zone, 3-4 times (2026-10-04,
+      // 10-14, 11-01): never in the log, so say when the picture goes back.
+      if (lastTime >= 0 && moved < -0.5) log("picture went back " + (-moved).toFixed(1) + " s, to " + video.currentTime.toFixed(1));
       // Starting, or a seek: measure from here.
       stalledFor = 0;
       lastTime = video.currentTime;
@@ -1950,6 +2008,12 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // down on a weak connection is kept when the page loads again (a
   // reconnect); another stream starts from the best.
   int _startFeed = 0;
+  // Stepped down from this stream to the game's SD one, the page having no
+  // lower feed of its own (see down() in the page), with what it needed
+  // ({bw, h}) for offering it back. Another stream, picked or fallen back
+  // to, forgets it.
+  StreamInfo? _upFrom;
+  String _upFromFeed = 'null';
 
   bool _inPip = false;
   bool _muted = false;
@@ -2153,6 +2217,28 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       });
       return;
     }
+    if (message.startsWith('lower:')) {
+      // No lower feed in this stream: the game's SD stream, loaded afresh
+      // like a fallback (a brief spinner saying why), the HD one offered back.
+      final StreamInfo? sd = _lowerStream();
+      if (sd == null) return;
+      final List<String> part = message.split(':');
+      final int bw = int.tryParse(part[1]) ?? 0;
+      final int h = part.length > 2 ? int.tryParse(part[2]) ?? 0 : 0;
+      final int height = h > 0 ? h : _bestHeight;
+      PlayerLog.add('[app] weak connection: stepping down to ${sd.name} (SD)');
+      _switchTo(sd, upFrom: _stream, upFeed: jsonEncode(<String, int>{'bw': bw, 'h': height}));
+      setState(() => _waitText = PlayerText.switchingDown.replaceAll('{quality}', 'SD'));
+      return;
+    }
+    if (message == 'upstream') {
+      final StreamInfo? hd = _upFrom;
+      if (hd == null) return;
+      final int h = (jsonDecode(_upFromFeed) as Map<String, dynamic>)['h'] as int? ?? 0;
+      _switchTo(hd);
+      setState(() => _waitText = PlayerText.switchingUp.replaceAll('{quality}', h > 0 ? '${h}p' : 'HD'));
+      return;
+    }
     if (message.startsWith('canup:')) {
       final String q = message.substring(6);
       setState(() {
@@ -2236,7 +2322,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         if (_trying != null) _showNote(PlayerText.switchedTo.replaceAll('{stream}', _label(_stream)), PlayerIcons.switched, rebuild: false);
         _trying = null;
         _fallbackFrom = null;
-        Recents.played(_match, _stream).then((_) => _loadRecent());
+        // Stepped down: the stream picked, which opening it again starts on.
+        Recents.played(_match, _upFrom ?? _stream).then((_) => _loadRecent());
         // The title bar waits for the first quality reading, but a slow decoder
         // may never give a believable one: let it go 10 s into playback anyway
         // (if it's still this stream).
@@ -2262,6 +2349,16 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         WidgetsBinding.instance.addPostFrameCallback((_) => _failedForGood());
       }
     });
+  }
+
+  // The game's SD stream to step down to from an HD one with no lower feed of
+  // its own: the same broadcaster's (ppv's 540p copy), else the same
+  // language's; never one that failed lately.
+  StreamInfo? _lowerStream() {
+    if (!_stream.hd) return null;
+    final List<StreamInfo> sd = _streams.where((StreamInfo s) => !s.hd && !_failures.containsKey(s.embedUrl)).toList();
+    if (sd.isEmpty) return null;
+    return sd.firstWhere((StreamInfo s) => s.source == _stream.source, orElse: () => sd.firstWhere((StreamInfo s) => s.language == _stream.language, orElse: () => sd.first));
   }
 
   // "Delta 1 (HD)"
@@ -2310,8 +2407,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
 
   // Play [s] in place of what's playing. A pick from the streams row starts a
   // fresh round of falling back; a fallback carries on the current one.
-  void _switchTo(StreamInfo s, {bool fallback = false}) {
+  void _switchTo(StreamInfo s, {bool fallback = false, StreamInfo? upFrom, String upFeed = 'null'}) {
     _saveQuality();
+    _upFrom = upFrom;
+    _upFromFeed = upFeed;
     _healTimer?.cancel();
     _startFeed = 0;
     _waitText = null;
@@ -2722,6 +2821,10 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         .replaceAll('__UP_PCT__', '${PlayerTuning.upPercent}')
         .replaceAll('__SLOW_START_MS__', '${PlayerTuning.slowStartMs}')
         .replaceAll('__START_FEED__', '$_startFeed')
+        .replaceAll('__LOWER__', '${_lowerStream() != null}')
+        .replaceAll('__UP_STREAM__', _upFrom != null ? _upFromFeed : 'null')
+        .replaceAll('__WEAK_STALLS__', '${PlayerTuning.weakStalls}')
+        .replaceAll('__WEAK_STALL_WINDOW_MS__', '${PlayerTuning.weakStallWindowMs}')
         .replaceAll('__OVERLAY__', '${PlayerTuning.overlayPercent / 100}');
     // The viewer's mute, for this page's players (see play() in the page).
     _web.runJavaScript('window.__appWantMuted=$_wantMuted;').catchError((_) {});

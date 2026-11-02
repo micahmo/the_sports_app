@@ -120,6 +120,8 @@ abstract final class PlayerTuning {
   static const int upPercent = 150;
   static const int upHoldMs = 60000;
   static const int upOfferMs = 8000;
+  static const int weakStalls = 3;
+  static const int weakStallWindowMs = 30000;
   static const int slowStartMs = 20000;
   static const int failedForMinutes = 60;
   static const int tvRoamTroubles = 3;

@@ -365,7 +365,7 @@ the others or is added here as a deliberate gap.
 | Title bar, Streams pill and note fade in and out | 150 ms (the note 250); the row fades too when it goes by itself with the title bar, and goes at once when closed by hand | same | same, since 1.0.116 (before, they appeared and vanished); the row's fade since 1.0.117 |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer over the video hides with it, in a window too | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
-| Quality on a weak connection | steps down a source's separate feeds; back up only from a "1080p" button offered once the connection holds (hls.js switches both ways where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |
+| Quality on a weak connection | steps down a source's separate feeds, or with none, to the game's SD stream; back up only from a "1080p" button offered once the connection holds (hls.js switches both ways where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |
 | A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides); stuck after the source skips ahead, or it skips 30 s or more, the player starts again at live (see "Stuck after the source skips ahead") |
 | No pause (live streams only; a pause would just fall behind live) | no pause control | no pause control | Play/Pause shows the title bar like the other buttons |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
@@ -704,6 +704,39 @@ the master and each feed's playlist once (`readFeeds()`):
   none once it recovered. A stall while
   video is still arriving, however slowly, waits rather than reconnecting
   (starting again only threw away what was coming).
+- **No lower feed, but an SD stream (2026-11-01).** ppv's streams have one
+  quality each, its 540p copy listed as a stream of its own ("SD | NBC"), so
+  on a weak connection there was nowhere to step down to: on the drive home
+  every 3 s segment took ~5.3 s for ten minutes, 3 s of picture then a 2 s
+  freeze, over and over, at 720p. Now where the step down would go a feed
+  lower (two slow segments, a slow download while stuck, stuttering, or
+  nothing at all 10 s into the start) and the stream has no lower feed, the
+  page asks the app (`lower:<bps>:<height>`), which plays the game's SD
+  stream: the same broadcaster's, else the same language's, never one that
+  failed lately (`_lowerStream()`). Loaded afresh like a fallback, under the
+  brief "Weak connection · Switching to SD…" spinner. The HD stream comes
+  back the way a better feed does: the page is told what it needed
+  (`__UP_STREAM__`), offers "720p" under the same rule, and the button has
+  the app play it again (`upstream`). A stream picked or fallen back to
+  forgets it; reconnects keep it; recents keep the HD one, which opening the
+  game again starts on. Tested on the emulator (SNF, DevTools throttle 4
+  Mbps on the 7 Mbps HD): SD asked for 14 s in, playing 4 s later and smooth
+  at 4 Mbps; "720p" offered ~70 s after the throttle lifted, HD playing 5 s
+  after the tap. (A page load under DevTools' throttle never finds its
+  stream, so it was lifted while SD loaded; on the drive a fresh link's page
+  loaded in 6 s on the weak connection.) The offer now goes by the middle of
+  the last few segments' rates, not each one: 540p's 1.1 MB segments came in
+  at 9-60 Mbps on a fast line, and the odd slow one started the minute over
+  every time, so it was never offered.
+- **Stuttering counts (2026-11-01).** "Weak connection" and a step down
+  waited for one freeze of 3 s or more; 2 s freezes every 5 s never made one,
+  and on the drive the note first came four minutes in. Now `weakStalls` (3)
+  freezes within `weakStallWindowMs` (30 s), hls.js's stalls and nudges
+  however short, count too (still only when `networkSuspect()`), and the
+  note stays while they keep coming. Tested: the note at the third freeze,
+  16 s into a throttle with nowhere lower to go. The page also logs the
+  picture going back ("picture went back …"), for the segment replayed 3-4
+  times in dead zones that the log has never shown.
 - **Slow to start:** after 20 s (`slowStartMs`) the spinner says why: "Still
   loading · your connection is slow" (a download coming in slowly, or the last
   one was slower than real time) or "… the stream is slow to respond" (nothing
