@@ -88,11 +88,17 @@ function openSession() as Boolean
     ' 2026-10-28), and every command queued behind the load, so the spinner
     ' outlasted findPlaylist's 20 s. Nothing here needs the load: findPlaylist
     ' polls for the playlist request.
+    closeLeftOpen()
     caps = "{" + q + "capabilities" + q + ":{" + q + "alwaysMatch" + q + ":{" + q + "browserName" + q + ":" + q + "chrome" + q + "," + q + "pageLoadStrategy" + q + ":" + q + "none" + q + "," + q + "goog:chromeOptions" + q + ":{" + q + "args" + q + ":" + FormatJson(args) + "}}}}"
     session = wd(m.driver, "POST", "/session", caps)
     if session = invalid or session.sessionId = invalid then return false
     m.sid = session.sessionId
     rememberSession(m.driver, m.sid)
+    ' No script in the page runs past 10 s (the server's default is 30 s): one
+    ' fetching from a source server that has stopped answering held up every
+    ' command after it, the session's close among them (see closeLater). The
+    ' TV gives up on a playlist at 8 s anyway.
+    wd(m.driver, "POST", "/session/" + m.sid + "/timeouts", {script: 10000}, 5000)
 
     ' Headless Chrome announces itself in its user agent; present as the same
     ' Chrome version without the "Headless", whatever version the server runs.

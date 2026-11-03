@@ -1101,6 +1101,21 @@ stream server's socket events. Getting any of these wrong crashed the app on
 2026-09-24 whenever a reconnect met a slow fetch. (With the debug console
 attached, a crash freezes the app in the debugger rather than exiting it.)
 
+**Sessions that won't close (2026-11-01, SNF).** The server (Selenium,
+`maxSessions` 4) runs one command at a time per session, and a page script
+runs up to 30 s by default. When ppv's servers stopped answering, every
+playlist fetch in the page hung, the TV's close (5 s) queued behind them and
+was given up, and the session stayed open: the link that died, two
+background new links on servers that didn't answer, and the reconnect's
+first try. With all four slots taken the reconnect sat on "Starting a
+browser on the server..." for two minutes (the server's log showed no close
+from the TV at all; closed by hand, a browser came at once). Now each
+session caps page scripts at 10 s (`/timeouts`), so nothing holds a session
+past that, and a close that doesn't go through is kept in the registry and
+done again before the next session opens (`closeLater`, `closeLeftOpen`).
+Checked on the server: a close sent behind a script that never answers went
+through 9 s later, when the 10 s cap ended the script.
+
 Source reliability differs: on 2026-09-24, admin's 720p segments (TikTok's CDN)
 had 2 of 1,794 downloads over 5 s; foxtrot/hotel's 1080p segments (the site's
 own servers) had 12 of 891, each ~11 s against 6 s segments, enough to stall.

@@ -51,7 +51,8 @@ end sub
 ' has started, and must not close that one (it did: "invalid session id", then
 ' "no valid bitrates" a few seconds into the new stream).
 sub closeSession(driver as String, sid as String)
-    wd(driver, "DELETE", "/session/" + sid, invalid, 5000)
+    if sid = "" then return
+    if not endSession(driver, sid, 5000) then closeLater(driver, sid)
     s = CreateObject("roRegistrySection", "session")
     if s.Exists("sid") and s.Read("sid") = sid then
         s.Delete("sid")
@@ -60,7 +61,60 @@ sub closeSession(driver as String, sid as String)
     end if
 end sub
 
+' Whether the server closed it (or had no such session). The server runs one
+' command at a time per session, so a close waits behind whatever the session
+' is still doing.
+function endSession(driver as String, sid as String, timeoutMs as Integer) as Boolean
+    x = CreateObject("roUrlTransfer")
+    p = CreateObject("roMessagePort")
+    x.SetMessagePort(p)
+    x.SetUrl(driver + "/session/" + sid)
+    x.RetainBodyOnError(true)
+    x.SetRequest("DELETE")
+    if not x.AsyncPostFromString("{}") then return false
+    ev = wait(timeoutMs, p)
+    if ev = invalid then
+        x.AsyncCancel()
+        return false
+    end if
+    c = ev.GetResponseCode()
+    return c = 200 or c = 404
+end function
+
+' A session that didn't close, closed again before the next one opens
+' (closeLeftOpen). Its close had queued behind page fetches from a source
+' server that had stopped answering, and the TV gave up on it: four left open
+' filled the server's four slots, and the reconnect waited two minutes for a
+' browser (2026-11-01, SNF).
+sub closeLater(driver as String, sid as String)
+    s = CreateObject("roRegistrySection", "session")
+    l = invalid
+    if s.Exists("toClose") then l = ParseJson(s.Read("toClose"))
+    if type(l) <> "roArray" then l = []
+    l.Push({d: driver, s: sid})
+    while l.Count() > 8
+        l.Shift()
+    end while
+    s.Write("toClose", FormatJson(l))
+    s.Flush()
+    print logTime(); "[stream] a browser session didn't close: closing it again before the next"
+end sub
+
+sub closeLeftOpen()
+    s = CreateObject("roRegistrySection", "session")
+    if not s.Exists("toClose") then return
+    l = ParseJson(s.Read("toClose"))
+    s.Delete("toClose")
+    s.Flush()
+    if type(l) <> "roArray" then return
+    for each e in l
+        ' By now whatever held it up has timed out (see openSession).
+        if endSession(e.d, e.s, 12000) then print logTime(); "[stream] closed a browser session left open" else closeLater(e.d, e.s)
+    end for
+end sub
+
 sub closeRememberedSession()
+    closeLeftOpen()
     s = CreateObject("roRegistrySection", "session")
     if s.Exists("sid") and s.Exists("driver") then wd(s.Read("driver"), "DELETE", "/session/" + s.Read("sid"), invalid, 5000)
     s.Delete("sid")
