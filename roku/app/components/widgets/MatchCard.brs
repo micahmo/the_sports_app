@@ -21,7 +21,7 @@ sub render()
         live = mkLabel(m.top, "LIVE", condensed("Bold", 30), t.live, 0, 22, 0, 0)
         lw = live.boundingRect().width
         live.translation = [right - lw, 22]
-        mkPoster(m.top, "pkg:/images/disc.png", right - lw - 20, besideY(live, 12, "condensed", 30), 12, 12, t.live)
+        mkPoster(m.top, "pkg:/images/disc_12.png", right - lw - 20, besideY(live, 12, "condensed", 30), 12, 12, t.live)
         liveW = lw + 20
     end if
     if mt.viewers <> invalid then

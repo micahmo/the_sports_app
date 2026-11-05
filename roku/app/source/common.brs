@@ -407,6 +407,17 @@ end function
 ' team's logo on the game's poster: crop is where (left, top, width, height as
 ' fractions of the poster). No backend has badges of its own yet; one that
 ' does adds its ids here, as Backend.badgeImage in the phone app.
+' The disc drawn at this size, where there is one (images/disc_<n>.png, made by
+' tools/make_assets.py): scaled down from the 128 px one, the TV dropped its
+' soft edge and the circle came out jagged (2026-11-04).
+function discUri(size as Float) as String
+    n = Int(size + 0.5)
+    for each k in [12, 44, 52, 64, 80]
+        if k = n then return "pkg:/images/disc_" + n.ToStr() + ".png"
+    end for
+    return "pkg:/images/disc.png"
+end function
+
 function badgeImage(badge as Dynamic) as Dynamic
     if badge = invalid or badge = "" then return invalid
     if Left(badge, 4) <> "logo" then return invalid

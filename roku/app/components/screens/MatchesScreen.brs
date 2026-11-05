@@ -611,7 +611,7 @@ sub renderHeader(mt as Object, watching as Dynamic)
     x = 24
     if isLiveNow(mt) then
         live = mkLabel(m.header, "LIVE", condensed("Bold", 30), t.live, x + 20, metaY, 0, 40)
-        mkPoster(m.header, "pkg:/images/disc.png", x, besideY(live, 12, "condensed", 30), 12, 12, t.live)
+        mkPoster(m.header, "pkg:/images/disc_12.png", x, besideY(live, 12, "condensed", 30), 12, 12, t.live)
         x = x + 20 + live.boundingRect().width + 16
     end if
     ' Beside bold red LIVE the details look low on the exact baseline; lift them.

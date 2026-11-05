@@ -125,7 +125,11 @@ for file, material in ICONS.items():
 nine_patch('card', 20)        # list rows, tiles, cards
 nine_patch('chip', 10)        # HD/SD badges, small pills
 nine_patch('ring', 22, 4)     # focus outline, drawn over a card
-disc('disc')                  # badge backgrounds, live dot
+disc('disc')                  # badge backgrounds at sizes without their own
+# The disc at each size it's drawn (common.brs's discUri): scaled down from 128,
+# the TV dropped its soft edge and the circle came out jagged (2026-11-04).
+for n in (12, 44, 52, 64, 80):
+    disc('disc_%d' % n, n)
 spinner('spinner')            # loading
 brand()
 for f in ('BarlowSemiCondensed-Regular.ttf', 'BarlowSemiCondensed-Medium.ttf', 'BarlowSemiCondensed-SemiBold.ttf', 'BarlowSemiCondensed-Bold.ttf', 'OFL.txt'):

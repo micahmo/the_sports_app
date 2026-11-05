@@ -12,6 +12,7 @@ end sub
 
 sub update()
     s = m.top.size
+    m.disc.uri = discUri(s)
     m.disc.width = s
     m.disc.height = s
     pad = s * 0.14
@@ -23,6 +24,7 @@ sub update()
     m.icon.width = s - 2 * ip
     m.icon.height = s - 2 * ip
     m.icon.uri = m.top.fallback
+    m.mask.maskUri = discUri(s)
     m.mask.maskSize = [s, s]
     ' The mask repeats its edge outside its square, so a picture bigger than
     ' the disc (a logo cut from a poster) is clipped to it too.
@@ -64,12 +66,20 @@ sub update()
         m.logo.visible = false
         m.icon.visible = true
     end if
+    showDisc()
+end sub
+
+' Not under a picture clipped to the circle: its edge's half-covered pixels let
+' the light disc through, a thin broken white ring (2026-11-04).
+sub showDisc()
+    m.disc.visible = not m.mask.visible
 end sub
 
 sub onCoverLoad()
     if m.coverImage.loadStatus = "failed" then
         m.mask.visible = false
         m.icon.visible = true
+        showDisc()
     end if
 end sub
 

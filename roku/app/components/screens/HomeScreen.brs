@@ -206,7 +206,7 @@ sub build(sports as Object, names as Object, liveBy as Object, liveTotal as Inte
             num = mkLabel(content, n.ToStr(), condensed("Bold", 34), t.live, 0, 0, 0, 84)
             countW = num.boundingRect().width
             num.translation = [sw - 24 - countW, 0]
-            mkPoster(content, "pkg:/images/disc.png", sw - 24 - countW - 22, besideY(num, 12, "condensed", 34), 12, 12, t.live)
+            mkPoster(content, "pkg:/images/disc_12.png", sw - 24 - countW - 22, besideY(num, 12, "condensed", 34), 12, 12, t.live)
             countW = countW + 30
         end if
         name = mkLabel(content, s.name, bodyFont(30), t.text, 84, 0, sw - 84 - 24 - countW, 84)
@@ -252,7 +252,7 @@ function tile(x as Float, y as Float, w as Float, icon as String, color as Strin
         num = mkLabel(content, count.ToStr(), condensed("Bold", 40), t.live, 0, 16, 0, 48)
         nw = num.boundingRect().width
         num.translation = [w - 24 - nw, 16]
-        mkPoster(content, "pkg:/images/disc.png", w - 24 - nw - 22, besideY(num, 12, "condensed", 40), 12, 12, t.live)
+        mkPoster(content, "pkg:/images/disc_12.png", w - 24 - nw - 22, besideY(num, 12, "condensed", 40), 12, 12, t.live)
     end if
     return c
 end function

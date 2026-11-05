@@ -77,6 +77,13 @@ own error page isn't shown: a 502 from ppv's nginx went on screen as raw HTML
   `logoCrops[n]` in the backend's config (left, top, width, height as
   fractions of the poster, for the title's first and second team), filling
   the badge's disc. Without either, the badge shows the sport's icon.
+  On the TV the circles are images, and the 128 px one scaled down lost its
+  soft edge (jagged), so `make_assets.py` also draws the disc at each size it's
+  shown (12, 44, 52, 64, 80; `discUri`), and a picture clipped to the circle
+  (cut logo, poster) hides the light disc under it: its edge's half-covered
+  pixels let the disc through as a thin broken white ring (2026-11-04). Flutter
+  clips at the exact size with smoothing and draws no disc under a cut logo,
+  so the phone and desktop never had either.
 
 **ppv.st in the models.** One request lists every event by category; the
 adapter keeps it a minute and answers every list from it (live: started and
