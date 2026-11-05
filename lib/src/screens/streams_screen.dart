@@ -1215,6 +1215,22 @@ const String _takeoverJs = r'''
     // the first frame arrives. A transparent one leaves the black background.
     video.poster = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
     video.addEventListener("playing", announce);
+    // How long each freeze for want of video lasted: only its start was
+    // logged (hls.js's stall), so a freeze of 1 s and one of 15 s looked the
+    // same, and the TV and desktop couldn't be compared (2026-11-01).
+    var frozeAt = 0, frozeSeek = false;
+    video.addEventListener("waiting", function () {
+      if (!announced || frozeAt) return;
+      frozeAt = Date.now();
+      frozeSeek = video.seeking;
+    });
+    video.addEventListener("seeking", function () { if (frozeAt) frozeSeek = true; });
+    video.addEventListener("playing", function () {
+      if (!frozeAt) return;
+      var ms = Date.now() - frozeAt;
+      frozeAt = 0;
+      if (ms >= 300) log("froze " + (ms / 1000).toFixed(1) + " s" + (frozeSeek ? " (with a jump)" : ""));
+    });
     document.body.appendChild(video);
     video.addEventListener("volumechange", function () {
       post(video.muted ? "muted" : "unmuted");
@@ -2172,7 +2188,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     }
     if (message.startsWith('log:')) {
       debugPrint('[player] ${message.substring(4)}');
-      PlayerLog.add('[player] ${message.substring(4)}');
+      // Tagged with the stream: two desktop windows write to one log.
+      PlayerLog.add('[player] (${_stream.name}) ${message.substring(4)}');
       return;
     }
     if (message.startsWith('quality:')) {

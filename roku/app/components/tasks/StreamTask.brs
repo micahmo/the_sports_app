@@ -77,6 +77,10 @@ sub work()
     m.roamAt = invalid
     m.roaming = false
     m.struggled = {}
+    ' The link stopped answering altogether (see playlistFetched), and whether
+    ' its new link has already been turned down once (onMinted).
+    m.linkDead = false
+    m.deadRetried = false
     m.port = CreateObject("roMessagePort")
     m.top.observeField("quit", m.port)
 
@@ -407,15 +411,29 @@ sub playlistFetched(f as Object, text as Dynamic)
         if not f.retry then
             print logTime(); "[stream] retrying playlist fetch"
             startPlaylistFetch(true)
+            ' A new link meanwhile, not after the retry fails too: that waited
+            ' ~8 s more, and the TV ran dry 1-5 s before the new link came
+            ' (2026-11-01 20:27 and 20:36, 2026-11-02 23:20). Should the retry
+            ' answer, it's taken only if it's on another server, as when a
+            ' server struggles (noteTrouble).
+            if m.minter = invalid then
+                m.roaming = not m.linkDead
+                m.roamAt = m.troubleClock.TotalMilliseconds()
+                m.struggled[hostOf(m.playlistUrl)] = m.roamAt
+                startMint("the playlist didn't answer")
+            end if
             return
         end if
-        ' Dead now: any new link will do, whatever its server.
+        ' Dead now: any new link will do, though one on a server that's been
+        ' struggling only after another try (onMinted).
         m.roaming = false
+        m.linkDead = true
         startMint()
         if m.lastPlaylist <> invalid then print logTime(); "[stream] serving the last playlist while a new link is found"
         result = m.lastPlaylist
     else
         result = rewritePlaylist(f.url, text)
+        m.linkDead = false
         print logTime(); "[stream] playlist "; f.started.TotalMilliseconds(); " ms"
     end if
     for each w in m.plWaiters
@@ -437,10 +455,11 @@ end sub
 
 ' A new link from a fresh browser session (MintTask), while this one keeps
 ' serving. One at a time, and not more often than every 10 seconds.
-sub startMint(why = "the link stopped working" as String)
+sub startMint(why = "the link stopped working" as String, again = false as Boolean)
     if m.minter <> invalid or quitRequested() then return
-    if m.mintTry <> invalid and m.mintTry.TotalSeconds() < 10 then return
-    m.mintTry = CreateObject("roTimespan")
+    if not again and m.mintTry <> invalid and m.mintTry.TotalSeconds() < 10 then return
+    ' (Trying again counts on from the first try, for the log.)
+    if not again then m.mintTry = CreateObject("roTimespan")
     print logTime(); "[stream] "; why; ": finding a new one"
     m.minter = CreateObject("roSGNode", "MintTask")
     m.minter.driver = m.driver
@@ -497,7 +516,23 @@ sub onMinted(r as Object)
             m.roamAt = invalid
             return
         end if
+    else if m.linkDead and not m.deadRetried then
+        ' The dead link's new one on a server that's been struggling, maybe
+        ' the dead one again: try once more before taking it. On 2026-11-01
+        ' (20:46:58) one on vishnu, which had struggled all night, didn't
+        ' answer either: ~20 s of an 85 s spinner.
+        host = hostOf(r.url)
+        at = m.struggled[host]
+        if at <> invalid and m.troubleClock.TotalMilliseconds() - at < appPlayer().tvRoamAvoidMs then
+            print logTime(); "[stream] the new link is on a server that's been struggling ("; host; "): trying once more"
+            closeSession(m.driver, r.sid)
+            m.deadRetried = true
+            startMint("the link stopped working", true)
+            return
+        end if
     end if
+    m.linkDead = false
+    m.deadRetried = false
     old = m.sid
     m.trouble = []
     m.sid = r.sid

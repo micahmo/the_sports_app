@@ -1010,7 +1010,11 @@ what's played and everything the page logs, timestamped, ~1 MB then
 at 7:33 PM was gone by 8:45, 2026-10-25), and desktop had none. Android:
 `adb shell cat /sdcard/Android/data/com.micahmo.sports/files/player.log`
 (release builds too; from PowerShell, Git Bash mangles the path); Windows:
-the app's support folder (`%APPDATA%`).
+the app's support folder (`%APPDATA%`). Since 2026-11-04 each page line
+names its stream (`[player] (NBC 2) …`: two desktop windows write to one
+log), and each freeze for want of video logs how long it lasted (`froze 3.8
+s`, from the video's waiting to playing; "(with a jump)" if it seeked
+meanwhile), so freezes can be added up and compared with the TV's.
 
 ### Debugging
 
@@ -1335,8 +1339,18 @@ on the Roku, 3 signs of trouble within a minute (a playlist slow enough that
 the player gets the last one, or a clock jump) also start `MintTask`, and its
 link is used only if it's on another server that hasn't struggled in the last
 5 minutes; at most every 2 minutes, sooner after a link it turned down
-(`tvRoam*` in shared/app_data.json). A link that dies meanwhile takes whatever
-comes, as before. The log names each link's server. Tested on RedZone: 13:01-13:25
+(`tvRoam*` in shared/app_data.json).
+
+**When the playlist stops answering (2026-11-04).** The new link is looked
+for at the first playlist fetch with no reply, alongside the retry, not once
+the retry has failed too: that waited ~8 s more, and the TV ran dry 1-5 s
+before the new link came (2026-11-01 20:27 and 20:36, 2026-11-02 23:20). If
+the retry answers after all, the new link is treated as a roam (used only on
+another server). If the link is dead, the new one is taken, unless it's on a
+server that has struggled in the last 5 minutes (the dead one counts): then
+once more, and the second is taken whatever its server. On 2026-11-01 20:46
+a dead link's new one landed on vishnu, which had struggled all night and
+didn't answer either: ~20 s of an 85 s spinner. The log names each link's server. Tested on RedZone: 13:01-13:25
 without it, five freezes (one 11.5 s), a restart and a 30 s reconnect; then
 four switches in 10 minutes, none noticed, and no pauses. With 4 signs it
 went looking only as a 7 s freeze began, and once landed back on the worst
