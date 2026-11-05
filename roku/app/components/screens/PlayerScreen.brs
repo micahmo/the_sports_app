@@ -35,6 +35,9 @@ sub init()
     m.dryDim = m.top.findNode("dryDim")
     m.dryPaused = false
     m.dryStill = CreateObject("roTimespan")
+    ' When the player last asked StreamTask for anything (see checkQuiet).
+    m.asksSeen = -1
+    m.quietSince = CreateObject("roTimespan")
     m.keptPicture = false
     m.served0 = 0
     ' The player stopped a moment after the poster's up (see startOver).
@@ -711,6 +714,8 @@ sub onVideoState()
             m.spellPos = m.video.position
         end if
         if m.recorded and not m.restarted then m.stuck.control = "start"
+        ' Silence counts from the spinner on, not from a pause before it.
+        m.quietSince.Mark()
         if m.recorded and not m.afterRestart and m.lostAt <> invalid then
             if m.lostAt.TotalSeconds() < 40 then m.lostTimer.control = "start"
         end if
@@ -826,6 +831,7 @@ end sub
 ' buffering's path (rampUp, the hold) is as before.
 sub onDryCheck()
     if m.task = invalid or m.video.content = invalid then return
+    checkQuiet()
     ahead = m.task.servedSecs - m.served0 - m.video.position
     ' Starting, 0% while the player buffers, before the fill (see showFillPct).
     if m.startFill and m.video.state = "buffering" then
@@ -894,6 +900,7 @@ sub onDryCheck()
     if m.dryResumeAt < m.dryFloor then m.dryResumeAt = m.dryFloor
     m.dryLast = ahead
     m.dryStill.Mark()
+    m.quietSince.Mark()
     print logTime(); "[player] "; ahead; " s in hand: paused before running dry, on at "; m.dryResumeAt; " s ("; m.banked; " s banked)"
 end sub
 
@@ -1623,6 +1630,38 @@ sub onStuck()
     m.stuck.control = "stop"
     m.restarted = true
     print logTime(); "[player] stuck: "; Int(took); " s of video taken without playing; starting the player again"
+    restartAtLive(false)
+end sub
+
+' Short of picture mid-game (spinning, or paused before running dry) and the
+' player asks for nothing at all: no playlist, no segment, and none still
+' being answered (StreamTask's asks). After ppv's clock went back it stopped
+' asking, the proxy (which fetches only when asked) went quiet with it, and the
+' 20 s stall and a full reconnect followed: 54 s off the picture with the
+' source answering all along (2026-11-01 16:21). Started again
+' at live on the same link after tvQuietRestartMs instead, or 2 segment
+' lengths if longer (a healthy player's requests came up to 6.3 s apart on NFL
+' Network's ~4.8 s segments, 2026-11-04). Once per spell, as onStuck; if it doesn't
+' help, the stall reconnects as before.
+sub checkQuiet()
+    n = m.task.asks
+    if n <> m.asksSeen then
+        m.asksSeen = n
+        m.quietSince.Mark()
+        return
+    end if
+    ' Paused before running dry too (where it went quiet at 16:21): paused, the
+    ' player still asks, which is how the cushion fills. Not while filling at
+    ' the start (its buffer can be full) or holding.
+    waiting = m.video.state = "buffering" or (m.dryPaused and not m.fillAll)
+    if not waiting or not m.recorded or m.restarted or m.startFill or m.holding then return
+    ms = m.quietSince.TotalMilliseconds()
+    limit = appPlayer().tvQuietRestartMs
+    if m.task.segSecs * 2000 > limit then limit = m.task.segSecs * 2000
+    if ms < limit then return
+    m.restarted = true
+    m.stuck.control = "stop"
+    print logTime(); "[player] the player asked for nothing for "; ms / 1000; " s (limit "; limit / 1000; ") while short of picture: starting it again at live"
     restartAtLive(false)
 end sub
 

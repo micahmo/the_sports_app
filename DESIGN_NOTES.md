@@ -366,7 +366,7 @@ the others or is added here as a deliberate gap.
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer over the video hides with it, in a window too | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
 | Quality on a weak connection | steps down a source's separate feeds, or with none, to the game's SD stream; back up only from a "1080p" button offered once the connection holds (hls.js switches both ways where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |
-| A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides); stuck after the source skips ahead, or it skips 30 s or more, the player starts again at live (see "Stuck after the source skips ahead") |
+| A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides); stuck after the source skips ahead, or it skips 30 s or more, or the player asks for nothing for ~10 s while short of picture, it starts again at live (see "Stuck after the source skips ahead") |
 | No pause (live streams only; a pause would just fall behind live) | no pause control | no pause control | Play/Pause shows the title bar like the other buttons |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
@@ -1611,6 +1611,24 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
   stuck instead), so tested with a staged 10 s rewind while playing: back to
   where it was in 0.4 s, then on. `askSegment` logs "the player asked again
   for a segment it had".
+- **A player that goes quiet** (2026-11-04). After ppv's clock went back
+  (2026-11-01 16:21), the player asked again for two segments it had played,
+  the TV paused before running dry, and then the player asked for nothing at
+  all, not even the playlist. The proxy only fetches when asked, so everything
+  went quiet with the source answering all along: the 20 s stall, a fresh link
+  (16 s) and the start fill, 54 s off the picture. Now StreamTask counts the
+  player's requests (`asks`, also bumped each half second while one is still
+  being answered, so a slow segment isn't silence), and PlayerScreen's
+  `checkQuiet` starts the player again at live on the same link when, short of
+  picture mid-game (spinning, or paused before running dry, where a healthy
+  player keeps asking; not while filling at the start or holding), nothing
+  has come for `tvQuietRestartMs` (8 s) or 2 segment lengths if longer
+  (`segSecs`). A healthy player's requests came up to 6.3 s apart on NFL
+  Network's ~4.8 s segments, so it waits 10 s there. Once per spell, as
+  `onStuck`; if the restart doesn't help, the stall reconnects as before.
+  Tested with a temporary patch that stopped answering the player 75 s in:
+  restarted 10 s after the pause, playing again with the cushion ~25 s after
+  the picture stopped (the start fill is most of that).
 - **Tried and dropped:** marking the jump in the player's list
   (`#EXT-X-DISCONTINUITY`): the Roku's player went back to the top of the
   list, replayed it, then played garbled, fast and silent, and froze. Listing

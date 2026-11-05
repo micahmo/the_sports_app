@@ -109,6 +109,7 @@ abstract final class PlayerTuning {
   static const int tvDryPauseAt = 2;
   static const int tvCushionSecs = 12;
   static const int tvStartFillSecs = 22;
+  static const int tvQuietRestartMs = 8000;
   static const int tvBackCheckMs = 60000;
   static const int tvBackChecks = 2;
   static const int rowRecent = 3;

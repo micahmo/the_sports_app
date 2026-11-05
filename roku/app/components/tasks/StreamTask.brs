@@ -979,6 +979,9 @@ end sub
 
 ' Every half second: second copies for slow downloads, and cleanup.
 sub tick()
+    ' A request still being answered (a slow segment, a playlist on its way)
+    ' isn't the player going quiet.
+    if playerWaiting() then m.top.asks = m.top.asks + 1
     stale = []
     for each u in m.dl
         d = m.dl[u]
@@ -997,6 +1000,15 @@ sub tick()
         m.dl.Delete(u)
     end for
 end sub
+
+' The player has a request in that isn't answered yet.
+function playerWaiting() as Boolean
+    if m.plWaiters.Count() > 0 or m.out.Count() > 0 then return true
+    for each u in m.dl
+        if not m.dl[u].done and m.dl[u].waiters.Count() > 0 then return true
+    end for
+    return false
+end function
 
 ' A downloaded segment minus its fake WebP header: plain MPEG-TS.
 function strippedSegment(path as String) as Dynamic
@@ -1140,6 +1152,7 @@ end sub
 ' True if the request was answered; a segment still downloading is answered
 ' when it arrives.
 function handle(sock as Object, req as String) as Boolean
+    m.top.asks = m.top.asks + 1
     path = req.Split(" ")[1]
     esc = CreateObject("roUrlTransfer")
     t = CreateObject("roTimespan")
@@ -1170,6 +1183,7 @@ end function
 sub measure(u as String, ba as Object)
     d = m.segDur[u]
     if d = invalid or d <= 0 then return
+    m.top.segSecs = d
     m.bitrates.Push(ba.Count() * 8 / d)
     if m.bitrates.Count() > 5 then m.bitrates.Shift()
     total = 0
