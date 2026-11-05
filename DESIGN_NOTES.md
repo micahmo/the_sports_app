@@ -1078,6 +1078,14 @@ wait for it to finish. ppv.st's pages, with their ad scripts, sometimes kept
 loading for minutes, and every command queued behind the load: the spinner ran
 86 s and 135 s (2026-10-28) where `findPlaylist` meant to give up after 20 s.
 Nothing needs the load: `findPlaylist` polls for the playlist request either way.
+A page that never arrives at all (its host down, 2026-11-01 16:02) is different:
+navigating returns at once, but every look for the playlist then waits out the
+session's 10 s script limit, and `findPlaylist` made 40 looks, so the spinner
+held 3.5 min before falling back (staged 2026-11-04 with an unreachable
+address). It now stops by the clock, 25 s from the start (about what the 40
+looks took on a page that answers), and logs "no playlist from the page after
+N ms". Staged again: 32 s (three looks), then on to the game's next stream; a
+normal page still played in 6 s.
 
 Background refresh: every minute the screen on top reloads quietly, but only
 after 10 s without input. `roDeviceInfo.TimeSinceLastKeypress()` counts only

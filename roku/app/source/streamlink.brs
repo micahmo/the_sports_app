@@ -123,11 +123,18 @@ function findPlaylist() as Boolean
     framed = "var f=document.querySelectorAll('iframe[src]');for(var i=0;i<f.length;i++){var u=f[i].src;if(u.indexOf('/ad.html')!==-1)continue;if(u.indexOf(location.origin+'/')===0)continue;if(f[i].clientWidth>100&&f[i].clientHeight>100)return true}return false;"
     found = invalid
     tried = false
-    for i = 1 to 40
+    ' Given up on by the clock, not by count: on a page that never arrives (its
+    ' host down, 2026-11-01 16:02) each look waits out the 10 s script limit,
+    ' and 40 looks held the spinner 3.5 min before falling back (2026-11-04).
+    ' 25 s is about what the 40 looks took on a page that answers.
+    took = CreateObject("roTimespan")
+    i = 0
+    while took.TotalMilliseconds() < 25000
+        i = i + 1
         v = exec(js)
         if isString(v) and v <> "" then
             found = v
-            exit for
+            exit while
         end if
         ' No playlist after 2 s and the player sits in another site's frame:
         ' play the real player page inside it, if there is one. By what the
@@ -144,8 +151,11 @@ function findPlaylist() as Boolean
         ' Leaving the player while it loads: stop now rather than wait it out.
         if quitRequested() then return false
         sleep(500)
-    end for
-    if found = invalid then return false
+    end while
+    if found = invalid then
+        print logTime(); "[stream] no playlist from the page after "; took.TotalMilliseconds(); " ms ("; i; " looks)"
+        return false
+    end if
     m.playlistUrl = found
     ' Only the page is needed now; its own player would keep decoding and
     ' downloading the stream on the server for nothing.
