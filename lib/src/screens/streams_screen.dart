@@ -843,29 +843,62 @@ const String _takeoverJs = r'''
     return out.join("\n") + "\n";
   }
 
+  // Playlist requests under way, for relink() to send again on a fresh link.
+  var playlistLoads = [];
   function relinkedLoader(Base) {
     function Relinked(config) {
+      this.config = config;
       this.inner = new Base(config);
       this.stats = this.inner.stats;
       this.context = null;
+      this.gen = 0;
+    }
+    function done(self) {
+      var i = playlistLoads.indexOf(self);
+      if (i !== -1) playlistLoads.splice(i, 1);
     }
     Relinked.prototype.load = function (context, loaderConfig, callbacks) {
-      var key = context.url;
-      context.url = relinked(context.url);
+      this.key = context.url;
+      this.loaderConfig = loaderConfig;
+      this.callbacks = callbacks;
       this.context = context;
-      var cbs = Object.assign({}, callbacks, {
+      if (playlistLoads.indexOf(this) === -1) playlistLoads.push(this);
+      this.start();
+    };
+    // Each attempt answers only while it's the latest (again() drops one).
+    Relinked.prototype.start = function () {
+      var self = this, gen = ++self.gen, key = self.key, callbacks = self.callbacks;
+      self.context.url = relinked(key);
+      function latest() { return gen === self.gen; }
+      var cbs = {
         onSuccess: function (response, stats, ctx, details) {
+          if (!latest()) return;
+          done(self);
           if (response && typeof response.data === "string") {
             try { response.data = longerList(key, response.data, response.url || ctx.url); } catch (e) {}
           }
           callbacks.onSuccess(response, stats, ctx, details);
         },
-      });
-      this.inner.load(context, loaderConfig, cbs);
-      this.stats = this.inner.stats;
+        onError: function (a, b, c, d) { if (latest()) { done(self); callbacks.onError(a, b, c, d); } },
+        onTimeout: function (a, b, c) { if (latest()) { done(self); callbacks.onTimeout(a, b, c); } },
+      };
+      if (callbacks.onProgress) cbs.onProgress = function (a, b, c, d) { if (latest()) callbacks.onProgress(a, b, c, d); };
+      if (callbacks.onAbort) cbs.onAbort = function (a, b, c) { if (latest()) { done(self); callbacks.onAbort(a, b, c); } };
+      self.inner.load(self.context, self.loaderConfig, cbs);
+      self.stats = self.inner.stats;
     };
-    Relinked.prototype.abort = function () { this.inner.abort(); };
-    Relinked.prototype.destroy = function () { this.inner.destroy(); };
+    // Still waiting on an old link: drop that request and ask the fresh one.
+    Relinked.prototype.again = function () {
+      if (playlistLoads.indexOf(this) === -1 || relinked(this.key) === this.context.url) return;
+      var old = this.inner;
+      this.gen++;
+      try { old.abort(); } catch (e) {}
+      this.inner = new Base(this.config);
+      log("playlist asked again on the fresh link");
+      this.start();
+    };
+    Relinked.prototype.abort = function () { done(this); this.inner.abort(); };
+    Relinked.prototype.destroy = function () { done(this); this.inner.destroy(); };
     Relinked.prototype.getCacheAge = function () { return this.inner.getCacheAge ? this.inner.getCacheAge() : null; };
     Relinked.prototype.getResponseHeader = function (n) { return this.inner.getResponseHeader ? this.inner.getResponseHeader(n) : null; };
     return Relinked;
@@ -1310,7 +1343,13 @@ const String _takeoverJs = r'''
         // The server answering, even with an error, is the connection working.
         if (d.response && d.response.code > 0) answeredAt = Date.now(); else lastNetErrAt = Date.now();
       }
-      if (announced && /^(level|manifest)Load/.test(d.details)) linkFailing(d.details);
+      // A playlist with no answer at all (hls.js gives up after 10 s and asks
+      // again) gets a fresh link at once: its timeouts come 10 s apart, never
+      // two within linkFailing's 6 s, so a server that stopped answering
+      // played the cushion down, froze, and reloaded after the 20 s stall.
+      // The TV does the same at its first unanswered playlist.
+      if (announced && /^(level|manifest)LoadTimeOut$/.test(d.details)) relink("playlist didn't answer (" + d.details + ")", false);
+      else if (announced && /^(level|manifest)Load/.test(d.details)) linkFailing(d.details);
       // A segment its server refuses (403, 404) is skipped once the player
       // gets to it, as the TV's player skips one it can't get: hls.js asked
       // for it again every second, forever. Seen 2026-10-21 (admin): the
@@ -1581,6 +1620,11 @@ const String _takeoverJs = r'''
         linkErrors = [];
         linkTo = src;
         window.__appPlayer.url = src;
+        // A playlist request still out on the old link (hls.js asks again
+        // at once after a timeout, before the fresh link has come, and would
+        // wait out another 10 s): sent again on the fresh one. Restarting
+        // hls.js's loading instead stuttered a second.
+        playlistLoads.slice().forEach(function (l) { l.again(); });
         try { hls.startLoad(); } catch (e) {}
       });
     }, function () { relinking = false; });

@@ -377,7 +377,7 @@ the others or is added here as a deliberate gap.
 | No pause (live streams only; a pause would just fall behind live) | no pause control | no pause control | Play/Pause shows the title bar like the other buttons |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
-| A source's server dropping the stream mid-game | reload after 20 s (a visible restart) | reload after 20 s (a visible restart) | fresh link in the background, usually unnoticed; see "Servers that drop a stream" |
+| A source's server dropping the stream mid-game | fresh link in the background when its playlist fails twice, stops moving, or doesn't answer at all (see "Fresh links without stopping"); reload after 20 s only if that doesn't help | same | fresh link in the background, usually unnoticed; see "Servers that drop a stream" |
 | First link doesn't answer | "unavailable" | "unavailable" | two more fresh sessions first |
 | Picture-in-picture, now-playing notification | yes (no picture-in-picture on a car's screen) | no | no |
 | On a car's screen (Android Auto) | yes, the whole app, moving between the phone and the car as it plays (see Android Auto) | n/a | n/a |
@@ -814,7 +814,23 @@ watch still reconnects as before. (The user's rule since: prefer the seamless
 fix over a quick visible one.) The Roku already did the equivalent (a new link
 found in the background while it serves the last playlist).
 
-Two more ways in, the same swap (2026-10-11):
+Two more ways in, the same swap (2026-10-11), and a third (2026-11-05):
+- **A playlist that doesn't answer at all.** hls.js gives up on a playlist
+  after 10 s with no answer and asks again, so its timeouts come 10 s apart,
+  never the two within 6 s that start the swap above, and "not moving" is
+  only checked when a playlist arrives. A server that stopped answering
+  played the cushion down, froze, and reloaded after the 20 s stall. Now the
+  first timeout swaps at once, as the TV does at its first unanswered
+  playlist. hls.js has already asked again on the old link by then, and
+  that request would wait out another 10 s, so once the fresh link is in,
+  any playlist request still out is dropped and sent again on it
+  (`Relinked.again`). Restarting hls.js's loading instead (`stopLoad`,
+  `startLoad`) stuttered a second and brought up "Weak connection" (the
+  timeout counts as a network suspect). Tested on the emulator (NFL Network
+  540p) by holding the playing link's playlist through the DevTools
+  protocol: the timeout came 12 s in, a fresh link on another server 3 s
+  later, the cushion's low was 7.6 s and it was back to 17 s at once;
+  playback never paused. Before the re-send it fell to 3.4 s.
 - **A playlist that stops moving.** No new segment for three segments' time
   (10 s at least) while the playlist still loads: the source's server may
   have stalled while others carry on, and a fresh link often lands on another
