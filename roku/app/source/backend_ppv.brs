@@ -105,16 +105,18 @@ function ppvStreams(ev as Object, viewers as Dynamic) as Object
     return list
 end function
 
-' The two sides of "A vs B" (home first) or "A at B" (away first), for the
+' The two sides of "A at B" or "A vs. B", away first in both (ppv's slugs are
+' away-home, and "Bulls vs. Knicks" is at MSG: checked 2026-11-04), for the
 ' cards' team lines, with their logos from the poster (the first-named team's
-' on the left); invalid for anything else (channels, events).
+' on the left); invalid for anything else (channels, events). (What shows
+' follows the title's order either way.)
 function ppvTeams(title as String, poster as Dynamic) as Dynamic
     logos = posterLogos(poster)
     parts = title.Split(" at ")
     if parts.Count() = 2 then return {home: {name: parts[1].Trim(), badge: logos[1]}, away: {name: parts[0].Trim(), badge: logos[0]}}
     for each sep in [" vs. ", " vs ", " VS ", " v "]
         parts = title.Split(sep)
-        if parts.Count() = 2 then return {home: {name: parts[0].Trim(), badge: logos[0]}, away: {name: parts[1].Trim(), badge: logos[1]}}
+        if parts.Count() = 2 then return {home: {name: parts[1].Trim(), badge: logos[1]}, away: {name: parts[0].Trim(), badge: logos[0]}}
     end for
     return invalid
 end function

@@ -113,15 +113,17 @@ class PpvBackend extends Backend {
   static String sportIdFor(String category) =>
       BackendConfig.sportIds[category] ?? category.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-|-$'), '');
 
-  /// The two sides of "A vs B" (home first) or "A at B" (away first), for the
-  /// cards' team lines, with their logos from the poster (the first-named
-  /// team's on the left); null for anything else (channels, events).
+  /// The two sides of "A at B" or "A vs. B", away first in both (ppv's slugs
+  /// are away-home, and "Bulls vs. Knicks" is at MSG: checked 2026-11-04),
+  /// for the cards' team lines, with their logos from the poster (the
+  /// first-named team's on the left); null for anything else (channels,
+  /// events). (What shows follows the title's order either way.)
   static MatchTeams? teamsFrom(String title, String? poster) {
     final List<String?> logos = Backend.posterLogos(poster);
     final RegExpMatch? at = RegExp(r'^(.+?)\s+at\s+(.+)$').firstMatch(title);
     if (at != null) return MatchTeams(home: TeamInfo(name: at.group(2)!.trim(), badge: logos[1]), away: TeamInfo(name: at.group(1)!.trim(), badge: logos[0]));
     final RegExpMatch? vs = RegExp(r'^(.+?)\s+(?:vs\.?|v)\s+(.+)$', caseSensitive: false).firstMatch(title);
-    if (vs != null) return MatchTeams(home: TeamInfo(name: vs.group(1)!.trim(), badge: logos[0]), away: TeamInfo(name: vs.group(2)!.trim(), badge: logos[1]));
+    if (vs != null) return MatchTeams(home: TeamInfo(name: vs.group(2)!.trim(), badge: logos[1]), away: TeamInfo(name: vs.group(1)!.trim(), badge: logos[0]));
     return null;
   }
 

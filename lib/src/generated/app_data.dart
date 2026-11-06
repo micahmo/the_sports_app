@@ -129,6 +129,7 @@ abstract final class PlayerTuning {
   static const int tvRoamWindowMs = 60000;
   static const int tvRoamEveryMs = 120000;
   static const int tvRoamAvoidMs = 300000;
+  static const int tvRoamRetryStepMs = 30000;
   static const int viewersRefreshMs = 30000;
 }
 

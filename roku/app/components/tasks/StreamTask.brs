@@ -75,6 +75,10 @@ sub work()
     m.trouble = []
     m.troubleClock = CreateObject("roTimespan")
     m.roamAt = invalid
+    ' How long after m.roamAt the next look may start, and how many new links
+    ' in a row were turned down (onMinted).
+    m.roamWaitMs = 0
+    m.roamRefusals = 0
     m.roaming = false
     m.struggled = {}
     ' The link stopped answering altogether (see playlistFetched), and whether
@@ -419,6 +423,7 @@ sub playlistFetched(f as Object, text as Dynamic)
             if m.minter = invalid then
                 m.roaming = not m.linkDead
                 m.roamAt = m.troubleClock.TotalMilliseconds()
+                m.roamWaitMs = appPlayer().tvRoamEveryMs
                 m.struggled[hostOf(m.playlistUrl)] = m.roamAt
                 startMint("the playlist didn't answer")
             end if
@@ -489,8 +494,9 @@ sub noteTrouble()
     recent.Push(now)
     m.trouble = recent
     if recent.Count() < p.tvRoamTroubles or m.minter <> invalid then return
-    if m.roamAt <> invalid and now - m.roamAt < p.tvRoamEveryMs then return
+    if m.roamAt <> invalid and now - m.roamAt < m.roamWaitMs then return
     m.roamAt = now
+    m.roamWaitMs = p.tvRoamEveryMs
     m.trouble = []
     m.roaming = true
     m.struggled[hostOf(m.playlistUrl)] = now
@@ -512,8 +518,16 @@ sub onMinted(r as Object)
         if host = hostOf(m.playlistUrl) or (at <> invalid and m.troubleClock.TotalMilliseconds() - at < appPlayer().tvRoamAvoidMs) then
             print logTime(); "[stream] the new link is on a server that's been struggling ("; host; "): keeping this one"
             closeSession(m.driver, r.sid)
-            ' Free to try again at the next signs of trouble.
-            m.roamAt = invalid
+            ' Free to try again at the next signs of trouble after the first
+            ' one turned down (the next may land elsewhere), then a step
+            ' longer each time, up to tvRoamEveryMs: with every server
+            ' struggling, it looked every 25-40 s for 20 min and was offered
+            ' a struggling one each time (2026-11-04, 21:38-21:51).
+            m.roamRefusals = m.roamRefusals + 1
+            m.roamAt = m.troubleClock.TotalMilliseconds()
+            m.roamWaitMs = (m.roamRefusals - 1) * appPlayer().tvRoamRetryStepMs
+            if m.roamWaitMs > appPlayer().tvRoamEveryMs then m.roamWaitMs = appPlayer().tvRoamEveryMs
+            if m.roamWaitMs > 0 then print logTime(); "[stream] "; m.roamRefusals; " new links in a row turned down: next look in "; m.roamWaitMs / 1000; " s at the earliest"
             return
         end if
     else if m.linkDead and not m.deadRetried then
@@ -533,6 +547,7 @@ sub onMinted(r as Object)
     end if
     m.linkDead = false
     m.deadRetried = false
+    m.roamRefusals = 0
     old = m.sid
     m.trouble = []
     m.sid = r.sid

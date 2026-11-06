@@ -1370,7 +1370,13 @@ on the Roku, 3 signs of trouble within a minute (a playlist slow enough that
 the player gets the last one, or a clock jump) also start `MintTask`, and its
 link is used only if it's on another server that hasn't struggled in the last
 5 minutes; at most every 2 minutes, sooner after a link it turned down
-(`tvRoam*` in shared/app_data.json).
+(`tvRoam*` in shared/app_data.json). Sooner only once in a row, though: on
+2026-11-04 (Celtics, 21:38-21:51) all three servers struggled, and it looked
+every 25-40 s for 20 minutes, offered a struggling server each time
+("keeping this one"), each look a browser session on the stream server. Now
+the first turned down may look again at the next signs of trouble (last
+night's third look found bharat), and each more in a row waits 30 s longer
+(`tvRoamRetryStepMs`), up to the 2 minutes; a switch starts the count over.
 
 **When the playlist stops answering (2026-11-04).** The new link is looked
 for at the first playlist fetch with no reply, alongside the retry, not once
