@@ -45,7 +45,7 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
   // A background refresh: keep showing the current streams while they load.
   bool _quiet = false;
 
-  // Remember last-picked stream (per list view instance)
+  // The stream this game was last played on (see _loadLastPlayed).
   String? _lastPlayedUrl;
 
   // What streams measured when they were played (see StreamQuality), and
@@ -58,6 +58,7 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     super.initState();
     _future = _loadAllStreams();
     _loadQualities();
+    _loadLastPlayed();
     // The player's backdrop (_Backdrop), fetched now so it's there from the
     // first moment a stream starts.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -130,6 +131,13 @@ class _StreamsScreenState extends State<StreamsScreen> with KeepFresh {
     // game's streams was picked in the player (or fallen back to), that's the
     // one last played now.
     _loadQualities();
+    _loadLastPlayed();
+  }
+
+  // The stream this game was last watched on, from the recents, so the mark
+  // survives this screen being rebuilt (desktop's Refresh empties the list
+  // while it loads, which drops the streams side) and the app restarting.
+  Future<void> _loadLastPlayed() async {
     for (final RecentGame r in await Recents.all()) {
       if (r.match.id != widget.matchItem.id) continue;
       if (mounted) setState(() => _lastPlayedUrl = r.stream.embedUrl);

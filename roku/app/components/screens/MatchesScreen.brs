@@ -74,12 +74,8 @@ sub onVisible()
     ' another of this game's streams was picked in the player (or fallen back
     ' to), that's the last played now.
     if m.shown <> invalid then
-        for each r in recentGames()
-            if r.match <> invalid and r.match.id = m.shown.id then
-                m.lastPlayed = r.stream.embedUrl
-                exit for
-            end if
-        end for
+        last = lastPlayedFor(m.shown.id)
+        if last <> "" then m.lastPlayed = last
     end if
     for each c in m.streamItems
         c.quality = qualityLabel(c.stream.embedUrl)
@@ -363,11 +359,22 @@ sub onMatchSelected()
     focusStreams()
 end sub
 
+' The stream this game was last watched on, from the recents ("" if none).
+function lastPlayedFor(id as Dynamic) as String
+    for each r in recentGames()
+        if r.match <> invalid and r.match.id = id and r.stream <> invalid then return r.stream.embedUrl
+    end for
+    return ""
+end function
+
 sub showMatch(index as Integer)
     if index < 0 or index > m.matches.Count() - 1 then return
     mt = m.matches[index]
     if m.shown <> invalid and m.shown.id = mt.id then return
     m.shown = mt
+    ' Its last-played mark comes from the recents, so it's there after the
+    ' app restarts, not only after playing it this time.
+    m.lastPlayed = lastPlayedFor(mt.id)
     renderHeader(mt, mt.viewers)
     if not m.list.hasFocus() then
         m.list.setFocus(true)
