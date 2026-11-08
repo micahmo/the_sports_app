@@ -355,7 +355,7 @@ function isLiveNow(match as Object) as Boolean
     return matchSeconds(match) <= nowSeconds() + 15 * 60
 end function
 
-' "7:00 PM" today, otherwise "OCT 10 · 7:00 PM".
+' "7:00 PM" today, otherwise "SAT OCT 10 · 7:00 PM".
 function matchTimeLabel(match as Object) as String
     ' 24/7 channels have no start time (0), which would read as Dec 31, 1969.
     if matchSeconds(match) <= 0 then return "24/7"
@@ -374,7 +374,8 @@ function matchTimeLabel(match as Object) as String
     t = h.ToStr() + ":" + mins + " " + ampm
     if dt.GetYear() = now.GetYear() and dt.GetMonth() = now.GetMonth() and dt.GetDayOfMonth() = now.GetDayOfMonth() then return t
     months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
-    return months[dt.GetMonth() - 1] + " " + dt.GetDayOfMonth().ToStr() + " · " + t
+    days = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+    return days[dt.GetDayOfWeek()] + " " + months[dt.GetMonth() - 1] + " " + dt.GetDayOfMonth().ToStr() + " · " + t
 end function
 
 ' ---- API data ---------------------------------------------------------------

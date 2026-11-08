@@ -73,7 +73,7 @@ List<TeamInfo>? orderedTeams(ApiMatch m) {
 /// Started, or starting within 15 minutes.
 bool isLiveNow(ApiMatch m) => DateTime.fromMillisecondsSinceEpoch(m.date, isUtc: true).toLocal().isBefore(DateTime.now().add(const Duration(minutes: 15)));
 
-/// "7:00 PM" today, otherwise "Oct 10 · 7:00 PM".
+/// "7:00 PM" today, otherwise "Sat Oct 10 · 7:00 PM".
 String matchTimeLabel(ApiMatch m) {
   // 24/7 channels have no start time (0), which would read as Dec 31, 1969.
   if (m.date <= 0) return '24/7';
@@ -81,7 +81,7 @@ String matchTimeLabel(ApiMatch m) {
   final DateTime now = DateTime.now();
   final bool today = dt.year == now.year && dt.month == now.month && dt.day == now.day;
   final String time = DateFormat('h:mm a').format(dt);
-  return today ? time : '${DateFormat('MMM d').format(dt)} · $time';
+  return today ? time : '${DateFormat('EEE MMM d').format(dt)} · $time';
 }
 
 /// A screen's name in the app bar, uppercase, with an optional live count.
