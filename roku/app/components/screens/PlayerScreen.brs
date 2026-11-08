@@ -86,9 +86,13 @@ sub init()
     m.viewersTimer.control = "start"
     m.barTimer = m.top.findNode("barTimer")
     m.barTimer.observeField("fire", "onBarTimer")
-    ' The bar is up from the start until the first quality reading, so what's
-    ' playing gets seen; then it goes after the usual few seconds.
+    ' The bar is up from the start until the first quality reading and the
+    ' picture both, so what's playing gets seen; then it goes after the usual
+    ' few seconds. (The TV reads the quality off the first segment, ~1 s in,
+    ' while the start fill keeps the poster up 10-20 s more: the bar went
+    ' halfway through the load, 2026-11-08.)
     m.holdBar = true
+    m.qualityKnown = false
 
     ' Ours whenever there's something to wait for: starting, reconnecting (with
     ' the status under it) and buffering.
@@ -385,6 +389,9 @@ sub failedForGood(reason as String)
     m.pendingReason = reason
     ' Only what the site lists for the game now (see refreshStreams): the list
     ' from when the player opened sent fallbacks after streams that were gone.
+    ' Over the poster: the player is already let go, and the site can take a
+    ' while to answer (12 s of black on 2026-11-08 while ppv was down).
+    showBackdrop()
     showWorking(playerText("stoppedWorking", streamLabel(m.stream)))
     refreshStreams("fallback")
 end sub
@@ -481,6 +488,7 @@ sub switchTo(s as Object, fallback as Boolean)
     ' The bar waits for the new stream's quality, as at the start (until
     ' 1.0.113 only the first stream's).
     m.holdBar = true
+    m.qualityKnown = false
     if m.holdTimer <> invalid then m.holdTimer.control = "stop"
     m.barTimer.control = "stop"
     endHold()
@@ -558,11 +566,8 @@ sub onQuality()
     label = qualityText(q)
     if label = "" then return
     m.barQuality.text = barLine(label)
-    if m.holdBar then
-        m.holdBar = false
-        m.barTimer.control = "stop"
-        m.barTimer.control = "start"
-    end if
+    m.qualityKnown = true
+    if m.holdBar and not m.backdrop.visible and m.video.state = "playing" then releaseBar()
     ' The list keeps the best resolution and frame rate this viewing reached (a
     ' dip just before leaving shouldn't stick), with the average bitrate while
     ' at that level: the stream's typical rate. Each viewing starts afresh, in
@@ -613,7 +618,12 @@ sub onVideoState()
             if not fill then unmuteFill()
         end if
     end if
-    if st = "playing" and not m.holdPending and not fill then m.backdrop.visible = false
+    if st = "playing" and not m.holdPending and not fill then
+        m.backdrop.visible = false
+        ' The picture's up: the bar held for the start goes the usual few
+        ' seconds from now, if the quality's known (else onQuality lets it go).
+        if m.holdBar and m.qualityKnown then releaseBar()
+    end if
     if st = "playing" then
         m.afterRestart = false
         m.seeking = false
@@ -1009,8 +1019,17 @@ sub unmuteFill()
     m.video.mute = false
 end sub
 
+' The bar held for a start goes after the usual few seconds.
+sub releaseBar()
+    m.holdBar = false
+    m.barTimer.control = "stop"
+    m.barTimer.control = "start"
+end sub
+
 sub onHoldTimer()
-    if not m.holdBar then return
+    ' Only for a stream that never gives a quality reading: with one, the bar
+    ' waits for the picture instead (10 s after the first play was mid-fill).
+    if not m.holdBar or m.qualityKnown then return
     m.holdBar = false
     showBar()
 end sub

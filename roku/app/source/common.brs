@@ -469,7 +469,9 @@ function viewerCounts(json as Dynamic) as Object
 end function
 
 ' Attach viewer counts, then float counted matches to the top, most-watched
-' first; the rest keep the API's order.
+' first; the rest keep the API's order. A game not started yet keeps the count
+' its list came with: ppv counts people waiting, and a big crowd means its feed
+' is already up (RedZone, ~2,000 at 12:5x on 2026-11-08, sat last until 1:00).
 function withViewers(matches as Dynamic, counts as Object) as Object
     counted = []
     rest = []
@@ -477,6 +479,8 @@ function withViewers(matches as Dynamic, counts as Object) as Object
     for each mt in matches
         if counts.DoesExist(mt.id) then
             mt.viewers = counts[mt.id]
+            counted.Push(mt)
+        else if mt.viewers <> invalid then
             counted.Push(mt)
         else
             rest.Push(mt)

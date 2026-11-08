@@ -89,7 +89,12 @@ own error page isn't shown: a 502 from ppv's nginx went on screen as raw HTML
 adapter keeps it a minute and answers every list from it (live: started and
 not ended, or `always_live`; popular: by `viewers`, which every event has, as
 a string, upcoming ones too: people waiting, shown on their cards, which
-streamed.pk never gave). Category names map to our sport ids and icons through the config
+streamed.pk never gave). A sport's list puts every game with a count first,
+most-watched first, started or not (since 2026-11-08, all three apps; the
+phone and desktop didn't sort it at all before): a big crowd before the
+scheduled start means the feed is already up (RedZone had ~2,000 at 12:5x and
+sat last until ppv called it live at 1:00), and games hours off have a
+handful, so they sink anyway. Home's Popular stays live-only. Category names map to our sport ids and icons through the config
 ("American Football" -> american-football, "Football" -> football (soccer),
 "Ice Hockey" -> hockey, "24/7 Streams" -> other). An event's streams are its
 `iframe` and each of its `substreams`, named by broadcaster (`source_tag`:
@@ -368,7 +373,7 @@ the others or is added here as a deliberate gap.
 | A stream that recently failed | "Failed 12 min ago" where its quality goes, for an hour or until it plays; last in the row and when falling back | same | same; on the row's card the note and the language are on separate lines |
 | Which of a source's qualities plays | the best to start (see the weak-connection row) | same | the best, never switched |
 | A stuck segment download | second copy after 4 s if nothing is arriving | same | second copy after 4 s |
-| Title bar with the game and quality in the player | from the start, and after switching streams, until the quality is known; then tap, or the menu; always in debug builds | the same, then mouse movement, or the menu; always in debug builds | the same, then OK (until 1.0.113 none of the apps held it again after a switch) |
+| Title bar with the game and quality in the player | from the start, and after switching streams, until the quality is known; then tap, or the menu; always in debug builds | the same, then mouse movement, or the menu; always in debug builds | the same, and until the picture is up (it reads the quality off the first segment, while the start fill keeps the poster up 10-20 s more: until 2026-11-08 the bar went mid-load), then OK (until 1.0.113 none of the apps held it again after a switch) |
 | Title bar, Streams pill and note fade in and out | 150 ms (the note 250); the row fades too when it goes by itself with the title bar, and goes at once when closed by hand | same | same, since 1.0.116 (before, they appeared and vanished); the row's fade since 1.0.117 |
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer over the video hides with it, in a window too | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |

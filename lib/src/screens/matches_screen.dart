@@ -100,32 +100,33 @@ class _MatchesScreenState extends State<MatchesScreen> with KeepFresh {
         for (final ApiMatch m in counted)
           if (m.viewers != null) m.id: m.viewers!,
       };
-      if (byId.isEmpty) return list;
-      final List<ApiMatch> withCounts = list.map((ApiMatch m) => byId.containsKey(m.id) ? m.withViewers(byId[m.id]) : m).toList();
-
-      // Float the matches we have counts for to the top, most-watched first.
-      // The endpoint only covers the biggest few, but they are the biggest by a
-      // wide margin (hundreds/thousands vs tens), so nothing notable is buried.
-      // Everything else keeps the order the API gave us — List.sort is not
-      // stable, hence the index tie-break.
-      final List<int> order = List<int>.generate(withCounts.length, (int i) => i)
-        ..sort((int a, int b) {
-          final int? va = withCounts[a].viewers;
-          final int? vb = withCounts[b].viewers;
-          if (va != null && vb != null) return vb.compareTo(va);
-          if (va != null) return -1;
-          if (vb != null) return 1;
-          return a.compareTo(b);
-        });
-      return <ApiMatch>[for (final int i in order) withCounts[i]];
+      return _byViewers(list.map((ApiMatch m) => byId.containsKey(m.id) ? m.withViewers(byId[m.id]) : m).toList());
     } catch (_) {
-      return list;
+      return _byViewers(list);
     }
+  }
+
+  /// Matches with a viewer count first, most-watched first; everything else
+  /// keeps the order the API gave us (List.sort is not stable, hence the index
+  /// tie-break). A game not started yet keeps the count its list came with:
+  /// ppv counts people waiting, and a big crowd means its feed is already up
+  /// (RedZone, ~2,000 at 12:5x on 2026-11-08, sat last until 1:00).
+  static List<ApiMatch> _byViewers(List<ApiMatch> list) {
+    final List<int> order = List<int>.generate(list.length, (int i) => i)
+      ..sort((int a, int b) {
+        final int? va = list[a].viewers;
+        final int? vb = list[b].viewers;
+        if (va != null && vb != null && va != vb) return vb.compareTo(va);
+        if (va != null && vb == null) return -1;
+        if (vb != null && va == null) return 1;
+        return a.compareTo(b);
+      });
+    return <ApiMatch>[for (final int i in order) list[i]];
   }
 
   Future<List<ApiMatch>> _loadBySportFor(String sportId, {required bool popularOnly}) async {
     // Always fetch the sport list
-    final List<ApiMatch> sportMatches = await _api.fetchMatchesBySport(sportId);
+    final List<ApiMatch> sportMatches = _byViewers(await _api.fetchMatchesBySport(sportId));
 
     if (!popularOnly) return sportMatches;
 
