@@ -1393,6 +1393,17 @@ four switches in 10 minutes, none noticed, and no pauses. With 4 signs it
 went looking only as a 7 s freeze began, and once landed back on the worst
 server, hence 3 and the 5 minutes.
 
+`MintTask` itself also passes over a link on the server being left (its
+`avoid`), before fetching anything from it (ppv's master playlist sits on the
+same server as its rendition), and opens another session; the third session
+takes any server. Checking such a link waited out two 8 s fetches: on
+2026-11-07 19:37 the first new link was on the dead server, and that check
+was 16 s of the spinner while another server was fine. The trade: when every
+server stalls at once (most of that evening's outages) and the one being left
+recovers first, passing it over can cost ~5 s; seen firing three times that
+night, it made switches neither faster nor slower on average. Kept for the
+single-server deaths, where it saves most of a spinner.
+
 Not on the phone or desktop yet (parked, 2026-09-25): they'd load the page in
 a hidden same-site iframe inside the player page (tested: its link can be read,
 ~1 s) and switch hls.js over with a playlist loader that swaps the dead URL for

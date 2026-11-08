@@ -471,6 +471,8 @@ sub startMint(why = "the link stopped working" as String, again = false as Boole
     ' The page this session plays (for a nested source, the inner one already
     ' found), so the minter doesn't look it up again.
     m.minter.embedUrl = pageUrl()
+    ' The server being left: a new link there is passed over (see MintTask).
+    m.minter.avoid = hostOf(m.playlistUrl)
     m.minter.observeField("result", m.port)
     m.minter.control = "run"
 end sub

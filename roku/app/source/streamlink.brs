@@ -168,6 +168,7 @@ end function
 ' switching up through this proxy; one media playlist plays smoothly. False
 ' when the stream isn't actually there.
 function pickMedia() as Boolean
+    if passOver() then return false
     text = fetchInPage(m.playlistUrl)
     if text = invalid then return false
     if Instr(1, text, "#EXT-X-STREAM-INF") = 0 then return true
@@ -190,7 +191,17 @@ function pickMedia() as Boolean
     if best = "" then return false
     m.playlistUrl = resolve(m.playlistUrl, best)
     print logTime(); "[stream] master playlist: using "; bestBw; " bps rendition"
+    if passOver() then return false
     return fetchInPage(m.playlistUrl) <> invalid
+end function
+
+' The playlist is on the server MintTask was asked to avoid (m.avoidHost; not
+' set in StreamTask): marks it passed over, without fetching it.
+function passOver() as Boolean
+    if m.avoidHost = invalid or m.avoidHost = "" then return false
+    if hostOf(m.playlistUrl) <> m.avoidHost then return false
+    m.passedOver = true
+    return true
 end function
 
 ' Reads the field rather than the message port: the port also carries the
