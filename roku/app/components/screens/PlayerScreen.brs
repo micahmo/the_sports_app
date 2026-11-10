@@ -218,6 +218,7 @@ sub start()
     m.task.observeField("streamUrl", "onStreamUrl")
     m.task.observeField("quality", "onQuality")
     m.task.observeField("jumped", "onJumped")
+    m.task.observeField("gap", "onGap")
     m.task.observeField("lost", "onLost")
     m.task.observeField("newLink", "onNewLink")
     m.task.control = "run"
@@ -467,6 +468,7 @@ sub switchTo(s as Object, fallback as Boolean)
         m.task.unobserveField("streamUrl")
         m.task.unobserveField("quality")
         m.task.unobserveField("jumped")
+        m.task.unobserveField("gap")
         m.task.unobserveField("lost")
         m.task.unobserveField("newLink")
         m.task.quit = true
@@ -611,14 +613,21 @@ sub onVideoState()
     ' own way), nor before the seek past what a restart had shown (filled
     ' after it, over the dimmed picture).
     fill = false
-    if st = "playing" and m.startFill and not m.holdPending and not m.seeking and m.task <> invalid then
+    ' (After a restart's seek past what it had shown, its "playing" is the one:
+    ' skipped while still seeking, the start was never filled and its sound
+    ' stayed off, 2026-11-08 13:53, "no audio?".)
+    if st = "playing" and m.startFill and not m.holdPending and (not m.seeking or m.skipSeek) and m.task <> invalid then
         if not (m.skipAfterStart and m.task.skipSecs > 0.5) then
+            m.skipSeek = false
             m.startFill = false
             fill = m.task.servedSecs - m.served0 - m.video.position + m.task.readySecs < appPlayer().tvStartFillSecs
             if not fill then unmuteFill()
         end if
     end if
-    if st = "playing" and not m.holdPending and not fill then
+    ' The poster stays through a restart's seek past what it had shown: down for
+    ' the moment before it, it flashed back up for the seek (13:53).
+    aboutToSkip = m.skipAfterStart and m.task <> invalid and m.task.skipSecs > 0.5
+    if st = "playing" and not m.holdPending and not fill and not aboutToSkip then
         m.backdrop.visible = false
         ' The picture's up: the bar held for the start goes the usual few
         ' seconds from now, if the quality's known (else onQuality lets it go).
@@ -675,6 +684,7 @@ sub onVideoState()
             ' Our seek: its buffering isn't running dry (it held 10 s for
             ' it, 2026-10-25).
             m.seeking = true
+            m.skipSeek = true
             m.video.seek = m.video.position + s + 0.5
         end if
     end if
@@ -868,6 +878,16 @@ sub onDryCheck()
             m.stall.control = "stop"
             m.stall.control = "start"
         end if
+        ' Paused before running dry, a segment StreamTask got that the player
+        ' hasn't asked for yet is still coming too: the stall reconnected 1.4 s
+        ' after one came, as ppv's stall ended (2026-11-08 14:28:41).
+        got = ahead + m.task.readySecs
+        if m.dryGot = invalid or got < m.dryGot then m.dryGot = got
+        if got > m.dryGot + 0.1 then
+            m.dryGot = got
+            m.stall.control = "stop"
+            m.stall.control = "start"
+        end if
         if m.fillAll then
             ' Nothing more for 6 s: on with what it has rather than wait for
             ' the stall's reconnect.
@@ -909,6 +929,7 @@ sub onDryCheck()
     m.dryResumeAt = appPlayer().tvCushionSecs
     if m.dryResumeAt < m.dryFloor then m.dryResumeAt = m.dryFloor
     m.dryLast = ahead
+    m.dryGot = invalid
     m.dryStill.Mark()
     m.quietSince.Mark()
     print logTime(); "[player] "; ahead; " s in hand: paused before running dry, on at "; m.dryResumeAt; " s ("; m.banked; " s banked)"
@@ -949,6 +970,7 @@ sub fillFirst()
     m.dryFloor = appPlayer().tvCushionSecs
     m.dryResumeAt = c
     m.dryLast = ahead + m.task.readySecs
+    m.dryGot = invalid
     m.dryStill.Mark()
     showFillPct(m.dryLast, c)
     print logTime(); "[player] "; Int(ahead); " s in hand at the start: filling to "; c; " s first"
@@ -1727,6 +1749,21 @@ sub onJumped()
     restartAtLive(true)
 end sub
 
+' Segments missed short of a jump (10-20 s), while paused at the edge before
+' running dry: the player doesn't go on over the gap from there either, but
+' takes nothing more until the stall's reconnect (2026-11-08 14:10: 18 s
+' missed, 20 s more spinner, then a full reconnect). With ~2 s left there's
+' nothing to throw away, so it starts again at live, as for a jump.
+sub onGap()
+    if m.task = invalid or m.video.content = invalid or not m.dryPaused then return
+    if m.task.gap < 10 then return
+    now = CreateObject("roDateTime").AsSeconds()
+    if m.jumpedAt <> invalid and now - m.jumpedAt < 15 then return
+    m.jumpedAt = now
+    print logTime(); "[player] "; Int(m.task.gap); " s missed while paused at the edge; starting the player again at live"
+    restartAtLive(true)
+end sub
+
 ' A segment gone for good (StreamTask's lost: refused directly and through the
 ' page), and the player ran dry at it: it doesn't play over the gap, but takes
 ' the segments after it without playing until onStuck (15 s, 2026-10-21). So
@@ -1826,6 +1863,7 @@ sub reconnect(reason as String)
         m.task.unobserveField("streamUrl")
         m.task.unobserveField("quality")
         m.task.unobserveField("jumped")
+        m.task.unobserveField("gap")
         m.task.unobserveField("lost")
         m.task.unobserveField("newLink")
         m.task.quit = true

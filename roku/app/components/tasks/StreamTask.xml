@@ -31,6 +31,10 @@
     <!-- The picture's clock just jumped this far ahead (s): big enough that the
          player starts again at live (PlayerScreen's onJumped). -->
     <field id="jumped" type="float" alwaysNotify="true" />
+    <!-- A playlist came back with segments missed, this many seconds of them,
+         short of a jump: PlayerScreen's onGap starts it again if it's paused
+         at the edge anyway. -->
+    <field id="gap" type="float" alwaysNotify="true" />
     <!-- Counts the player's requests, and each half second one is still being
          answered: PlayerScreen's quiet check (checkQuiet). -->
     <field id="asks" type="integer" />

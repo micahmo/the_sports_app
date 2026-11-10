@@ -1649,6 +1649,42 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
   seek ~1 s later, then on; no replay. Only after a jump (the player was
   playing): a stuck player showed none of what it took, so that's game not
   yet seen, and a stuck restart plays it.
+- **A big gap restarts while still paused, on the newest few** (2026-11-08).
+  RedZone stalled every few minutes that afternoon, each time coming back
+  with 7-10 segments (21-30 s) gone. Three things went wrong around the
+  restart, and one more turned up testing it:
+  1. The jump was only seen once the segment after the gap was read, which
+     waited for the player to ask: it went on again at the old spot for 2 s,
+     then started over behind the poster (13:43, one stall and two spinners).
+     Now a playlist that comes back with missed segments adding up to 20 s
+     (the jump threshold) says so at once (`jumped`), while the TV is still
+     paused before running dry; the same gap read later from the segments
+     isn't said again (30 s).
+  2. The restarted player was served the last playlist as it was, when the
+     source was slow to answer (often, in those stalls): its top was from
+     before the gap, and the player stuck there 15-18 s, then a second start
+     and a full fill (13:39, and the first staged test). The trim to the
+     newest 3 is now applied to the last playlist before it's served
+     (`trimLast`), redone from the link before if it's changed since.
+  3. After the seek past what it had shown, the start was never filled and its
+     sound stayed off (the "playing" after the seek was skipped as still
+     seeking): "no audio?" until it ran dry ~50 s later. Now that "playing"
+     fills the start and unmutes. And the poster stays up through that seek
+     rather than dropping for a moment and coming back (the "flash").
+  Tested with a staged 33 s freeze (every playlist answer dropped): restart
+  at the missed gap while paused, playing 2 s later, no second start. Then
+  live at 14:05: paused 14:05:39, restarted at the gap 14:05:54, filled,
+  playing 14:06:09, one spinner. Again at 14:19 after a 20 s stall: restart
+  at the 33 s jump, a new link, playing 14 s later with sound.
+  4. Paused at the very edge of what it has, a restart costs nothing, so there
+     a playlist that comes back with 10 s or more missed (`gap`, short of the
+     20 s jump) restarts at live too, rather than resuming at the old spot and
+     skipping. Only while paused before running dry; the 15 s guard applies.
+  5. Paused before running dry, the stall's 20 s counted only what the player
+     had been handed, so a segment StreamTask got ahead of it didn't count:
+     it reconnected 1.4 s after one came, as ppv's stall ended (14:28:41),
+     19 s more of spinner. Now what StreamTask holds for the player
+     (`readySecs`) growing starts the 20 s again too.
 - **No replay after running dry** (1.0.135). Starting again after it ran dry
   at the end of the list, the player sometimes goes back and shows again what
   it played (~10-20 s; 2026-10-17, -18 and -19): rewinding inside what it has,

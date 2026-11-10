@@ -174,8 +174,9 @@ function playlist(url as String) as Dynamic
 end function
 
 ' The source's playlist with its entries pointed at this proxy.
-function rewritePlaylist(url as String, text as String) as String
-    main = (url = m.playlistUrl)
+function rewritePlaylist(url as String, text as String, again = false as Boolean) as String
+    ' (again: the last one redone, from the link before if it's changed since.)
+    main = (url = m.playlistUrl) or again
     esc = CreateObject("roUrlTransfer")
     out = []
     ' Each segment's length (its #EXTINF), for measure().
@@ -205,9 +206,21 @@ function rewritePlaylist(url as String, text as String) as String
     prefetch(segs)
     if main then out = longerWindow(out)
     result = out.Join(Chr(10)) + Chr(10)
-    if main then m.lastPlaylist = result
+    if main then
+        m.lastPlaylist = result
+        m.lastSource = {url: url, text: text}
+    end if
     return result
 end function
+
+' The player is starting again (trim): the last playlist redone with only the
+' newest few, before it's served. Served as it was, the new player started at
+' its top, before a 24 s gap, and stuck there (15-18 s, then a second start
+' and a full fill: 2026-11-08 13:39 and 13:49, each with the source slow to
+' answer, so the last one went out).
+sub trimLast()
+    if m.top.trim and m.lastSource <> invalid then rewritePlaylist(m.lastSource.url, m.lastSource.text, true)
+end sub
 
 ' The playlist the player gets lists the last 45 s of segments, not just the
 ' few the source lists (some list only 12 s). With a high-bitrate stream the
@@ -267,6 +280,22 @@ function longerWindow(lines as Object) as Object
             missed = seq - last - 1
             print logTime(); "[stream] playlist: missed "; missed; " segment(s) while the source was slow"
             w.offset = w.offset - missed
+            ' A gap that big is a jump (clockGap) the player won't play over:
+            ' said now, not once the segment after it is read. That waited for
+            ' the player to ask, so it went on again for 2 s at the old spot,
+            ' then started over behind the poster (2026-11-08 13:43: one stall,
+            ' two spinners).
+            d = 0
+            for each it in items
+                if it.dur <> invalid and it.dur > d then d = it.dur
+            end for
+            if missed * d >= 20 then
+                m.jumps = []
+                m.gapSaidAt = m.jumpClock.TotalSeconds()
+                m.top.jumped = missed * d
+            else if missed * d > 0 then
+                m.top.gap = missed * d
+            end if
         end if
     end if
     if w = invalid then w = {offset: 0, lastSrc: seq - 1, items: []}
@@ -334,6 +363,7 @@ end function
 ' that fails twice finds a new link, as before. Starting, it waits for the
 ' first.
 function askPlaylist(sock as Object) as Boolean
+    trimLast()
     if m.plFetch = invalid then startPlaylistFetch(false)
     at = invalid
     if m.lastPlaylist <> invalid then at = CreateObject("roTimespan")
@@ -365,6 +395,7 @@ sub checkPlaylist()
         return
     end if
     if m.lastPlaylist = invalid then return
+    if m.plWaiters.Count() > 0 then trimLast()
     keep = []
     for each w in m.plWaiters
         if w.at <> invalid and w.at.TotalMilliseconds() > 1500 then
@@ -435,6 +466,7 @@ sub playlistFetched(f as Object, text as Dynamic)
         m.linkDead = true
         startMint()
         if m.lastPlaylist <> invalid then print logTime(); "[stream] serving the last playlist while a new link is found"
+        trimLast()
         result = m.lastPlaylist
     else
         result = rewritePlaylist(f.url, text)
@@ -825,6 +857,8 @@ sub clockGap(a as Object, st as Double)
         ' within 20 s raced, replayed and ran dry (black) like one 30 s jump
         ' (TNF, 2026-10-29). So they add up over 30 s.
         now = m.jumpClock.TotalSeconds()
+        ' The same gap, already said from the playlist (missed segments).
+        if m.gapSaidAt <> invalid and now - m.gapSaidAt < 30 then return
         recent = []
         total = 0
         for each j in m.jumps
