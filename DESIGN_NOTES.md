@@ -1685,6 +1685,23 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
      it reconnected 1.4 s after one came, as ppv's stall ended (14:28:41),
      19 s more of spinner. Now what StreamTask holds for the player
      (`readySecs`) growing starts the 20 s again too.
+- **A failed start leaves nothing running** (2026-11-11). ppv's segments
+  were all refused by their CDN ("unauthorized resource", every game). Two
+  things were left over from the start that failed: its "0%" stayed up between
+  the lines of the message, and its stall watch kept running, so 20 s later it
+  "reconnected" (The stream stalled, 0%) over the message for the last stream
+  tried. A failure or reconnect now takes the start's percent down
+  (`hideFill`), and a stream that's failed stops its stall watch.
+- **Nothing left to fall back to: the round again every 30 s** (2026-11-11,
+  all three apps). Once every stream of the game has failed, the final
+  screen (TV) or "This stream is unavailable" (phone/desktop) now says
+  "Trying again every 30 s." and does: the whole round again from the stream
+  that failed last, as OK / Retry would, until one plays or Back
+  (`player.outageRetrySecs`). Normal fallback is untouched: it only runs when
+  nothing's left. A site outage (2026-11-08) recovered only by picking the
+  stream again by hand. Tested on the TV during ppv's segment outage
+  (rounds at 30 s, refused each time). Phone/desktop didn't reach it in that
+  outage: their player skips refused segments rather than failing.
 - **No replay after running dry** (1.0.135). Starting again after it ran dry
   at the end of the list, the player sometimes goes back and shows again what
   it played (~10-20 s; 2026-10-17, -18 and -19): rewinding inside what it has,

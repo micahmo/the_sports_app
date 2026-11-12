@@ -59,6 +59,9 @@ sub init()
     m.lostTimer = m.top.createChild("Timer")
     m.lostTimer.duration = 2
     m.lostTimer.observeField("fire", "onLostTimer")
+    m.outageTimer = m.top.createChild("Timer")
+    m.outageTimer.duration = appPlayer().outageRetrySecs
+    m.outageTimer.observeField("fire", "onOutageTimer")
     m.servedAtBuffering = 0
     m.retry = m.top.findNode("retry")
     m.retry.observeField("fire", "onRetry")
@@ -345,10 +348,20 @@ end sub
 sub showFinal(text as String)
     m.spinner.visible = false
     m.spinner.control = "stop"
+    hideFill()
     m.status.text = text
     m.status.vertAlign = "center"
     m.status.translation = [160, 440]
     m.status.visible = true
+end sub
+
+' A start's fill percent goes with it when it fails or starts over: left up, a
+' stuck "0%" sat between the lines of what went wrong. The next start's
+' buffering shows it again.
+sub hideFill()
+    m.startFill = false
+    m.fillPct.visible = false
+    m.pctTimer.control = "stop"
 end sub
 
 sub hideStatus()
@@ -388,6 +401,11 @@ end sub
 sub failedForGood(reason as String)
     markFailed(m.stream.embedUrl)
     m.pendingReason = reason
+    hideFill()
+    ' Its stall watch goes with it: left running, it "reconnected" a stream
+    ' that had already failed, over the message for the last one.
+    m.stall.control = "stop"
+    m.stuck.control = "stop"
     ' Only what the site lists for the game now (see refreshStreams): the list
     ' from when the player opened sent fallbacks after streams that were gone.
     ' Over the poster: the player is already let go, and the site can take a
@@ -417,8 +435,10 @@ sub pickFallback(reason as String)
     if left.Count() = 0 then
         m.trying = ""
         m.fallbackFrom = ""
-        showFinal(reason + Chr(10) + playerText("tvRetryKeys"))
+        n = Int(appPlayer().outageRetrySecs).ToStr()
+        showFinal(reason + Chr(10) + playerText("retryingEvery").Replace("{n}", n) + Chr(10) + playerText("tvRetryKeys"))
         m.canRetry = true
+        m.outageTimer.control = "start"
         return
     end if
     nxt = left[0]
@@ -432,6 +452,15 @@ sub pickFallback(reason as String)
     m.fallbackFrom = from
     m.trying = playerText("trying", streamLabel(nxt))
     switchTo(nxt, true)
+end sub
+
+' Every stream has failed and nothing's left: the round again by itself, as OK
+' would, until one plays or Back. A whole site down, or its video host refusing
+' every segment, gave up for good when it came back minutes later.
+sub onOutageTimer()
+    if not m.canRetry then return
+    print logTime(); "[player] every stream failed: trying the round again"
+    switchTo(m.stream, false)
 end sub
 
 ' The language itself, not the label around it: "English" and "English - NBC"
@@ -451,6 +480,7 @@ end function
 ' the streams row starts a new round of falling back; a fallback carries on.
 sub switchTo(s as Object, fallback as Boolean)
     m.canRetry = false
+    m.outageTimer.control = "stop"
     saveBest()
     m.best = invalid
     m.savedAt = invalid
@@ -1835,6 +1865,7 @@ end sub
 ' is gone, so say so. (The phone and desktop apps heal the same way.)
 sub reconnect(reason as String)
     endHold()
+    hideFill()
     m.stall.control = "stop"
     m.stuck.control = "stop"
     m.retry.control = "stop"
@@ -1895,6 +1926,7 @@ end sub
 
 sub onClosing()
     endHold()
+    m.outageTimer.control = "stop"
     m.stillTimer.control = "stop"
     saveBest()
     m.stall.control = "stop"

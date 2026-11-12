@@ -2135,6 +2135,9 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   DateTime? _relinkGraceUntil;
   int _healTries = 0;
   Timer? _healTimer;
+  // Every stream failed, nothing left: the round again after a while (see
+  // _failedForGood).
+  Timer? _outageTimer;
 
   // Rotation/PiP resume heuristics
   DateTime? _lastPipExitAt;
@@ -2460,6 +2463,15 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         _trying = null;
         _fallbackFrom = null;
       });
+      // The round again by itself until one plays or Back: a whole site down,
+      // or its video host refusing every segment, gave up for good when it
+      // came back minutes later.
+      _outageTimer?.cancel();
+      _outageTimer = Timer(const Duration(seconds: PlayerTuning.outageRetrySecs), () {
+        if (!mounted || !_failed) return;
+        PlayerLog.add('[app] every stream failed: trying the round again');
+        _switchTo(_stream);
+      });
       return;
     }
     // The language itself, not the label around it: "English" and
@@ -2481,6 +2493,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _upFrom = upFrom;
     _upFromFeed = upFeed;
     _healTimer?.cancel();
+    _outageTimer?.cancel();
     _startFeed = 0;
     _waitText = null;
     setState(() {
@@ -2956,6 +2969,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _pip.invokeMethod('setAutoPipOnUserLeave', <String, dynamic>{'enabled': false}).catchError((_) {});
     WidgetsBinding.instance.removeObserver(this);
     _healTimer?.cancel();
+    _outageTimer?.cancel();
     _peekTimer?.cancel();
     _noteTimer?.cancel();
     _upTimer?.cancel();
@@ -3332,6 +3346,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                               const Text(PlayerText.unavailable, style: TextStyle(color: Colors.white)),
                               const SizedBox(height: 4),
                               const Text(PlayerText.unavailableHint, style: TextStyle(color: Colors.white54, fontSize: 12)),
+                              const SizedBox(height: 4),
+                              Text(PlayerText.retryingEvery.replaceAll('{n}', '${PlayerTuning.outageRetrySecs}'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
                               const SizedBox(height: 16),
                               TextButton(onPressed: _refresh, child: const Text(PlayerText.retry)),
                             ],

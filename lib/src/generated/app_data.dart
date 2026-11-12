@@ -131,6 +131,7 @@ abstract final class PlayerTuning {
   static const int tvRoamAvoidMs = 300000;
   static const int tvRoamRetryStepMs = 30000;
   static const int viewersRefreshMs = 30000;
+  static const int outageRetrySecs = 30;
 }
 
 /// Screen spacing, in pixels of a 1920-wide TV screen (see the JSON).
@@ -168,6 +169,7 @@ abstract final class PlayerText {
   static const String unavailableHint = 'Try another stream or source.';
   static const String retry = 'Retry';
   static const String tvRetryKeys = 'Press OK to try again, or Back to pick another stream.';
+  static const String retryingEvery = 'Trying again every {n} s.';
   static const String tvFillPercent = '{n}%';
   static const String streamBack = '{stream} is back';
   static const String tvBackKeys = 'OK to switch';
