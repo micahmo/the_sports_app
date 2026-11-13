@@ -1202,14 +1202,21 @@ on 2026-10-28: next section.)
 has in hand past the picture is what StreamTask handed it since this player
 started (`servedSecs` less `served0`, taken at each new content) less its
 position. A steady ppv.st stream keeps 10-20 s (measured 2026-10-28). Under
-`tvDryPauseAt` (2 s, shared/app_data.json) while playing, the TV pauses
+`tvDryPauseMs` (1 s, shared/app_data.json) while playing, the TV pauses
 itself: the picture stays, dimmed (`dryDim`), our spinner over it, and the
-stall timer runs as if buffering. On again once it has `tvDryPauseAt` plus
+stall timer runs as if buffering. On again once it had 2 s plus
 the next ramp step (4, then 6) in hand, so that pause is the hold, with the
 picture up, and banks the cushion as rampUp did. Tested on a staged 50 s
 playlist freeze, then a real one (ppv.st segment 404s, 19 s): frozen picture
 and spinner, then straight back to live. If it runs dry anyway (Roku
 buffering), the old path (rampUp, a hold) is as before.
+
+**The margin, measured** (2026-11-13): was 2 s, a guess. Four staged
+playlist freezes on NFL Network: each time the Roku went into buffering with
+the count at 0.41-0.43 s, about 0.4 s of play after the last check, so it
+plays to within ~0.05 s of what it has and the count is accurate. With
+checks every 0.5 s, 1 s pauses it with 0.5-1 s still in hand, never dry, and
+spends a second less of the cushion each time.
 
 **The cushion** (2026-11-01, `tvCushionSecs`, 12 s): on again only with
 `tvCushionSecs` in hand (or the old target, if more). ppv's RedZone paused

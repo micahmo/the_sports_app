@@ -106,7 +106,7 @@ abstract final class AppPalette {
 /// Player numbers both apps follow (see the JSON for what each is).
 abstract final class PlayerTuning {
   static const int rowThisGame = 3;
-  static const int tvDryPauseAt = 2;
+  static const int tvDryPauseMs = 1000;
   static const int tvCushionSecs = 12;
   static const int tvStartFillSecs = 22;
   static const int tvQuietRestartMs = 8000;

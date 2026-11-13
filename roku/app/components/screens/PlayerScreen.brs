@@ -992,7 +992,7 @@ sub onDryCheck()
         return
     end if
     if m.video.state <> "playing" or not m.recorded or m.holding or m.holdPending or m.seeking then return
-    at = appPlayer().tvDryPauseAt
+    at = appPlayer().tvDryPauseMs / 1000
     if ahead >= at then return
     m.dryPaused = true
     m.video.control = "pause"
