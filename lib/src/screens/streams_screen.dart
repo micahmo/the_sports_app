@@ -575,7 +575,7 @@ const String _takeoverJs = r'''
     // the hidden frame that fetches fresh links.
     // Only once build() has run: before that the site's own player has to
     // run, to fetch the stream's link.
-    var KEEP_OUT = "body>*:not(#appPlayer):not(#appOverlay):not(iframe[name=appRelink]),html>*:not(head):not(body){display:none!important;pointer-events:none!important}";
+    var KEEP_OUT = "body>*:not(#appPlayer):not(#appFreeze):not(#appOverlay):not(iframe[name=appRelink]),html>*:not(head):not(body){display:none!important;pointer-events:none!important}";
     function keepOut() { return window.__appPlayer && window.__appPlayer.built ? KEEP_OUT : ""; }
 
     function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -1276,6 +1276,41 @@ const String _takeoverJs = r'''
       if (ms >= 300) log("froze " + (ms / 1000).toFixed(1) + " s" + (frozeSeek ? " (with a jump)" : ""));
     });
     document.body.appendChild(video);
+    // A freeze mid-game: the picture dimmed with a spinner over it, as the TV
+    // shows one, once it has lasted freezeSpinnerMs (shorter ones pass
+    // unnoticed); gone the moment it plays. A frozen frame with nothing on it
+    // looked dead ("stuck on a static frame for a long time", 2026-11-12). The
+    // app's own spinner, at its size (36 px, scaled with the window as the
+    // overlay is), under the overlay. Before it first plays, the app's start
+    // screen is up instead.
+    var freeze = document.createElement("div");
+    freeze.id = "appFreeze";
+    freeze.style.cssText = "position:fixed;left:0;top:0;width:100vw;height:100vh;display:none;align-items:center;justify-content:center;" +
+      "background:rgba(0,0,0,__FREEZE_DIM__);pointer-events:none;z-index:1";
+    var spin = Math.round(36 * Math.max(1, window.innerWidth / 1360));
+    freeze.innerHTML = "<style>@keyframes afr{to{transform:rotate(360deg)}}" +
+      "@keyframes afd{0%{stroke-dasharray:1,100;stroke-dashoffset:0}50%{stroke-dasharray:70,100;stroke-dashoffset:-15}100%{stroke-dasharray:70,100;stroke-dashoffset:-99}}</style>" +
+      "<svg viewBox='0 0 36 36' style='width:" + spin + "px;height:" + spin + "px;animation:afr 1.4s linear infinite'>" +
+      "<circle cx='18' cy='18' r='16' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='butt' style='animation:afd 1.4s ease-in-out infinite'/></svg>";
+    document.body.appendChild(freeze);
+    var freezeTimer = null;
+    function unfreeze() {
+      clearTimeout(freezeTimer);
+      freezeTimer = null;
+      freeze.style.display = "none";
+    }
+    video.addEventListener("waiting", function () {
+      if (!announced || freezeTimer || freeze.style.display !== "none") return;
+      freezeTimer = setTimeout(function () {
+        freezeTimer = null;
+        if (video.readyState < 3) freeze.style.display = "flex";
+      }, __FREEZE_MS__);
+    });
+    video.addEventListener("playing", unfreeze);
+    // Playing on without a "playing" (a stall that clears by itself can skip it).
+    video.addEventListener("timeupdate", function () {
+      if (freeze.style.display !== "none" && !video.paused && video.readyState >= 3) unfreeze();
+    });
     video.addEventListener("volumechange", function () {
       post(video.muted ? "muted" : "unmuted");
     });
@@ -3215,6 +3250,8 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         .replaceAll('__WEAK_STALLS__', '${PlayerTuning.weakStalls}')
         .replaceAll('__WEAK_STALL_WINDOW_MS__', '${PlayerTuning.weakStallWindowMs}')
         .replaceAll('__OVERLAY__', '${PlayerTuning.overlayPercent / 100}')
+        .replaceAll('__FREEZE_DIM__', '${PlayerTuning.freezeDimPercent / 100}')
+        .replaceAll('__FREEZE_MS__', '${PlayerTuning.freezeSpinnerMs}')
         .replaceAll('__AUDIO_CHECK__', '${Platform.isWindows}')
         .replaceAll('__AUDIO_CHECK_MS__', '${PlayerTuning.audioCheckSecs * 1000}')
         .replaceAll('__AUDIO_CHECK_PCT__', '${PlayerTuning.audioCheckPercent}')

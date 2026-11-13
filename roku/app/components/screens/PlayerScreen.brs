@@ -33,6 +33,10 @@ sub init()
     m.stillPos = -1
     ' Pausing just before it runs dry (see onDryCheck).
     m.dryDim = m.top.findNode("dryDim")
+    ' Black over a frozen picture, as dark as on phone/desktop.
+    alpha = Int(appPlayer().freezeDimPercent * 255 / 100 + 0.5)
+    m.dimColor = "0x000000" + Right("0" + StrI(alpha, 16), 2)
+    m.dryDim.color = m.dimColor
     m.dryPaused = false
     m.dryStill = CreateObject("roTimespan")
     ' When the player last asked StreamTask for anything (see checkQuiet).
@@ -734,7 +738,7 @@ sub onVideoState()
         m.stall.control = "stop"
         ' Dimmed, the picture showing as when it pauses before running dry;
         ' black if a replay may be skipped once it's over (see uncover).
-        if m.spellPos = invalid then m.holdCover.color = "0x00000099" else m.holdCover.color = "0x000000FF"
+        if m.spellPos = invalid then m.holdCover.color = m.dimColor else m.holdCover.color = "0x000000FF"
         m.holdCover.visible = true
         m.video.control = "pause"
         m.holdTimerBack.duration = m.holdBack

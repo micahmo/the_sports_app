@@ -378,7 +378,7 @@ the others or is added here as a deliberate gap.
 | Player menu button | shows and hides with the title bar | shows and hides with the title bar, fullscreen included; the pointer over the video hides with it, in a window too | no menu: the remote's buttons |
 | Streams row in the player (this game's other streams, recent games) | Streams pill with the title bar; tap it; tap away or Back closes | Streams pill; click it; click away or Esc closes | Streams pill with the title bar; Down, then Left/Right, OK; Up or Back closes |
 | Quality on a weak connection | steps down a source's separate feeds, or with none, to the game's SD stream; back up only from a "1080p" button offered once the connection holds (hls.js switches both ways where they line up), saying so under a brief spinner; a "Weak connection" note when there's nowhere lower | same | the best feed always |
-| A stall mid-stream | the last frame stays up while the player heals itself (hops gaps, rejoins live); a spinner only after 20 s with no progress, with "Reconnecting…" / "Waiting for connection…" | same | our spinner as soon as the player reports buffering (the Roku's player decides); stuck after the source skips ahead, or it skips 30 s or more, or the player asks for nothing for ~10 s while short of picture, it starts again at live (see "Stuck after the source skips ahead") |
+| A stall mid-stream | the last frame stays up, dimmed (`freezeDimPercent`) with a spinner over it once it has lasted `freezeSpinnerMs` (1 s), while the player heals itself (hops gaps, rejoins live); after 20 s with no progress the app's own screen, "Reconnecting…" / "Waiting for connection…" (until 2026-11-12 nothing showed before that) | same | the same dimmed picture and spinner: it pauses just before running dry because the Roku's player, run dry, blanks the picture instead of keeping it, so the pause is what keeps the last frame up as phone/desktop do; our spinner as soon as the player reports buffering (the Roku's player decides); stuck after the source skips ahead, or it skips 30 s or more, or the player asks for nothing for ~10 s while short of picture, it starts again at live (see "Stuck after the source skips ahead") |
 | No pause (live streams only; a pause would just fall behind live) | no pause control | no pause control | Play/Pause shows the title bar like the other buttons |
 | A stream that fails for good | tries the next like it (HD for HD, SD for SD), then the other kind, then "unavailable" | same | same |
 | Reconnecting by itself after a stall or outage | yes | yes | yes |
@@ -1775,6 +1775,17 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
   pitch not kept) read ~0.5 three times (player 686, 414, 974 Hz against 1226,
   834, 1749), got a fresh decoder, and was right again (reattaching resets the
   speed, as it would the decoder); kept deep through it, the check stopped.
+- **A freeze shows it's working** (2026-11-12, phone/desktop). A freeze left
+  a still frame with nothing on it until the 20 s reconnect ("stuck on a
+  static frame for a long time", TNF, four ~15-35 s freezes from the source's
+  slow segments). Now, as the TV shows its pause before running dry: once a
+  freeze mid-game has lasted `player.freezeSpinnerMs` (1 s; shorter ones pass
+  unnoticed), the picture dims (`freezeDimPercent`, 60, which the TV now
+  reads too) with the app's spinner over it, under the title bar and pill;
+  gone the moment it plays. In the page (`#appFreeze`), so one version for
+  both. Tested by stopping the downloads mid-game: desktop and phone
+  (emulator) dimmed with the spinner as the buffer ran out, and cleared as
+  it played again.
 - **No replay after running dry** (1.0.135). Starting again after it ran dry
   at the end of the list, the player sometimes goes back and shows again what
   it played (~10-20 s; 2026-10-17, -18 and -19): rewinding inside what it has,

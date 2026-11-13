@@ -39,7 +39,7 @@ end function
 
 ' Player numbers both apps follow (see the JSON for what each is).
 function appPlayer() as Object
-    return {rowThisGame: 3, tvDryPauseAt: 2, tvCushionSecs: 12, tvStartFillSecs: 22, tvQuietRestartMs: 8000, tvBackCheckMs: 60000, tvBackChecks: 2, rowRecent: 3, recentsKept: 12, stuckDownloadMs: 4000, switchedNoteMs: 4000, overlayPercent: 70, downPercent: 110, upPercent: 150, upHoldMs: 60000, upOfferMs: 8000, weakStalls: 3, weakStallWindowMs: 30000, slowStartMs: 20000, failedForMinutes: 60, tvRoamTroubles: 3, tvRoamWindowMs: 60000, tvRoamEveryMs: 120000, tvRoamAvoidMs: 300000, tvRoamRetryStepMs: 30000, viewersRefreshMs: 30000, outageRetrySecs: 30, pageLoadSecs: 25, audioCheckSecs: 15, audioCheckPercent: 70, audioCheckMisses: 3}
+    return {rowThisGame: 3, tvDryPauseAt: 2, tvCushionSecs: 12, tvStartFillSecs: 22, tvQuietRestartMs: 8000, tvBackCheckMs: 60000, tvBackChecks: 2, rowRecent: 3, recentsKept: 12, stuckDownloadMs: 4000, switchedNoteMs: 4000, overlayPercent: 70, downPercent: 110, upPercent: 150, upHoldMs: 60000, upOfferMs: 8000, weakStalls: 3, weakStallWindowMs: 30000, slowStartMs: 20000, failedForMinutes: 60, tvRoamTroubles: 3, tvRoamWindowMs: 60000, tvRoamEveryMs: 120000, tvRoamAvoidMs: 300000, tvRoamRetryStepMs: 30000, viewersRefreshMs: 30000, outageRetrySecs: 30, pageLoadSecs: 25, audioCheckSecs: 15, audioCheckPercent: 70, audioCheckMisses: 3, freezeDimPercent: 60, freezeSpinnerMs: 1000}
 end function
 
 ' Screen spacing, in pixels of the 1920-wide screen (see the JSON).

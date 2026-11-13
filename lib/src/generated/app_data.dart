@@ -136,6 +136,8 @@ abstract final class PlayerTuning {
   static const int audioCheckSecs = 15;
   static const int audioCheckPercent = 70;
   static const int audioCheckMisses = 3;
+  static const int freezeDimPercent = 60;
+  static const int freezeSpinnerMs = 1000;
 }
 
 /// Screen spacing, in pixels of a 1920-wide TV screen (see the JSON).
