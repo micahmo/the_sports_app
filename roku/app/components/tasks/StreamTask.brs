@@ -109,6 +109,13 @@ sub work()
     ' A link that doesn't answer may just be on one of the source's servers
     ' that has dropped the stream; a fresh session usually gets another. Three
     ' tries before calling the stream unavailable.
+    ' The site was down last time: while it still is, say so at once rather
+    ' than after a browser session's 25 s of looking.
+    if m.top.siteWasDown and pageHostDown() then
+        m.top.error = "sitedown"
+        return
+    end if
+
     for try = 1 to 3
         say("Starting a browser on the server...")
         if not openSession() then
@@ -117,7 +124,13 @@ sub work()
         end if
         say("Loading the stream...")
         if not findPlaylist() then
-            if not m.quitting then fail("The stream page didn't provide a playlist. Try another stream.")
+            if not m.quitting then
+                if pageHostDown() then
+                    m.top.error = "sitedown"
+                else
+                    fail("The stream page didn't provide a playlist. Try another stream.")
+                end if
+            end if
             cleanup()
             return
         end if
@@ -152,6 +165,37 @@ function siteReachable() as Boolean
     end if
     ' Any HTTP status means it answered; negative codes are connection failures.
     return ev.GetResponseCode() > 0
+end function
+
+' The stream site itself down, not just this stream: neither its page nor
+' the site's front page answers (no reply in 8 s, or a server error). A
+' stream that's gone still has a page that loads. ppv's pages were all down
+' ~6 min (2026-11-08 12:04), and the TV went through every stream, all on
+' that site, to the final screen.
+function pageHostDown() as Boolean
+    if hostAnswers(m.top.embedUrl) then return false
+    if hostAnswers("https://" + hostOf(m.top.embedUrl) + "/") then return false
+    print logTime(); "[stream] the stream site ("; hostOf(m.top.embedUrl); ") isn't answering"
+    return true
+end function
+
+function hostAnswers(url as String) as Boolean
+    x =CreateObject("roUrlTransfer")
+    port = CreateObject("roMessagePort")
+    x.SetMessagePort(port)
+    x.SetUrl(url)
+    x.SetCertificatesFile("common:/certs/ca-bundle.crt")
+    x.InitClientCertificates()
+    x.AddHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36")
+    if not x.AsyncGetToString() then return false
+    ev = wait(8000, port)
+    if type(ev) <> "roUrlEvent" then
+        x.AsyncCancel()
+        return false
+    end if
+    ' Negative codes are connection failures; a refusal (403) is an answer.
+    code = ev.GetResponseCode()
+    return code > 0 and code < 500
 end function
 
 sub cleanup()

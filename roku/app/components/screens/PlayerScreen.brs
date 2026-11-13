@@ -40,6 +40,8 @@ sub init()
     m.quietSince = CreateObject("roTimespan")
     m.keptPicture = false
     m.served0 = 0
+    ' The stream site's pages don't answer (see onError).
+    m.siteDown = false
     ' The player stopped a moment after the poster's up (see startOver).
     m.swapTimer = m.top.createChild("Timer")
     m.swapTimer.duration = 0.2
@@ -224,12 +226,14 @@ sub start()
     m.task.observeField("gap", "onGap")
     m.task.observeField("lost", "onLost")
     m.task.observeField("newLink", "onNewLink")
+    m.task.siteWasDown = m.siteDown
     m.task.control = "run"
 end sub
 
 sub onStatus()
-    ' While falling back, the spinner says what stopped and what's next.
-    if m.spinner.visible and m.trying = "" then m.status.text = m.task.status
+    ' While falling back, the spinner says what stopped and what's next; while
+    ' the site's down, that it is.
+    if m.spinner.visible and m.trying = "" and not m.siteDown then m.status.text = m.task.status
 end sub
 
 sub refreshViewers()
@@ -380,6 +384,31 @@ sub onError()
         m.retry.control = "start"
         return
     end if
+    ' The stream site itself down: every stream on it is too, so rather than
+    ' fall back through them to the final screen, this one again every
+    ' outageRetrySecs until the site answers, or Back. Not a try, like
+    ' offline. Over the poster: it's been minutes, not a blip.
+    if m.task.error = "sitedown" then
+        print logTime(); "[player] the stream site is down: trying again every "; appPlayer().outageRetrySecs; " s"
+        m.task = invalid
+        m.siteDown = true
+        m.restarts = 0
+        m.stall.control = "stop"
+        m.stuck.control = "stop"
+        hideFill()
+        if m.keptPicture then
+            m.keptPicture = false
+            m.dryDim.visible = false
+            m.swapUrl = ""
+            m.video.control = "stop"
+            m.video.content = invalid
+        end if
+        showBackdrop()
+        showWorking(siteDownText())
+        m.retry.duration = appPlayer().outageRetrySecs
+        m.retry.control = "start"
+        return
+    end if
     ' The source's server refused it: no reconnecting, that won't change.
     if Left(m.task.error, 9) = "refused: " then
         failedForGood(Mid(m.task.error, 10))
@@ -479,6 +508,7 @@ end function
 ' Play s in place of what's playing: the same screen, a fresh start. A pick from
 ' the streams row starts a new round of falling back; a fallback carries on.
 sub switchTo(s as Object, fallback as Boolean)
+    m.siteDown = false
     m.canRetry = false
     m.outageTimer.control = "stop"
     saveBest()
@@ -531,10 +561,16 @@ end sub
 
 sub onRetry()
     start()
-    showWorking("Reconnecting...")
+    if m.siteDown then showWorking(siteDownText()) else showWorking("Reconnecting...")
 end sub
 
+function siteDownText() as String
+    n = Int(appPlayer().outageRetrySecs).ToStr()
+    return playerText("siteUnreachable") + Chr(10) + playerText("retryingEvery").Replace("{n}", n)
+end function
+
 sub onStreamUrl()
+    m.siteDown = false
     if m.keptPicture then
         m.keptPicture = false
         m.dryDim.visible = false

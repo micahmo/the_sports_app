@@ -126,10 +126,11 @@ function findPlaylist() as Boolean
     ' Given up on by the clock, not by count: on a page that never arrives (its
     ' host down, 2026-11-01 16:02) each look waits out the 10 s script limit,
     ' and 40 looks held the spinner 3.5 min before falling back (2026-11-04).
-    ' 25 s is about what the 40 looks took on a page that answers.
+    ' 25 s (player.pageLoadSecs) is about what the 40 looks took on a page
+    ' that answers.
     took = CreateObject("roTimespan")
     i = 0
-    while took.TotalMilliseconds() < 25000
+    while took.TotalMilliseconds() < appPlayer().pageLoadSecs * 1000
         i = i + 1
         v = exec(js)
         if isString(v) and v <> "" then

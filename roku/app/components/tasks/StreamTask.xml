@@ -9,7 +9,12 @@
     <field id="embedUrl" type="string" />
     <field id="driver" type="string" />
     <field id="status" type="string" />
+    <!-- Why it stopped: a message, "refused: <message>", "offline" (no
+         internet) or "sitedown" (the stream site's pages don't answer). -->
     <field id="error" type="string" />
+    <!-- The last try found the stream site down: look at it first, before a
+         browser session (pageHostDown). -->
+    <field id="siteWasDown" type="boolean" />
     <field id="streamUrl" type="string" />
     <field id="quit" type="boolean" alwaysNotify="true" />
     <!-- What's playing: {height, fps, mbps} (see measure()). -->

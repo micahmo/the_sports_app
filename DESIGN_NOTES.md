@@ -1716,13 +1716,65 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
 - **Nothing left to fall back to: the round again every 30 s** (2026-11-11,
   all three apps). Once every stream of the game has failed, the final
   screen (TV) or "This stream is unavailable" (phone/desktop) now says
-  "Trying again every 30 s." and does: the whole round again from the stream
+  "Trying again every 30s." and does: the whole round again from the stream
   that failed last, as OK / Retry would, until one plays or Back
   (`player.outageRetrySecs`). Normal fallback is untouched: it only runs when
   nothing's left. A site outage (2026-11-08) recovered only by picking the
   stream again by hand. Tested on the TV during ppv's segment outage
   (rounds at 30 s, refused each time). Phone/desktop didn't reach it in that
   outage: their player skips refused segments rather than failing.
+- **The stream site down: wait on the stream** (2026-11-12, all three apps).
+  ppv's stream pages were all down ~6 min (2026-11-08 12:04): the TV went
+  through its reconnects, then fell back to other streams on the same site,
+  then the final screen. Now a page that hasn't given a playlist (TV) or
+  played (phone/desktop) `player.pageLoadSecs` (25 s) after loading has the
+  site checked: its page and its front page fetched directly, 8 s each; both
+  with no answer (or a server error) is the site down (a stream that's gone
+  still has a page that loads, and a refusal is an answer). Then the player
+  says "Couldn't reach the stream site. Trying again every 30s." over the
+  poster and waits on the stream it was playing, with no fallback (they're
+  all on that site): every `outageRetrySecs` it checks the site first and
+  loads the stream again once it answers. Not counted as a try or a failure.
+  The TV's next try checks the site before a browser session
+  (`siteWasDown`). Phone/desktop also check before their reloads mid-game
+  (`_healNow`), and their page now has a limit at all: a page whose site
+  didn't answer took 2.5 min to say "no-stream". Desktop's error page says
+  "no-stream" every ~25 s meanwhile; one that comes once the site's back
+  loads the same stream again rather than falling back. Tested with the
+  page sent to an address that doesn't answer for 75 s: phone (emulator)
+  down at 41 s, the message, checks every 30 s, the same stream playing 6 s
+  after the site answered; desktop the same. TV (2026-11-12, NBA): no
+  playlist at 25 s, down at 41 s, the message; 30 s on, the site checked
+  first (still down, then answering), and the same stream playing 8 s after
+  it answered.
+- **Deep audio: caught by ear, fixed with a fresh decoder** (2026-11-12,
+  desktop). Twice on dprec11 (2026-10-17, 2026-11-12) the game's sound went
+  deep (and garbled) and stayed so until a fresh player. Both times the source
+  was clean (ordinary AAC-LC 48 kHz stereo, the right frame count per
+  segment), the video played at 1x, other apps' sound was fine, and on
+  10-17 the audio hls.js handed the browser decoded cleanly elsewhere. A seek
+  to where it was (the browser's decoder reset) didn't help either time;
+  hls.js reattaching the video (`recoverMediaError`: a new MediaSource, so new
+  decoders) cured it in 1-2 s with no reload. What sets it off is unknown:
+  nothing in the log lined up, and one suspect (hls.js describes AAC-LC as
+  HE-AAC on Chrome, plain on Android, where it's never happened) didn't
+  reproduce (a test tone through hls.js in Edge, with stray SBR data in 1 and
+  in 50 frames, stayed at pitch). So the page listens: every
+  `player.audioCheckSecs` (15) it decodes one segment's audio on its own (a
+  fresh decoder) and compares the centre of its spectrum with what the player
+  puts out while that segment plays (a Web Audio analyser on the video).
+  `audioCheckMisses` (3) checks in a row off by more than `audioCheckPercent`
+  (below 70% of it, or above it by the same factor) get `recoverMediaError`;
+  off again straight after, it's the measuring, and checks stop for that
+  stream. The video's sound goes through Web Audio only once the audio context
+  runs (a suspended one would silence it). Each segment's audio format is
+  logged when it changes (all platforms), for what precedes the next one.
+  Desktop only: the phone's never had it. Tested on the desktop (TNF): 22
+  checks of normal play read 0.90-1.12 of the source (heard every 80 ms; one
+  sample every 200 ms wandered 0.71-1.42); forced deep sound (half speed,
+  pitch not kept) read ~0.5 three times (player 686, 414, 974 Hz against 1226,
+  834, 1749), got a fresh decoder, and was right again (reattaching resets the
+  speed, as it would the decoder); kept deep through it, the check stopped.
 - **No replay after running dry** (1.0.135). Starting again after it ran dry
   at the end of the list, the player sometimes goes back and shows again what
   it played (~10-20 s; 2026-10-17, -18 and -19): rewinding inside what it has,

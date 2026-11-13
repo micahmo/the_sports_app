@@ -946,6 +946,9 @@ const String _takeoverJs = r'''
               streamFps = tsFps(new Uint8Array(response.data));
               if (streamFps > 0) log("frame rate " + streamFps);
             }
+            if (response && response.data) {
+              try { noteAudio(new Uint8Array(response.data), ctx && ctx.frag); } catch (e) {}
+            }
             callbacks.onSuccess(response, self.stats, ctx, details);
           },
           // A copy failing only counts once the other has too.
@@ -1406,7 +1409,11 @@ const String _takeoverJs = r'''
     slowStartTold = false;
     lastRatio = 0;
     loading = [];
+    audioCheck.pending = null;
+    audioCheck.misses = 0;
+    audioCheck.format = "";
     play();
+    tapAudio();
     window.__appPlayer.built = true;
     window.__appOverlay.redraw();
   }
@@ -1833,6 +1840,215 @@ const String _takeoverJs = r'''
     return best;
   }
 
+  // An MPEG-TS segment's audio as the ADTS frames it carries (the audio PID is
+  // the first PES with an audio stream id, 0xC0-0xDF), and the first frame's
+  // format ("AAC-LC 48000 Hz 2 ch"). Null if it has no such audio.
+  function tsAudio(b) {
+    var i = 0;
+    while (i + 376 < b.length && !(b[i] === 0x47 && b[i + 188] === 0x47 && b[i + 376] === 0x47)) i++;
+    var apid = -1, parts = [], total = 0;
+    for (; i + 188 <= b.length; i += 188) {
+      if (b[i] !== 0x47) continue;
+      var pid = ((b[i + 1] & 0x1f) << 8) | b[i + 2];
+      if (apid >= 0 && pid !== apid) continue;
+      var start = b[i + 1] & 0x40;
+      var p = i + 4;
+      if (b[i + 3] & 0x20) p += 1 + b[i + 4];
+      if (!(b[i + 3] & 0x10) || p >= i + 188) continue;     // no payload
+      if (start) {
+        if (b[p] !== 0 || b[p + 1] !== 0 || b[p + 2] !== 1) continue;
+        if (apid < 0) {
+          if (b[p + 3] < 0xc0 || b[p + 3] > 0xdf) continue;
+          apid = pid;
+        }
+        p += 9 + b[p + 8];                                  // past the PES header
+        if (p >= i + 188) continue;
+      } else if (apid < 0) continue;
+      parts.push(b.subarray(p, i + 188));
+      total += i + 188 - p;
+    }
+    if (apid < 0 || !total) return null;
+    var out = new Uint8Array(total), at = 0;
+    parts.forEach(function (x) { out.set(x, at); at += x.length; });
+    var s = 0;
+    while (s + 7 < out.length && !(out[s] === 0xff && (out[s + 1] & 0xf6) === 0xf0)) s++;
+    if (s + 7 >= out.length) return null;
+    var rates = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+    var prof = ["AAC-Main", "AAC-LC", "AAC-SSR", "AAC-LTP"][out[s + 2] >> 6];
+    var ch = ((out[s + 2] & 1) << 2) | (out[s + 3] >> 6);
+    return { adts: out.subarray(s), format: prof + " " + (rates[(out[s + 2] >> 2) & 15] || "?") + " Hz " + ch + " ch" };
+  }
+
+  // Deep audio (desktop): twice on dprec11 (2026-10-17, 2026-11-12) the game's
+  // sound went deep and stayed so, from a source that was fine, until the
+  // browser got a new audio decoder: a seek didn't help, hls.js reattaching
+  // the video (recoverMediaError) did. What sets it off is unknown, so it's
+  // caught by ear: every audioCheckSecs, one segment's audio is decoded on its
+  // own (a fresh decoder, the reference) and its spectrum's centre compared
+  // with what the player puts out while that segment plays. Deep sound puts
+  // the centre far lower. audioCheckMisses in a row off by more than
+  // audioCheckPercent: hls.js reattaches. Off again straight after: it was the
+  // measuring, not the decoder, and the check stops for this stream.
+  // Listening means the video's sound goes through Web Audio, so it's only
+  // hooked up once the audio context runs (a suspended one would silence it).
+  var audioCheck = {
+    on: __AUDIO_CHECK__, ac: null, an: null, out: null, tapped: null,
+    misses: 0, lastAt: 0, pending: null, fixedAt: 0, stopped: false, told: false, format: "",
+    // For a look over the debug port: checks compared, and the latest ratio.
+    checks: 0, ratio: 0,
+  };
+  window.__appPlayer.audioCheck = audioCheck;
+
+  function tapAudio() {
+    if (!audioCheck.on || audioCheck.stopped || !window.AudioContext) return;
+    var a = audioCheck;
+    if (!a.ac) {
+      try { a.ac = new AudioContext(); } catch (e) { a.on = false; return; }
+      a.ac.onstatechange = function () {
+        if (a.ac.state === "suspended" && a.tapped) a.ac.resume().catch(function () {});
+        connect();
+      };
+    }
+    function connect() {
+      if (!video || a.tapped === video || a.ac.state !== "running") return;
+      try {
+        if (a.src) { try { a.src.disconnect(); } catch (e) {} }
+        a.src = a.ac.createMediaElementSource(video);
+        if (!a.an) {
+          a.an = a.ac.createAnalyser();
+          a.an.fftSize = 4096;
+          a.an.smoothingTimeConstant = 0;
+          a.out = a.ac.createGain();
+          a.an.connect(a.out);
+          a.out.connect(a.ac.destination);
+        }
+        a.src.connect(a.an);
+        a.tapped = video;
+      } catch (e) { log("audio check off: " + e.message); a.on = false; }
+    }
+    a.ac.resume().then(connect, function () {});
+    connect();
+  }
+
+  // Power-weighted mean frequency over 100 Hz-16 kHz of a spectrum in dB, or
+  // 0 if it's near silent.
+  function centroid(db, rate, size) {
+    var lo = Math.ceil(100 * size / rate), hi = Math.min(db.length - 1, Math.floor(16000 * size / rate));
+    var sum = 0, wsum = 0;
+    for (var k = lo; k <= hi; k++) {
+      var pw = Math.pow(10, db[k] / 10);
+      sum += pw;
+      wsum += pw * k;
+    }
+    if (!(sum > 0) || 10 * Math.log(sum / (hi - lo + 1)) / Math.LN10 < -100) return 0;
+    return (wsum / sum) * rate / size;
+  }
+
+  // The mean power spectrum (dB) of mono audio, in Hann-windowed blocks of size.
+  function spectrum(x, size) {
+    var re = new Float64Array(size), im = new Float64Array(size), acc = new Float64Array(size / 2), n = 0;
+    var bits = Math.round(Math.log(size) / Math.LN2);
+    for (var off = 0; off + size <= x.length; off += size, n++) {
+      for (var i = 0; i < size; i++) {
+        var j = 0;
+        for (var b = 0; b < bits; b++) j |= ((i >> b) & 1) << (bits - 1 - b);
+        re[j] = x[off + i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (size - 1)));
+        im[j] = 0;
+      }
+      for (var len = 2; len <= size; len <<= 1) {
+        var ang = -2 * Math.PI / len;
+        for (var s = 0; s < size; s += len) {
+          for (var k = 0; k < len / 2; k++) {
+            var c = Math.cos(ang * k), d = Math.sin(ang * k);
+            var tr = re[s + k + len / 2] * c - im[s + k + len / 2] * d;
+            var ti = re[s + k + len / 2] * d + im[s + k + len / 2] * c;
+            re[s + k + len / 2] = re[s + k] - tr;
+            im[s + k + len / 2] = im[s + k] - ti;
+            re[s + k] += tr;
+            im[s + k] += ti;
+          }
+        }
+      }
+      for (var q = 0; q < size / 2; q++) acc[q] += re[q] * re[q] + im[q] * im[q];
+    }
+    var db = new Float32Array(size / 2);
+    for (var r = 0; r < size / 2; r++) db[r] = n ? 10 * Math.log(acc[r] / n / size / size + 1e-30) / Math.LN10 : -200;
+    return db;
+  }
+
+  // Each segment as it arrives: its audio format, logged when it changes (a
+  // change mid-stream with nothing marking it is a suspect for the deep sound),
+  // and, when a check is due, its audio as the next reference.
+  function noteAudio(bytes, frag) {
+    var a = audioCheck;
+    var t = tsAudio(bytes);
+    if (!t) return;
+    if (t.format !== a.format) {
+      log("audio: " + t.format + (a.format ? " (was " + a.format + ")" : ""));
+      a.format = t.format;
+    }
+    if (!a.an || a.stopped || a.pending || !frag || Date.now() - a.lastAt < __AUDIO_CHECK_MS__) return;
+    var pend = a.pending = { frag: frag, at: Date.now(), ref: 0, live: null, frames: 0 };
+    a.lastAt = Date.now();
+    var copy = new Uint8Array(t.adts);
+    a.ac.decodeAudioData(copy.buffer).then(function (buf) {
+      var x = new Float32Array(buf.length);
+      for (var c = 0; c < buf.numberOfChannels; c++) {
+        var d = buf.getChannelData(c);
+        for (var i = 0; i < d.length; i++) x[i] += d[i] / buf.numberOfChannels;
+      }
+      pend.ref = centroid(spectrum(x, a.an.fftSize), buf.sampleRate, a.an.fftSize) || -1;
+    }, function () { pend.ref = -1; });
+  }
+
+  // While the reference segment plays: the player's own output, every 80 ms
+  // (an analyser block is 85 ms at 48 kHz, so all of it is heard: one every
+  // 200 ms heard 40% and its centre wandered 0.71-1.42 of the source's).
+  setInterval(function () {
+    var a = audioCheck, pend = a.pending;
+    if (!pend || !video) return;
+    var f = pend.frag, t = video.currentTime;
+    if (Date.now() - pend.at > 90000 || pend.ref < 0) { a.pending = null; return; }
+    var playing = !video.paused && !video.muted && video.volume > 0 && video.readyState >= 3 && a.tapped === video;
+    if (playing && t > f.start + 0.3 && t < f.start + f.duration - 0.3) {
+      var db = new Float32Array(a.an.frequencyBinCount);
+      a.an.getFloatFrequencyData(db);
+      if (!pend.live) pend.live = new Float64Array(db.length);
+      for (var k = 0; k < db.length; k++) pend.live[k] += Math.pow(10, db[k] / 10);
+      pend.frames++;
+      return;
+    }
+    if (t < f.start + f.duration || !pend.ref) return;
+    a.pending = null;
+    if (pend.frames < 20) return;                           // didn't hear enough of it
+    var avg = new Float32Array(pend.live.length);
+    for (var q = 0; q < avg.length; q++) avg[q] = 10 * Math.log(pend.live[q] / pend.frames + 1e-30) / Math.LN10;
+    var live = centroid(avg, a.ac.sampleRate, a.an.fftSize);
+    if (!live) return;                                      // quiet stretch
+    var ratio = live / pend.ref;
+    a.checks++;
+    a.ratio = Math.round(ratio * 100) / 100;
+    var off = ratio * 100 < __AUDIO_CHECK_PCT__ || ratio * __AUDIO_CHECK_PCT__ > 100;
+    var what = "player " + Math.round(live) + " Hz, source " + Math.round(pend.ref) + " Hz";
+    if (!off) {
+      if (!a.told) { a.told = true; log("audio check: sounds right (" + what + ")"); }
+      a.misses = 0;
+      return;
+    }
+    a.misses++;
+    log("audio check: sounds off (" + what + "), " + a.misses + " of " + __AUDIO_CHECK_MISSES__);
+    if (a.misses < __AUDIO_CHECK_MISSES__) return;
+    a.misses = 0;
+    if (a.fixedAt && Date.now() - a.fixedAt < 3 * __AUDIO_CHECK_MS__ * __AUDIO_CHECK_MISSES__) {
+      log("audio check: still off after a fresh decoder, so it's the measuring: stopping");
+      a.stopped = true;
+      return;
+    }
+    a.fixedAt = Date.now();
+    log("audio check: a fresh decoder for the sound");
+    try { if (hls) hls.recoverMediaError(); } catch (e) {}
+  }, 80);
+
   // What's actually playing, for the app to show and remember, every ~4 s of
   // playback: resolution from the video, frame rate from the stream itself (see
   // FRAG_PARSING_DATA; 0 if unknown), bitrate from the recent segments' sizes
@@ -2138,6 +2354,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // Every stream failed, nothing left: the round again after a while (see
   // _failedForGood).
   Timer? _outageTimer;
+  // The stream site's pages don't answer at all (see _waitForSite).
+  bool _siteDown = false;
+  // pageLoadSecs after a page starts loading, the site checked if it hasn't
+  // played (see _checkPage).
+  Timer? _pageTimer;
 
   // Rotation/PiP resume heuristics
   DateTime? _lastPipExitAt;
@@ -2217,6 +2438,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       },
     );
     _openPage(_stream, initial: true);
+    _watchPage();
 
     // Always light status bar (icons) over black
     SystemChrome.setSystemUIOverlayStyle(
@@ -2442,6 +2664,20 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // is one, never one already tried. No limit: Back leaves any time.
   Future<void> _failedForGood() async {
     if (!mounted) return;
+    // The whole site down, not this stream: the others on it are too.
+    if (await _streamSiteDown(_stream)) {
+      _waitForSite();
+      return;
+    }
+    if (!mounted) return;
+    // Back up, with a page from while it was down still saying "no-stream"
+    // (desktop's error page does, every ~25 s): this stream again first, not
+    // the next one.
+    if (_siteDown) {
+      PlayerLog.add('[app] the stream site answers again');
+      _switchTo(_stream, fallback: true);
+      return;
+    }
     _failures[_stream.embedUrl] = DateTime.now();
     StreamFailures.mark(_stream.embedUrl);
     // Only what the site lists for the game now: streams get pulled (a game
@@ -2494,6 +2730,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _upFromFeed = upFeed;
     _healTimer?.cancel();
     _outageTimer?.cancel();
+    _siteDown = false;
     _startFeed = 0;
     _waitText = null;
     setState(() {
@@ -2539,6 +2776,20 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     _allowedUri = page;
     _parkNative();
     _web.load(page).catchError((_) {});
+    _watchPage();
+  }
+
+  // A page whose site doesn't answer took 2.5 min to say "no-stream" (the
+  // web view waits out the connection), then fell back to another stream on
+  // the same site. pageLoadSecs in without playing, the site is checked;
+  // down, the player waits on it (as the TV gives up on the page then).
+  void _watchPage() {
+    _pageTimer?.cancel();
+    _pageTimer = Timer(const Duration(seconds: PlayerTuning.pageLoadSecs), () async {
+      if (!mounted || _ready || _siteDown || _failed) return;
+      final StreamInfo s = _stream;
+      if (await _streamSiteDown(s) && mounted && !_ready && !_siteDown && _stream == s) _waitForSite();
+    });
   }
 
   // The page's player sits in another site's frame, out of the takeover's
@@ -2820,6 +3071,13 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       });
       return;
     }
+    // Online but the stream site itself isn't answering: reloading its page
+    // won't help, and three reloads lead to the fallbacks, all on that site.
+    if (online && await _streamSiteDown(_stream)) {
+      if (mounted && _healing) _waitForSite();
+      return;
+    }
+    if (!mounted || !_healing) return;
     if (online && _healTries >= 3) {
       setState(() {
         _healing = false;
@@ -2838,6 +3096,55 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     final Duration wait = online ? Duration(seconds: 20 * _healTries) : const Duration(seconds: 10);
     _healTimer = Timer(wait, () {
       if (mounted && _healing) _healNow();
+    });
+  }
+
+  // The stream site itself down, not just this stream: neither its page nor
+  // the site's front page answers (no reply in 8 s, or a server error). A
+  // stream that's gone still has a page that loads. ppv's pages were all down
+  // ~6 min (2026-11-08 12:04). As the TV's pageHostDown.
+  Future<bool> _streamSiteDown(StreamInfo s) async {
+    Future<bool> answers(Uri u) async {
+      try {
+        final http.Response r = await http.get(u, headers: <String, String>{'User-Agent': Backend.browserAgent}).timeout(const Duration(seconds: 8));
+        return r.statusCode < 500;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    final Uri page = Uri.parse(s.embedUrl);
+    if (await answers(page)) return false;
+    if (await answers(page.replace(path: '/', query: ''))) return false;
+    PlayerLog.add("[app] the stream site (${page.host}) isn't answering");
+    return true;
+  }
+
+  // The stream site down: rather than fall back through its streams (all on
+  // it) to "unavailable", wait on this one, looking every outageRetrySecs,
+  // and load it again once the site answers. Not a failure of the stream.
+  void _waitForSite() {
+    if (!mounted) return;
+    _healTimer?.cancel();
+    _outageTimer?.cancel();
+    if (!_siteDown) PlayerLog.add('[app] the stream site is down: trying again every ${PlayerTuning.outageRetrySecs} s');
+    setState(() {
+      _siteDown = true;
+      _healing = false;
+      _offline = false;
+      _healTries = 0;
+      _ready = false;
+      _failed = false;
+    });
+    _outageTimer = Timer(const Duration(seconds: PlayerTuning.outageRetrySecs), () async {
+      if (!mounted || !_siteDown) return;
+      if (await _streamSiteDown(_stream)) {
+        _waitForSite();
+        return;
+      }
+      if (!mounted || !_siteDown) return;
+      PlayerLog.add('[app] the stream site answers again');
+      _switchTo(_stream, fallback: true);
     });
   }
 
@@ -2907,7 +3214,11 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         .replaceAll('__UP_STREAM__', _upFrom != null ? _upFromFeed : 'null')
         .replaceAll('__WEAK_STALLS__', '${PlayerTuning.weakStalls}')
         .replaceAll('__WEAK_STALL_WINDOW_MS__', '${PlayerTuning.weakStallWindowMs}')
-        .replaceAll('__OVERLAY__', '${PlayerTuning.overlayPercent / 100}');
+        .replaceAll('__OVERLAY__', '${PlayerTuning.overlayPercent / 100}')
+        .replaceAll('__AUDIO_CHECK__', '${Platform.isWindows}')
+        .replaceAll('__AUDIO_CHECK_MS__', '${PlayerTuning.audioCheckSecs * 1000}')
+        .replaceAll('__AUDIO_CHECK_PCT__', '${PlayerTuning.audioCheckPercent}')
+        .replaceAll('__AUDIO_CHECK_MISSES__', '${PlayerTuning.audioCheckMisses}');
     // The viewer's mute, for this page's players (see play() in the page).
     _web.runJavaScript('window.__appWantMuted=$_wantMuted;').catchError((_) {});
     _web.runJavaScript(js).catchError((_) {});
@@ -2970,6 +3281,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     WidgetsBinding.instance.removeObserver(this);
     _healTimer?.cancel();
     _outageTimer?.cancel();
+    _pageTimer?.cancel();
     _peekTimer?.cancel();
     _noteTimer?.cancel();
     _upTimer?.cancel();
@@ -3365,8 +3677,17 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                             clipBehavior: Clip.none,
                             children: <Widget>[
                               const CircularProgressIndicator(color: Colors.white),
+                              if (_siteDown)
+                                Transform.translate(
+                                  offset: const Offset(0, 52),
+                                  child: Text(
+                                    '${PlayerText.siteUnreachable}\n${PlayerText.retryingEvery.replaceAll('{n}', '${PlayerTuning.outageRetrySecs}')}',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: Colors.white70),
+                                  ),
+                                )
                               // Falling back: what stopped, and what's next.
-                              if (_trying != null)
+                              else if (_trying != null)
                                 Transform.translate(
                                   offset: const Offset(0, 56),
                                   child: Column(
