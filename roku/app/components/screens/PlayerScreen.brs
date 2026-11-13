@@ -627,6 +627,9 @@ end sub
 sub onVideoState()
     st = m.video.state
     print logTime(); "[player] "; st; " "; m.video.errorMsg
+    ' What it thought it had when it ran out anyway (the in-hand count reading
+    ' high: the TV ran dry without pausing first, black or frozen).
+    if st = "buffering" and m.recorded and not m.dryPaused and m.task <> invalid and m.video.position > 0 then print logTime(); "[player] in hand by the count: "; m.task.servedSecs - m.served0 - m.video.position; " s (handed "; m.task.servedSecs - m.served0; ", at "; m.video.position; ", "; m.task.readySecs; " s more here)"
     ' The old stream, paused under a reconnect (see reconnect): nothing it
     ' does counts.
     if m.keptPicture then return
@@ -1785,12 +1788,14 @@ end sub
 ' missed, 20 s more spinner, then a full reconnect). With ~2 s left there's
 ' nothing to throw away, so it starts again at live, as for a jump.
 sub onGap()
-    if m.task = invalid or m.video.content = invalid or not m.dryPaused then return
+    ' (Not in a start's fill: a restart already, gone segments went on adding
+    ' up and it would start again every 15 s for as long as they're gone.)
+    if m.task = invalid or m.video.content = invalid or not m.dryPaused or m.fillAll then return
     if m.task.gap < 10 then return
     now = CreateObject("roDateTime").AsSeconds()
     if m.jumpedAt <> invalid and now - m.jumpedAt < 15 then return
     m.jumpedAt = now
-    print logTime(); "[player] "; Int(m.task.gap); " s missed while paused at the edge; starting the player again at live"
+    print logTime(); "[player] "; Int(m.task.gap); " s missed or gone while paused at the edge; starting the player again at live"
     restartAtLive(true)
 end sub
 
@@ -1832,6 +1837,9 @@ sub onStill()
         return
     end if
     m.stillFor = m.stillFor + 1
+    ' A freeze the player doesn't call buffering ("freeze, no spinner",
+    ' 2026-11-09 14:45): what the count said, once.
+    if m.stillFor = 2 and not m.dryPaused then print logTime(); "[player] picture still 2 s while playing; in hand by the count: "; m.task.servedSecs - m.served0 - m.video.position; " s ("; m.task.readySecs; " s more here)"
     if m.stillFor < 10 then return
     m.stillFor = 0
     m.stillPos = -1

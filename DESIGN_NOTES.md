@@ -1685,6 +1685,16 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
      it reconnected 1.4 s after one came, as ppv's stall ended (14:28:41),
      19 s more of spinner. Now what StreamTask holds for the player
      (`readySecs`) growing starts the 20 s again too.
+  6. Segments listed but gone (failed after their tries) count toward `gap`
+     too, in a row since the last one that came, within one start: paused at
+     the edge with 10 s or more of them gone, it restarts at live rather than
+     play its last seconds and skip or stall. Not during a start's fill (a
+     restart already; gone ones still adding up would restart it every 15 s).
+     Tested with a staged 30 s of gone segments (2026-11-12, TNF): paused
+     20:24:45, "16 s missed or gone", restarted at once behind the poster,
+     playing 20:24:56 as segments came again. The TV also logs what the
+     in-hand count said when the player buffers or the picture sits still
+     2 s while not paused, for a TV that ran dry unpaused.
 - **A failed start leaves nothing running** (2026-11-11). ppv's segments
   were all refused by their CDN ("unauthorized resource", every game). Two
   things were left over from the start that failed: its "0%" stayed up between

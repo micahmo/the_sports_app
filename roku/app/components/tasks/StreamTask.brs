@@ -699,6 +699,7 @@ sub onDownload(ev as Object)
     if mine.page <> invalid and code = 200 then code = pageSegment(ev.GetString(), mine.path)
     if code = 200 then
         m.anyGot = true
+        m.lostRun = 0
         d.done = true
         d.file = mine.path
         d.took = d.started.TotalMilliseconds()
@@ -767,7 +768,16 @@ sub onDownload(ev as Object)
         m.refused = m.refused + 1
         if m.refused >= 2 then m.refusedOut = true
     end if
-    if m.anyServed then m.top.lost = m.top.lost + 1
+    if m.anyServed then
+        m.top.lost = m.top.lost + 1
+        ' Gone ones in a row add up like segments missed from the playlist
+        ' (gap): the TV paused at the edge restarts at live rather than play
+        ' the last seconds it had and then skip them.
+        if m.lostRun = invalid or m.lostGen <> m.top.startedAgain then m.lostRun = 0
+        m.lostGen = m.top.startedAgain
+        if m.segDur[u] <> invalid then m.lostRun = m.lostRun + m.segDur[u]
+        m.top.gap = m.lostRun
+    end if
     for each sock in d.waiters
         respond(sock, "502 Bad Gateway", "text/plain", invalid)
         finish(sock)
