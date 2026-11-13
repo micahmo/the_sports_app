@@ -1695,6 +1695,17 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
      playing 20:24:56 as segments came again. The TV also logs what the
      in-hand count said when the player buffers or the picture sits still
      2 s while not paused, for a TV that ran dry unpaused.
+  7. The stall's 20 s didn't come twice after item 5 went in: 355 s of
+     spinner with nothing coming (2026-11-08 15:29), and 36 s through the
+     MNF 404s (2026-11-09 22:37); before it, it came at 20.0 s even with
+     playlists answering. Nothing else starts the 20 s again without a log
+     line, so item 5's count was suspect: it included the player's position.
+     It now counts only what StreamTask got (`servedSecs` + `readySecs`), the
+     same thing while the position holds still, and both ways of starting the
+     20 s again log it ("more came while paused"). Staged 45 s still playlist
+     (2026-11-12): stalled at 20.0 s, reconnected, playing 32 s after the
+     pause; the old count didn't move in it either, so the cause is still
+     open, and the logs will say what starts it next time.
 - **A failed start leaves nothing running** (2026-11-11). ppv's segments
   were all refused by their CDN ("unauthorized resource", every game). Two
   things were left over from the start that failed: its "0%" stayed up between

@@ -906,6 +906,7 @@ sub onDryCheck()
         ' Still coming: not stalled, however long the cushion takes.
         if m.fillAll then showFillPct(have, m.dryResumeAt)
         if have > m.dryLast + 0.1 then
+            if not m.fillAll then print logTime(); "[player] more in hand while paused ("; have - m.dryLast; " s): the stall's 20 s start again"
             m.dryLast = have
             m.dryStill.Mark()
             m.stall.control = "stop"
@@ -914,9 +915,14 @@ sub onDryCheck()
         ' Paused before running dry, a segment StreamTask got that the player
         ' hasn't asked for yet is still coming too: the stall reconnected 1.4 s
         ' after one came, as ppv's stall ended (2026-11-08 14:28:41).
-        got = ahead + m.task.readySecs
+        ' Counted from what StreamTask got, not the position: paused, only
+        ' that means more came. The 20 s went on starting again with nothing
+        ' coming (355 s of spinner, 2026-11-08 15:29), cause not found; the
+        ' logs here say what starts it.
+        got = m.task.servedSecs + m.task.readySecs
         if m.dryGot = invalid or got < m.dryGot then m.dryGot = got
         if got > m.dryGot + 0.1 then
+            print logTime(); "[player] more came while paused ("; got - m.dryGot; " s): the stall's 20 s start again"
             m.dryGot = got
             m.stall.control = "stop"
             m.stall.control = "start"
