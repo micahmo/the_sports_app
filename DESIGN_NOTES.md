@@ -1713,6 +1713,19 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
      (2026-11-12): stalled at 20.0 s, reconnected, playing 32 s after the
      pause; the old count didn't move in it either, so the cause is still
      open, and the logs will say what starts it next time.
+  8. Found (2026-11-13, GSW-SAS, twice in 2 min): one segment answered 504
+     for 100 s. Paused at 0.8-1 s in hand, then "more came while paused
+     (4.004 s)" ~0.4 s after every playlist, ~10 times: segments downloaded
+     past the missing one drop out of `readySecs` as the list moves on, and
+     a newer one comes, so the sum dips by a segment and comes back with
+     nothing the player can use, and each comeback started the 20 s again.
+     45 s into the pause the Roku gave up on its own (likely its request for
+     the missing segment), went to buffering and blanked to the poster
+     ("spinner on thumbnail"); 40 s later "at a segment that's gone"
+     restarted it. The count now starts the 20 s again only past the most
+     it has had in this pause, so a dip and comeback doesn't, and the 20 s
+     reconnect comes before the Roku blanks. Installed mid-game on the
+     second freeze, not yet seen in a freeze.
 - **A failed start leaves nothing running** (2026-11-11). ppv's segments
   were all refused by their CDN ("unauthorized resource", every game). Two
   things were left over from the start that failed: its "0%" stayed up between

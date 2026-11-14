@@ -956,11 +956,14 @@ sub onDryCheck()
         ' hasn't asked for yet is still coming too: the stall reconnected 1.4 s
         ' after one came, as ppv's stall ended (2026-11-08 14:28:41).
         ' Counted from what StreamTask got, not the position: paused, only
-        ' that means more came. The 20 s went on starting again with nothing
-        ' coming (355 s of spinner, 2026-11-08 15:29), cause not found; the
-        ' logs here say what starts it.
+        ' that means more came. Only past the most it has had: segments
+        ' downloaded past one the source won't give drop out of readySecs as
+        ' the list moves on and newer ones come, so the sum dips and comes
+        ' back with nothing the player can use, and starting the 20 s again
+        ' at each comeback kept it spinning until the Roku gave up on its own
+        ' and blanked to the poster (45 s, 2026-11-13).
         got = m.task.servedSecs + m.task.readySecs
-        if m.dryGot = invalid or got < m.dryGot then m.dryGot = got
+        if m.dryGot = invalid then m.dryGot = got
         if got > m.dryGot + 0.1 then
             print logTime(); "[player] more came while paused ("; got - m.dryGot; " s): the stall's 20 s start again"
             m.dryGot = got
