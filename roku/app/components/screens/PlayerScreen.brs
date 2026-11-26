@@ -166,6 +166,13 @@ sub init()
     m.backReady = false
     m.backOffered = false
     m.backNote = false
+    ' The stream fallen back to stalled too: an outage they shared, not the
+    ' one picked going (see onBackResult).
+    m.sharedOutage = false
+    ' Stalled or failing, so whether the game has ended is checked with each
+    ' refresh of the lists (see showEnded); matchGone is the last one's answer.
+    m.checkEnded = false
+    m.matchGone = false
     m.backTimer = m.top.createChild("Timer")
     m.backTimer.duration = appPlayer().tvBackCheckMs / 1000
     m.backTimer.observeField("fire", "onBackTimer")
@@ -230,6 +237,7 @@ sub start()
     m.task.observeField("gap", "onGap")
     m.task.observeField("lost", "onLost")
     m.task.observeField("newLink", "onNewLink")
+    m.task.observeField("repeating", "onRepeating")
     m.task.siteWasDown = m.siteDown
     m.task.control = "run"
 end sub
@@ -339,6 +347,9 @@ end sub
 sub showBackdrop()
     if not m.backdrop.visible then print logTime(); "[player] poster up ("; m.backdrop.loadStatus; ")"
     m.backdrop.visible = m.backdrop.uri <> ""
+    ' Darkened already: the pause-before-dry's dim left over it made it
+    ' darker, then lighter once a reconnect took the dim down (2026-11-15).
+    if m.backdrop.visible then m.dryDim.visible = false
 end sub
 
 ' (For a moment of black before the poster on a restart, 2026-11-01: whether
@@ -445,6 +456,7 @@ sub failedForGood(reason as String)
     ' while to answer (12 s of black on 2026-11-08 while ppv was down).
     showBackdrop()
     showWorking(playerText("stoppedWorking", streamLabel(m.stream)))
+    if gameOver() then m.checkEnded = true
     refreshStreams("fallback")
 end sub
 
@@ -535,6 +547,7 @@ sub switchTo(s as Object, fallback as Boolean)
         m.task.unobserveField("gap")
         m.task.unobserveField("lost")
         m.task.unobserveField("newLink")
+        m.task.unobserveField("repeating")
         m.task.quit = true
         m.task = invalid
     end if
@@ -543,6 +556,7 @@ sub switchTo(s as Object, fallback as Boolean)
         m.trying = ""
         m.fallbackFrom = ""
         m.picked = s
+        m.sharedOutage = false
     end if
     stopBackWatch()
     m.tried[s.embedUrl] = true
@@ -709,6 +723,7 @@ sub onVideoState()
     if st = "playing" then
         m.afterRestart = false
         m.seeking = false
+        m.checkEnded = false
     end if
     if fill then
         fillFirst()
@@ -975,7 +990,13 @@ sub onDryCheck()
             ' the stall's reconnect.
             full = have >= m.dryFloor and m.dryStill.TotalMilliseconds() >= 6000
         else
-            full = ahead >= m.dryFloor and m.dryStill.TotalMilliseconds() >= 5000 and m.task.readySecs > 0
+            ' Or, with too little in the player for that, the whole cushion
+            ' here untaken: paused, the player sometimes asks for nothing, so
+            ' playing is what gets it to (2026-11-15 00:36: 0.5 s in it, 41 s
+            ' here after 39 s, none asked for, until 42 s in its paused spot
+            ' fell out of the 45 s list, it went to buffering and the poster,
+            ' and asked for the newest).
+            full = m.dryStill.TotalMilliseconds() >= 5000 and m.task.readySecs > 0 and (ahead >= m.dryFloor or ahead + m.task.readySecs >= m.dryResumeAt)
         end if
         if m.fillAll and (have >= m.dryResumeAt or full) then
             print logTime(); "[player] "; Int(ahead); " s in hand and "; Int(m.task.readySecs); " s more here: on"
@@ -984,7 +1005,9 @@ sub onDryCheck()
             m.pctTarget = 100
             m.pctTimer.control = "start"
         else if not m.fillAll and (ahead >= m.dryResumeAt or full) then
-            if full and ahead < m.dryResumeAt then
+            if full and ahead < m.dryFloor then
+                print logTime(); "[player] "; ahead; " s in hand, "; Int(m.task.readySecs); " s more here it isn't asking for: on again so it does"
+            else if full and ahead < m.dryResumeAt then
                 print logTime(); "[player] "; Int(ahead); " s in hand, buffer full ("; Int(m.task.readySecs); " s more here untaken): on again"
             else
                 print logTime(); "[player] "; Int(ahead); " s in hand: on again"
@@ -1446,7 +1469,7 @@ end sub
 ' site can't be reached or no longer lists the game, the streams stay as they
 ' were. One at a time; a later request's `after` wins if it matters more.
 sub refreshStreams(after as String)
-    rank = {row: 1, recent: 2, fallback: 3}
+    rank = {check: 0, row: 1, recent: 2, fallback: 3}
     if m.refreshing = true then
         if m.refreshAfter = "" or rank[after] > rank[m.refreshAfter] then m.refreshAfter = after
         return
@@ -1463,9 +1486,11 @@ end sub
 sub onRefreshAll()
     found = invalid
     seen = {}
+    listed = 0
     for each key in ["live", "all"]
         list = ParseJson(m.refreshApi.results[key])
         if type(list) = "roArray" then
+            listed = listed + 1
             for each mt in list
                 if mt.id <> invalid and mt.id = m.refreshFor and type(mt.sources) = "roArray" then
                     if found = invalid then
@@ -1485,6 +1510,8 @@ sub onRefreshAll()
             end for
         end if
     end for
+    ' Gone only if both lists came back and neither has it (not an API error).
+    m.matchGone = found = invalid and listed = 2 and m.refreshFor = m.match.id
     if found = invalid or m.refreshFor <> m.match.id then
         afterRefresh()
         return
@@ -1530,6 +1557,10 @@ sub afterRefresh()
     m.refreshing = false
     m.refreshAfter = ""
     syncPill()
+    if m.checkEnded and m.matchGone and gameOver() then
+        showEnded()
+        return
+    end if
     if after = "fallback" then
         pickFallback(m.pendingReason)
     else if after = "recent" then
@@ -1579,7 +1610,9 @@ end sub
 ' for ~10 minutes, 2026-11-01 15:26, the fallback on 540p, and the user had to
 ' keep trying it by hand.) TV only: phone and desktop have no stream server
 ' to look with (the page has to run to hand out its playlist), and their
-' quality-up button already sits where the offer would.
+' quality-up button already sits where the offer would. If the stream fallen
+' back to stalls too, the outage was theirs together, not the picked one's: it
+' goes back once it works, without asking (onBackResult).
 sub startBackWatch()
     m.backOk = 0
     m.backReady = false
@@ -1617,7 +1650,16 @@ sub onBackResult()
     ok = r <> invalid and r.ok <> invalid
     if ok then m.backOk = m.backOk + 1 else m.backOk = 0
     print logTime(); "[player] "; streamLabel(m.picked); " back? "; ok; " ("; m.backOk; " in a row)"
-    if m.backOk >= appPlayer().tvBackChecks then
+    if m.backOk >= appPlayer().tvBackChecks and m.sharedOutage then
+        ' Not its own failing but an outage the fallback had too (every feed
+        ' of the game stopped getting video at once, then all came back,
+        ' 2026-11-21 22:51-22:56): back to it without asking, as if it had
+        ' never gone. (The offer that evening went by unseen while the
+        ' fallback started repeating itself.)
+        print logTime(); "[player] back to "; streamLabel(m.picked); " by itself: the outage was shared"
+        switchTo(m.picked, false)
+        return
+    else if m.backOk >= appPlayer().tvBackChecks then
         offerBack()
     else if m.backReady then
         withdrawBack()
@@ -1827,6 +1869,18 @@ sub onJumped()
     now = CreateObject("roDateTime").AsSeconds()
     if m.jumpedAt <> invalid and now - m.jumpedAt < 15 then return
     m.jumpedAt = now
+    ' Missed from the playlist while it plays with a few seconds in hand, it
+    ' plays straight over the jump, the picture cutting ahead (twice in two
+    ' staged 20 s gaps, 3.9 and 5.5 s in hand, 2026-11-18). Started again,
+    ' it threw away what it had behind the poster (17 s, 2026-11-16 23:03).
+    ' At the edge it takes what comes after the gap and doesn't play (staged
+    ' too, buffering: the stall's reconnect 20 s on), so it starts again
+    ' there. Clock jumps start again as before: those it raced over (TNF).
+    ahead = m.task.servedSecs - m.served0 - m.video.position
+    if m.task.jumpKind = "list" and m.video.state = "playing" and not m.dryPaused and ahead >= 3 then
+        print logTime(); "[player] the picture jumped "; Int(m.task.jumped); " s ahead; "; ahead; " s in hand, playing on over it"
+        return
+    end if
     print logTime(); "[player] the picture jumped "; Int(m.task.jumped); " s ahead; starting the player again at live"
     restartAtLive(true)
 end sub
@@ -1908,8 +1962,78 @@ sub onNewLink()
     m.stall.control = "start"
 end sub
 
+' Started at least endedAfterMinutes ago: old enough that a stream stopping and
+' the game gone from the site's lists means it's over.
+function gameOver() as Boolean
+    began = matchSeconds(m.match)
+    if began <= 0 then return false
+    return nowSeconds() - began >= appPlayer().endedAfterMinutes * 60
+end function
+
+' The game is over (gameOver, its stream stalled or failing, the site no
+' longer listing it): said, over the poster, and nothing more tried: no
+' reconnects, fallbacks or retry round. ppv dropped a game ~3 h after its
+' start, its links then "not found" on every server, and the TV spun
+' through reconnects for a game that was over (2026-11-24 22:59). OK tries
+' the stream once more anyway; Back leaves.
+sub showEnded()
+    print logTime(); "[player] the game has ended (the site no longer lists it)"
+    m.checkEnded = false
+    endHold()
+    m.stall.control = "stop"
+    m.stuck.control = "stop"
+    m.retry.control = "stop"
+    m.outageTimer.control = "stop"
+    stopBackWatch()
+    m.keptPicture = false
+    m.dryDim.visible = false
+    m.swapUrl = ""
+    m.video.control = "stop"
+    m.video.content = invalid
+    if m.task <> invalid then
+        m.task.unobserveField("status")
+        m.task.unobserveField("error")
+        m.task.unobserveField("streamUrl")
+        m.task.unobserveField("quality")
+        m.task.unobserveField("jumped")
+        m.task.unobserveField("gap")
+        m.task.unobserveField("lost")
+        m.task.unobserveField("newLink")
+        m.task.unobserveField("repeating")
+        m.task.quit = true
+        m.task = invalid
+    end if
+    showBackdrop()
+    showFinal(playerText("gameEnded") + Chr(10) + playerText("tvEndedKeys"))
+    m.canRetry = true
+end sub
+
+' The source keeps sending video it already sent (StreamTask's noteRepeat),
+' through a new link if one came: the stream itself, not the server. Fallen
+' back from the stream picked, back to that one (a shared outage's fallback
+' did this, 2026-11-21, while the one picked worked again); else on to a
+' fallback, as when reconnecting gives up.
+sub onRepeating()
+    if m.task = invalid then return
+    print logTime(); "[player] "; streamLabel(m.stream); " keeps repeating itself"
+    markFailed(m.stream.embedUrl)
+    if m.picked <> invalid and m.picked.embedUrl <> m.stream.embedUrl then
+        print logTime(); "[player] back to "; streamLabel(m.picked)
+        switchTo(m.picked, false)
+        return
+    end if
+    ' As reconnecting gives up: the player let go first, so nothing of it
+    ' plays on under the message if there's no fallback left.
+    m.restarts = 3
+    reconnect("The stream keeps repeating itself")
+end sub
+
 sub onStall()
     print logTime(); "[player] stalled for "; m.stall.duration; "s"
+    if m.picked <> invalid and m.picked.embedUrl <> m.stream.embedUrl and not m.sharedOutage then
+        print logTime(); "[player] the stream fallen back to stalled too: back to "; streamLabel(m.picked); " once it works"
+        m.sharedOutage = true
+    end if
     reconnect("The stream stalled")
 end sub
 
@@ -1954,8 +2078,15 @@ sub reconnect(reason as String)
         m.task.unobserveField("gap")
         m.task.unobserveField("lost")
         m.task.unobserveField("newLink")
+        m.task.unobserveField("repeating")
         m.task.quit = true
         m.task = invalid
+    end if
+    ' Long enough after the start that it may be over: the lists asked
+    ' whether the site still has the game, each try (see showEnded).
+    if gameOver() then
+        m.checkEnded = true
+        refreshStreams("check")
     end if
     if m.restarts >= 3 then
         print logTime(); "[player] giving up: "; reason

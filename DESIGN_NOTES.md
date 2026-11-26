@@ -394,7 +394,8 @@ the others or is added here as a deliberate gap.
 | Needs the Chrome stream server | no | no | yes (see Roku) |
 | Viewer count and team logos in the player's title bar | yes: the count asked afresh every `viewersRefreshMs` from the game's own entry (fresher than the list's) | same | same |
 | Deep link straight into a stream (`match=<id>&stream=<embed address>`) | `am start ... --es link "..."` (`lib/src/deep_link.dart`) | a command-line argument, `sports.exe "match=..."` | ECP `/launch/dev` or `/input` with `match`, `sport`, `stream` |
-| The stream picked offered again after a fallback | no: no stream server to look with, and the quality-up button sits where the offer would (a known difference, to close some day) | no, same | yes: looked for every `tvBackCheckMs` in the background, "… is back · OK to switch" (see "The stream picked, back") |
+| The stream picked offered again after a fallback | no: no stream server to look with, and the quality-up button sits where the offer would (a known difference, to close some day) | no, same | yes: looked for every `tvBackCheckMs` in the background, "… is back · OK to switch", or switched back to by itself when the fallback stalled too (see "The stream picked, back") |
+| A game that has ended | "This game has ended." with Retry once a stream of a game started `endedAfterMinutes` (120) ago stalls or fails and the site no longer lists the game; nothing more tried by itself (see "A game that has ended") | same | same, over the poster: "Press OK to try again, or Back to leave." |
 | `golf` streams | play (inner page opened directly) | play | play; since 1.0.123 its segments come through the page (see "Segments only the page may fetch") |
 
 ## Android Auto (1.0.119)
@@ -1441,6 +1442,21 @@ back (its note too, if up) until it works twice in a row again.
   spinner), and the user would rather pick the moment than get a spinner
   mid-play (see the start fill under the cushion). Two in a row because ppv's
   page can hand out a playlist that dies a minute later.
+- **Switched to, after a shared outage** (2026-11-21, Celtics-Kings). ppv's
+  video host sent nothing for 4.5 minutes (22:51:46-22:56:13), every link on
+  every server, playlists answering throughout. The TV gave up on Away (HD)
+  after three reconnects and fell back to NBA TV (HD), which stalled the same
+  way, then played on when the video came back, there by chance. Away was
+  offered back at 22:58:28 and the note went by unseen; from 23:00:24 NBA TV
+  sent the same two segments over and over, pausing, then ran dry. User: if
+  everything failed at once and came back at once, it should stay on the one
+  picked. Now, when the stream fallen back to stalls too (onStall), the
+  outage was theirs together, and the one picked is switched back to by
+  itself once it works `tvBackChecks` times in a row, not offered: that
+  night, at 22:58:28. Staged 2026-11-25: a fallback silent 60 s stalled,
+  and the next look at the one picked switched back. Missing segments (404)
+  and a 30 s silence don't count: the TV skips the first and rides out the
+  second on its cushion, playing on, so they're not an outage to share.
 - **One check at a time,** on the same Chrome server as playback; a check takes
   the 7-20 s a link does and holds one session meanwhile.
 - **TV only, for now.** Phone and desktop have no stream server: the page
@@ -1448,6 +1464,59 @@ back (its note too, if up) until it works twice in a row again.
   (see "Servers that drop a stream") would be the way. Their quality-up offer
   ("canup", the up pill) also sits where this would, and the two would need
   to be one offer. A known difference, in the parity table, to close some day.
+
+### A source repeating itself (TV)
+
+On 2026-11-21 from 23:00:24 NBA TV (HD) sent the same two segments, byte for
+byte (4614273 and 4812801 bytes), as new segments under new addresses, a pair
+every ~13 s: 8 s of video that wasn't new, in 13. The player played none of
+it, but the in-hand count did: it paused twice, then, with a few tiny
+segments (881 KB, 84 KB) after, ran dry unpaused at "13.6 s in hand by the
+count" and blanked to the poster.
+
+Now a new segment whose picture's clock matches one already sent on the same
+link (`checkClock`, which already skipped segments downloaded twice) is a
+repeat (`noteRepeat`): not counted in `servedSecs` or `readySecs`, and a sign
+of trouble for roaming, since a struggling server might be the cause.
+`tvRepeats` (6) within `tvRepeatWindowMs` (90 s), about 40 s of that night's
+pattern, and the stream itself is given up (`onRepeating`): back to the
+stream picked if it had fallen back from it, else on to a fallback, as when
+reconnecting gives up. A new link lists the same recent video at other
+addresses, so the first match against a stamp from before it takes the stamp
+over instead of counting: the repeats' own signs of trouble bring a new link
+after three, and staged on the TV (2026-11-25) every repeat after it matched
+an old stamp, so the count stopped at three. Staged with that fixed, six
+repeats gave the stream up 18 s after the first. TV only: phone and desktop
+play through hls.js in the page, which would need its own check.
+
+### A game that has ended (all apps)
+
+On 2026-11-24 the TV spun through reconnects and fallbacks for a game that
+was over: ppv had dropped it from its list ~3 h after its start, and every
+server answered 404. Nothing would ever play again, and the app kept trying
+as for an outage.
+
+Now, when a stream stops (the TV's reconnect or failedForGood; phone and
+desktop's heal round or failedForGood) and the game started at least
+`endedAfterMinutes` (120) ago, the app asks the site's lists first. All of
+them answering and the game in none means it's over:
+"This game has ended." over the poster, with Retry (OK on the TV), and
+nothing more tried by itself: no reconnects, fallbacks or retry round.
+Retry tries the same stream once more, in case the site dropped it early.
+
+- **Both conditions,** not either: a game past its slot can still be
+  playing (overtime, a late start), and the list can miss a game for a
+  moment; a list that didn't fully answer (an error, a timeout) proves
+  nothing, so it carries on as before.
+- **Phone and desktop stop the page's player too** (`window.__appPlayer.stop`):
+  hls.js destroyed, the video emptied, the page's loop and its play-on after
+  a system pause halted. Without it, hls.js kept retrying under the message
+  and the play-on un-paused it (emulator, 2026-11-24). A new page (Retry, or
+  another stream) builds a new player.
+- **Staged 2026-11-25** on the TV: the stream silent past the cushion and the
+  stall, a reconnect starting, the check answering "gone", and "This game has
+  ended." up within 0.4 s, the reconnect's browser session closed. Phone:
+  the emulator, 2026-11-24.
 
 ### Short playlists and high bitrates
 
@@ -1726,6 +1795,46 @@ without playing until the 20 s stall reconnects, then the 12 s hold back:
      it has had in this pause, so a dip and comeback doesn't, and the 20 s
      reconnect comes before the Roku blanks. Installed mid-game on the
      second freeze, not yet seen in a freeze.
+  9. A paused player that asks for nothing (2026-11-15 00:36): paused at
+     0.5 s in hand; StreamTask got a segment per playlist (41 s in 39 s, all
+     real), the player kept asking for playlists but took no segment, so its
+     own count never grew and nothing let it on again. 42 s in, its paused
+     spot fell out of the 45 s list (`longerWindow`): it went to buffering
+     and the poster ("spinner on thumbnail"), asked only for the newest
+     segments, and the stall reconnected 20 s later (70 s of spinner in
+     all). Both blankings so far came 42-45 s into a pause, which fits the
+     45 s list. Now, paused with nothing taken for 5 s, it goes on again
+     once what it has plus what's waiting untaken (`readySecs`) makes the
+     cushion, even with too little in the player for the "buffer full"
+     case: playing gets it to ask. That day it would have gone on ~12 s in.
+     If the player still doesn't take them, it runs dry and the stall's 20 s
+     reconnects as before. The pause's dim also stayed up over the poster,
+     itself darkened, so it was darker until the reconnect took the dim down
+     (user: "double dimmed, it got brighter at one point"); the poster coming
+     up now takes it down.
+  10. Segments missed after a comeback (2026-11-16 23:02): paused at 1 s,
+     the source came back with 4 segments in a row and the player went on
+     with 21 s in hand; 4 s later the next playlist had skipped 4 segments
+     ("missed 4 segment(s)"), a jump, and `onJumped` started it again at
+     live behind the poster, throwing away 17 s it had. Staged on the TV
+     (2026-11-18: hold back the newest 5 segments, then drop them, a 20 s
+     cut in the picture): playing with 5.5 and 3.9 s in hand, the Roku
+     played straight over it both times, no buffering, the picture just
+     cutting ahead ("it cut"). The same cut with the list frozen first, so
+     it arrived with the player buffering at the edge: it took 16 s past
+     the cut and never played, and the stall reconnected 20 s on, as the
+     old notes say. So a jump missed from the playlist while it's playing
+     with 3 s or more in hand is left alone; at the edge, and for jumps in
+     the picture's clock (raced over, TNF), it starts again as before.
+     Seeking past the gap in the same player wasn't needed; its start time
+     for a segment (`streamingSegment.segStartTime`) reads as an unsigned
+     -1 on this TV anyway. Its in-hand count stays right over the cut: the
+     same cut with 12 s in hand, then the list frozen 15 s on, and it paused
+     before running dry at 0.87 s as usual, no buffering (the old worry
+     that video past a jump isn't usable cushion, from two dry runs after
+     clock jumps, doesn't hold for a cut missed from the playlist). The
+     stall's reconnect came 20 s into that pause, once, as `dryGot` (item 8)
+     means it to.
 - **A failed start leaves nothing running** (2026-11-11). ppv's segments
   were all refused by their CDN ("unauthorized resource", every game). Two
   things were left over from the start that failed: its "0%" stayed up between

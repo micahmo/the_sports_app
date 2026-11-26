@@ -1100,6 +1100,15 @@ const String _takeoverJs = r'''
   // For the app, which sees the network come back more reliably than the
   // page's "online" event does (it didn't fire on the emulator).
   window.__appPlayer.relink = function () { relink("back online", true); };
+  // The game is over (the app's _showEnded): no more loading, and nothing
+  // left to play on by itself. A new page builds a new player.
+  window.__appPlayer.stop = function () {
+    window.__appPlayer.stopped = true;
+    if (hls) { try { hls.destroy(); } catch (e) {} }
+    hls = null;
+    if (video) { video.pause(); video.removeAttribute("src"); video.load(); }
+    log("stopped: the game has ended");
+  };
 
   hidePage();
   // The page can replace its own <head>; keep the blanking in place until we
@@ -1211,7 +1220,7 @@ const String _takeoverJs = r'''
   // if it's still paused and still shown, it plays on.
   function playOnAfterPause() {
     setTimeout(function () {
-      if (!video || !video.paused || document.hidden) return;
+      if (!video || !video.paused || document.hidden || window.__appPlayer.stopped) return;
       log("paused by the system: playing on");
       video.play().catch(function () {});
     }, 1000);
@@ -2218,6 +2227,7 @@ const String _takeoverJs = r'''
   var nestTold = false;
   var deadFor = 0, deadStepped = false;
   setInterval(function () {
+    if (window.__appPlayer.stopped) return;
     if (window.__appPlayer.built) {
       watch();
       measure();
@@ -2349,6 +2359,12 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
   // Takeover failed and the page has nothing watchable of its own, so it is
   // just showing its red notice. Cover that with something presentable.
   bool _failed = false;
+  // The game is over (see _showEnded): said in place of "unavailable", and
+  // nothing more tried by itself.
+  bool _ended = false;
+  // The last refresh of the lists found the game gone from them (not an
+  // error: both answered).
+  bool _matchGone = false;
 
   // Healing: once the stream has played, a stall or failure (a dead zone on
   // mobile, an expired link) doesn't end it. While the backend's site can't be
@@ -2638,6 +2654,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
         _ready = true;
         _waitText = null;
         _failed = false;
+        _ended = false;
         _everPlayed = true;
         if (_healing) _healedAt = DateTime.now();
         // It works after all: no longer "Failed … ago".
@@ -2718,8 +2735,13 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     // Only what the site lists for the game now: streams get pulled (a game
     // winding down), and the list from when the player opened sent fallbacks
     // after streams that were gone.
+    _matchGone = false;
     await _refreshStreams().timeout(const Duration(seconds: 10), onTimeout: () {});
     if (!mounted) return;
+    if (_matchGone && _gameOver) {
+      _showEnded();
+      return;
+    }
     // The same kind first; when none of those are left, the other kind (an SD
     // stream beats nothing when every HD one is down).
     // Recently failed ones only after every other.
@@ -2788,6 +2810,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       _savedAt = null;
       _ready = false;
       _failed = false;
+      _ended = false;
       _everPlayed = false;
       _healing = false;
       _offline = false;
@@ -2947,6 +2970,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     try {
       final String id = _match.id;
       final List<MatchSourceRef>? sources = await _api.currentSources(id);
+      if (_match.id == id) _matchGone = sources == null;
       if (sources == null) return;
       final List<StreamInfo> fresh = await _api.fetchSourcesStreams(sources);
       if (mounted && _match.id == id) setState(() => _streams = fresh);
@@ -3113,6 +3137,17 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
       return;
     }
     if (!mounted || !_healing) return;
+    // Long enough after the start that it may be over: whether the site
+    // still lists the game, each try (see _showEnded).
+    if (online && _gameOver) {
+      _matchGone = false;
+      await _refreshStreams().timeout(const Duration(seconds: 10), onTimeout: () {});
+      if (!mounted || !_healing) return;
+      if (_matchGone) {
+        _showEnded();
+        return;
+      }
+    }
     if (online && _healTries >= 3) {
       setState(() {
         _healing = false;
@@ -3131,6 +3166,33 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     final Duration wait = online ? Duration(seconds: 20 * _healTries) : const Duration(seconds: 10);
     _healTimer = Timer(wait, () {
       if (mounted && _healing) _healNow();
+    });
+  }
+
+  // Started at least endedAfterMinutes ago: old enough that its stream stopping
+  // and the game gone from the site's lists means it's over.
+  bool get _gameOver =>
+      _match.date > 0 && DateTime.now().millisecondsSinceEpoch - _match.date >= PlayerTuning.endedAfterMinutes * 60000;
+
+  // The game is over (_gameOver, its stream stalled or failed, the site no
+  // longer listing it): said, and nothing more tried by itself: no reloads,
+  // fallbacks or retry round. ppv dropped a game ~3 h after its start and the
+  // TV spun through reconnects for a game that was over (2026-11-24). Retry
+  // tries the stream once more anyway. As the TV's showEnded.
+  void _showEnded() {
+    if (!mounted) return;
+    PlayerLog.add('[app] the game has ended (the site no longer lists it)');
+    _healTimer?.cancel();
+    _outageTimer?.cancel();
+    _web.runJavaScript('window.__appPlayer && window.__appPlayer.stop && window.__appPlayer.stop()').catchError((_) {});
+    setState(() {
+      _ended = true;
+      _failed = true;
+      _healing = false;
+      _offline = false;
+      _healTries = 0;
+      _trying = null;
+      _fallbackFrom = null;
     });
   }
 
@@ -3267,6 +3329,7 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
     setState(() {
       _ready = false;
       _failed = false;
+      _ended = false;
     });
   }
 
@@ -3692,13 +3755,17 @@ class _StreamPlayerScreenState extends State<StreamPlayerScreen> with WidgetsBin
                             children: <Widget>[
                               const Icon(Icons.videocam_off, color: Colors.white54, size: 40),
                               const SizedBox(height: 12),
-                              const Text(PlayerText.unavailable, style: TextStyle(color: Colors.white)),
-                              const SizedBox(height: 4),
-                              const Text(PlayerText.unavailableHint, style: TextStyle(color: Colors.white54, fontSize: 12)),
-                              const SizedBox(height: 4),
-                              Text(PlayerText.retryingEvery.replaceAll('{n}', '${PlayerTuning.outageRetrySecs}'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                              if (_ended)
+                                const Text(PlayerText.gameEnded, style: TextStyle(color: Colors.white))
+                              else ...<Widget>[
+                                const Text(PlayerText.unavailable, style: TextStyle(color: Colors.white)),
+                                const SizedBox(height: 4),
+                                const Text(PlayerText.unavailableHint, style: TextStyle(color: Colors.white54, fontSize: 12)),
+                                const SizedBox(height: 4),
+                                Text(PlayerText.retryingEvery.replaceAll('{n}', '${PlayerTuning.outageRetrySecs}'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                              ],
                               const SizedBox(height: 16),
-                              TextButton(onPressed: _refresh, child: const Text(PlayerText.retry)),
+                              TextButton(onPressed: _ended ? () => _switchTo(_stream) : _refresh, child: const Text(PlayerText.retry)),
                             ],
                           ),
                         ),

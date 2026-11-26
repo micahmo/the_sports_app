@@ -34,12 +34,16 @@
          segment still going to the one before is dropped (sendAll). -->
     <field id="startedAgain" type="integer" />
     <!-- The picture's clock just jumped this far ahead (s): big enough that the
-         player starts again at live (PlayerScreen's onJumped). -->
+         player starts again at live, unless it can play over it (PlayerScreen's
+         onJumped). -->
     <field id="jumped" type="float" alwaysNotify="true" />
     <!-- A playlist came back with segments missed, this many seconds of them,
          short of a jump: PlayerScreen's onGap starts it again if it's paused
          at the edge anyway. -->
     <field id="gap" type="float" alwaysNotify="true" />
+    <!-- Where the last jump was seen: "list" (segments missed from the
+         playlist) or "clock" (the picture's own clock). Set before jumped. -->
+    <field id="jumpKind" type="string" />
     <!-- Counts the player's requests, and each half second one is still being
          answered: PlayerScreen's quiet check (checkQuiet). -->
     <field id="asks" type="integer" />
@@ -47,6 +51,9 @@
     <field id="segSecs" type="float" />
     <!-- Counts new links found mid-stream (PlayerScreen's onNewLink). -->
     <field id="newLink" type="integer" />
+    <!-- Counts the times the source kept repeating video it had sent
+         (StreamTask's noteRepeat): PlayerScreen's onRepeating gives it up. -->
+    <field id="repeating" type="integer" alwaysNotify="true" />
   </interface>
   <script type="text/brightscript" uri="pkg:/source/webdriver.brs" />
   <script type="text/brightscript" uri="pkg:/source/streamlink.brs" />

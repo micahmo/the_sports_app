@@ -37,6 +37,9 @@ sub work()
     m.fileSeq = 0
     ' The last few segments' picture clocks (checkClock).
     m.stamps = []
+    ' Segments repeating video already sent (see noteRepeat), and when.
+    m.repeated = {}
+    m.repeats = []
     ' The same by the segment's place in the list (checkClock's neighbors).
     m.stampAt = {}
     ' Recent jumps ahead ({at, gap}, at on m.jumpClock), added up (checkClock).
@@ -336,6 +339,7 @@ function longerWindow(lines as Object) as Object
             if missed * d >= 20 then
                 m.jumps = []
                 m.gapSaidAt = m.jumpClock.TotalSeconds()
+                m.top.jumpKind = "list"
                 m.top.jumped = missed * d
             else if missed * d > 0 then
                 m.top.gap = missed * d
@@ -859,9 +863,21 @@ sub checkClock(u as String, path as String)
     if st < 0 then return
     d = m.segDur[u]
     if d = invalid then d = 0
-    ' Downloaded again (the player started over on segments it had): checked.
+    ' Downloaded again (the player started over on segments it had, or a
+    ' second copy): checked. A different segment with the same picture is the
+    ' source repeating itself, on the same link (a new one lists the same
+    ' recent video at other addresses: that first one becomes the stamp, or
+    ' the new link the repeats bring would hide every repeat after it).
     for each r in m.stamps
-        if r.st = st then return
+        if r.st = st then
+            if r.link <> m.top.newLink then
+                r.u = u
+                r.link = m.top.newLink
+            else if r.u <> u then
+                noteRepeat(u)
+            end if
+            return
+        end if
     end for
     ' Compared with its neighbors in the list, each pair once, when the second
     ' of them is here: by time, with segments finishing out of order, one 18 s
@@ -892,8 +908,34 @@ sub checkClock(u as String, path as String)
             print logTime(); "[stream] picture clock goes back at this segment"
         end if
     end if
-    m.stamps.Push({st: st, d: d})
+    m.stamps.Push({st: st, d: d, u: u, link: m.top.newLink})
     if m.stamps.Count() > 6 then m.stamps.Shift()
+end sub
+
+' A new segment carrying video the source has already sent (its picture's clock
+' the same as an earlier one's): from 23:00:24 on 2026-11-21 a fallback sent
+' the same two segments, byte for byte, a pair every ~13 s. The player plays
+' none of it, so it isn't in hand (countServed, noteReady: counted, it ran dry
+' unpaused with "13.6 s in hand"). Each is a sign of trouble (a new link, if
+' it's the server); tvRepeats within tvRepeatWindowMs and the stream itself
+' is given up (PlayerScreen's onRepeating).
+sub noteRepeat(u as String)
+    p = appPlayer()
+    if m.repeated.Count() > 100 then m.repeated = {}
+    m.repeated[u] = true
+    now = m.jumpClock.TotalMilliseconds()
+    recent = []
+    for each t in m.repeats
+        if now - t <= p.tvRepeatWindowMs then recent.Push(t)
+    end for
+    recent.Push(now)
+    m.repeats = recent
+    print logTime(); "[stream] this segment repeats video already sent ("; recent.Count(); " in "; Int(p.tvRepeatWindowMs / 1000); " s)"
+    noteTrouble()
+    if recent.Count() >= p.tvRepeats then
+        m.repeats = []
+        m.top.repeating = m.top.repeating + 1
+    end if
 end sub
 
 ' The picture's clock from one segment (a, {st, d}) to the next in the list
@@ -926,6 +968,7 @@ sub clockGap(a as Object, st as Double)
         m.jumps = recent
         if total >= 20 then
             m.jumps = []
+            m.top.jumpKind = "clock"
             m.top.jumped = total
         end if
     end if
@@ -1005,7 +1048,7 @@ sub noteReady()
     secs = 0
     for each u in m.dl
         d = m.dl[u]
-        if d.done and d.waiters.Count() = 0 and m.segDur[u] <> invalid and segPlace(u) > top then secs = secs + m.segDur[u]
+        if d.done and d.waiters.Count() = 0 and m.segDur[u] <> invalid and segPlace(u) > top and not m.repeated.DoesExist(u) then secs = secs + m.segDur[u]
     end for
     if secs <> m.top.readySecs then m.top.readySecs = secs
 end sub
@@ -1017,7 +1060,7 @@ end sub
 ' 22:27:28, temporary in-hand log); one asked for again counted twice.
 sub countServed(u as String, ok as Boolean)
     syncCount()
-    if ok and m.segDur[u] <> invalid and m.counted[u] <> m.acctGen then
+    if ok and m.segDur[u] <> invalid and m.counted[u] <> m.acctGen and not m.repeated.DoesExist(u) then
         if m.counted.Count() > 200 then m.counted = {}
         m.counted[u] = m.acctGen
         m.held.Push({o: segPlace(u), d: m.segDur[u]})
